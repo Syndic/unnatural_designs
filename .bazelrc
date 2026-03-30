@@ -1,0 +1,11 @@
+# Check direct module dependencies are up-to-date
+common --check_direct_dependencies=error
+
+# Ensure that tags applied in your BUILD file, like tags = ["no-remote"] get propagated to actions created by the rule. See: https://github.com/bazelbuild/bazel/issues/7766
+common --incompatible_allow_tags_propagation
+
+# Don't let environment variables sneak into the build.
+build --incompatible_strict_action_env
+
+# Allow users to specify personal .bazelrc.user files.
+try-import %workspace%/.bazelrc.user

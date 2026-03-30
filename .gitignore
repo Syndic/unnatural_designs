@@ -1,0 +1,52 @@
+# ── macOS ──────────────────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# ── Windows ────────────────────────────────────────────────────────────────────
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ── Bazel ──────────────────────────────────────────────────────────────────────
+# Bazel creates these convenience symlinks at the workspace root
+bazel-*
+
+# Local user overrides (don't commit — each dev has their own)
+.bazelrc.user
+
+# ── Python ─────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+.pytest_cache/
+
+# ── Go ─────────────────────────────────────────────────────────────────────────
+/vendor/
+*.test
+*.out
+
+# ── Java ────────────────────────────────────────────────────────────────────────
+*.class
+*.jar
+*.war
+*.ear
+target/
+
+# ── Editors ────────────────────────────────────────────────────────────────────
+.idea/
+*.iml
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.swp
+*.swo
+*~
