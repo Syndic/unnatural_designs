@@ -7,8 +7,10 @@ Joshua Yanchar's personal projects monorepo.
 | Directory | Purpose |
 |-----------|---------|
 | `//apps/` | End-user-facing applications with persistent UIs (desktop, mobile) |
+| `//docs/` | Documentation not tightly coupled to a specific project |
 | `//infra/` | Infrastructure-as-code: Terraform, Helm, Pulumi, etc. |
 | `//libs/` | Shared libraries consumed by other packages in this repo |
+| `//meta/` | Monorepo-level configuration, automation, and tooling (CI/CD, etc.) |
 | `//services/` | Long-running processes: background daemons and server-side applications |
 | `//tools/` | Developer and operator-facing CLI tools: short-lived, task-focused executables |
 
