@@ -12,12 +12,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: bazel-contrib/setup-bazel@0.8.5
+      - uses: ./.github/actions/setup-bazel-remote
         with:
-          bazelisk-cache: true
-          disk-cache: ${{ github.workflow }}
-          repository-cache: true
-      - run: echo "build:remote --remote_header=x-buildbuddy-api-key=${{ secrets.BUILDBUDDY_API_KEY }}" >> .bazelrc.user
+          buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
       - run: bazel run --config=remote //:gazelle -- -mode=diff
 
   go-work-check:
@@ -40,10 +37,7 @@ jobs:
     needs: [gazelle-check, go-work-check, python-scale-check]
     steps:
       - uses: actions/checkout@v4
-      - uses: bazel-contrib/setup-bazel@0.8.5
+      - uses: ./.github/actions/setup-bazel-remote
         with:
-          bazelisk-cache: true
-          disk-cache: ${{ github.workflow }}
-          repository-cache: true
-      - run: echo "build:remote --remote_header=x-buildbuddy-api-key=${{ secrets.BUILDBUDDY_API_KEY }}" >> .bazelrc.user
+          buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
       - run: bazel test --config=remote //...
