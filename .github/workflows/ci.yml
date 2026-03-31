@@ -8,7 +8,7 @@ on:
 
 jobs:
   gazelle-check:
-    name: Gazelle check
+    name: Gazelle BUILD file check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,17 +17,18 @@ jobs:
           bazelisk-cache: true
           disk-cache: ${{ github.workflow }}
           repository-cache: true
-      - run: bazel run //:gazelle -- -mode=diff
+      - run: echo "build:remote --remote_header=x-buildbuddy-api-key=${{ secrets.BUILDBUDDY_API_KEY }}" >> .bazelrc.user
+      - run: bazel run --config=remote //:gazelle -- -mode=diff
 
   go-work-check:
-    name: go.work consistency check
+    name: go.work consistency/completeness check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: python3 meta/scripts/check_go_work.py
 
   python-scale-check:
-    name: Python scale check
+    name: Python scale check - Are we using enough python to warrant configuring/enabling Gazelle python support?
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -44,4 +45,5 @@ jobs:
           bazelisk-cache: true
           disk-cache: ${{ github.workflow }}
           repository-cache: true
-      - run: bazel test //...
+      - run: echo "build:remote --remote_header=x-buildbuddy-api-key=${{ secrets.BUILDBUDDY_API_KEY }}" >> .bazelrc.user
+      - run: bazel test --config=remote //...

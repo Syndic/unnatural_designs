@@ -7,5 +7,12 @@ common --incompatible_allow_tags_propagation
 # Don't let environment variables sneak into the build.
 build --incompatible_strict_action_env
 
+# Remote cache (Buildbuddy)
+# The API key is not stored here. Add it to .bazelrc.user (gitignored):
+#   build:remote --remote_header=x-buildbuddy-api-key=YOUR_KEY
+build:remote --remote_cache=grpcs://remote.buildbuddy.io
+build:remote --remote_cache_compression=true
+build:remote --remote_timeout=600
+
 # Allow users to specify personal .bazelrc.user files.
 try-import %workspace%/.bazelrc.user
