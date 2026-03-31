@@ -13,9 +13,9 @@ py_binary(
 
 py_test(
     name = "test_check_go_work",
+    size = "small",
     srcs = ["test_check_go_work.py"],
     main = "test_check_go_work.py",
-    size = "small",
     deps = [":check_go_work_lib"],
 )
 
@@ -32,8 +32,8 @@ py_binary(
 
 py_test(
     name = "test_check_python_scale",
+    size = "small",
     srcs = ["test_check_python_scale.py"],
     main = "test_check_python_scale.py",
-    size = "small",
     deps = [":check_python_scale_lib"],
 )
