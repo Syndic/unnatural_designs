@@ -1,0 +1,39 @@
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
+
+py_library(
+    name = "check_go_work_lib",
+    srcs = ["check_go_work.py"],
+)
+
+py_binary(
+    name = "check_go_work",
+    srcs = ["check_go_work.py"],
+    main = "check_go_work.py",
+)
+
+py_test(
+    name = "test_check_go_work",
+    srcs = ["test_check_go_work.py"],
+    main = "test_check_go_work.py",
+    size = "small",
+    deps = [":check_go_work_lib"],
+)
+
+py_library(
+    name = "check_python_scale_lib",
+    srcs = ["check_python_scale.py"],
+)
+
+py_binary(
+    name = "check_python_scale",
+    srcs = ["check_python_scale.py"],
+    main = "check_python_scale.py",
+)
+
+py_test(
+    name = "test_check_python_scale",
+    srcs = ["test_check_python_scale.py"],
+    main = "test_check_python_scale.py",
+    size = "small",
+    deps = [":check_python_scale_lib"],
+)
