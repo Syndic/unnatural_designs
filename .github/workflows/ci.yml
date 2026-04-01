@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  gazelle-check:
+    name: Gazelle BUILD file check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-bazel-remote
+        with:
+          buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
+      - run: bazel run --config=remote //:gazelle -- -mode=diff
+
+  go-work-check:
+    name: go.work consistency/completeness check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - run: python3 meta/scripts/check_go_work.py
+
+  python-scale-check:
+    name: Python scale check - Are we using enough python to warrant configuring/enabling Gazelle python support?
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 meta/scripts/check_python_scale.py
+
+  build-and-test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    needs: [gazelle-check, go-work-check, python-scale-check]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-bazel-remote
+        with:
+          buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
+      - run: bazel test --config=remote //...

@@ -8,6 +8,20 @@ repos:
         pass_filenames: false
         files: \.go$
 
+      - id: check-go-work
+        name: check go.work consistency
+        language: python
+        entry: python meta/scripts/check_go_work.py
+        pass_filenames: false
+        files: go\.(mod|work)$
+
+      - id: check-python-scale
+        name: check Python target scale
+        language: python
+        entry: python meta/scripts/check_python_scale.py
+        pass_filenames: false
+        files: BUILD\.bazel$
+
       - id: gazelle-update-repos
         name: gazelle update-repos
         language: system

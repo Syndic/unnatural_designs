@@ -16,6 +16,12 @@
         "gomod"
       ],
       "groupName": "Go dependencies"
+    },
+    {
+      "matchManagers": [
+        "github-actions"
+      ],
+      "groupName": "GitHub Actions"
     }
   ]
 }
