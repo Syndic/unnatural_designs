@@ -9,7 +9,7 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: bazel-contrib/setup-bazel@0.8.5
+    - uses: bazel-contrib/setup-bazel@0.19.0
       with:
         bazelisk-cache: true
         disk-cache: ${{ github.workflow }}

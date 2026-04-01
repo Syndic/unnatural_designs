@@ -24,6 +24,27 @@ Keychain, 1Password CLI) rather than storing them in a file on disk.
 
 ---
 
+## Renovate Trigger Frequency
+
+Renovate appears to trigger on every branch push rather than only on changes to
+main. This is more frequent than expected and worth investigating — it may be
+a configuration issue or a default behaviour that can be tightened.
+
+---
+
+## Code Quality and Coverage Reporting
+
+No code quality metrics or test coverage reporting is currently in place. Worth
+adding to CI once there is meaningful code to measure. Candidate tooling:
+
+- **Go**: `go test -coverprofile` + a coverage reporting service (e.g. Codecov, Coveralls)
+- **Python**: `coverage.py` + the same reporting service
+
+Code quality linting (e.g. `golangci-lint` for Go, `ruff` for Python) is also
+worth adding as a CI job.
+
+---
+
 ## Gazelle Python Support
 
 Gazelle has a Python plugin bundled with `rules_python` that can auto-generate
