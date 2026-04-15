@@ -1,0 +1,11 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "shared",
+    srcs = [
+        "constants.go",
+        "terminal.go",
+    ],
+    importpath = "github.com/Syndic/unnatural_designs/tools/network_infrastructure_maintenance/internal/shared",
+    visibility = ["//tools/network_infrastructure_maintenance:__subpackages__"],
+)

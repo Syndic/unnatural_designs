@@ -1,0 +1,27 @@
+load("@rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "netbox_audit_lib",
+    srcs = [
+        "checks.go",
+        "config.go",
+        "constants.go",
+        "main.go",
+        "models.go",
+        "progress.go",
+        "report.go",
+    ],
+    importpath = "github.com/Syndic/unnatural_designs/tools/network_infrastructure_maintenance/cmd/netbox_audit",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//tools/network_infrastructure_maintenance/internal/audit",
+        "//tools/network_infrastructure_maintenance/internal/netbox",
+        "//tools/network_infrastructure_maintenance/internal/shared",
+    ],
+)
+
+go_binary(
+    name = "netbox_audit",
+    embed = [":netbox_audit_lib"],
+    visibility = ["//visibility:public"],
+)

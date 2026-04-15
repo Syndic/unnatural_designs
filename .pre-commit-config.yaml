@@ -22,9 +22,9 @@ repos:
         pass_filenames: false
         files: BUILD\.bazel$
 
-      - id: gazelle-update-repos
-        name: gazelle update-repos
+      - id: bazel-mod-tidy
+        name: bazel mod tidy
         language: system
-        entry: bazel run //:gazelle-update-repos
+        entry: bazel mod tidy
         pass_filenames: false
         files: go\.(mod|work|sum)$

@@ -1,0 +1,31 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "audit",
+    srcs = [
+        "cables.go",
+        "constants.go",
+        "device_locations.go",
+        "device_type_drift.go",
+        "dhcp_reservations.go",
+        "helpers.go",
+        "honeypots.go",
+        "interface_vrf.go",
+        "ip_vlan_consistency.go",
+        "mac_consistency.go",
+        "module_consistency.go",
+        "parent_placement.go",
+        "patch_panel_continuity.go",
+        "planned_devices.go",
+        "poe_power.go",
+        "private_ip_vrf.go",
+        "rack_placement.go",
+        "required_device_fields.go",
+        "result.go",
+        "switch_link_symmetry.go",
+        "wireless_normalization.go",
+    ],
+    importpath = "github.com/Syndic/unnatural_designs/tools/network_infrastructure_maintenance/internal/audit",
+    visibility = ["//tools/network_infrastructure_maintenance:__subpackages__"],
+    deps = ["//tools/network_infrastructure_maintenance/internal/netbox"],
+)

@@ -1,0 +1,32 @@
+{
+  "checks": {},
+  "rules": {
+    "interface-vrf": {
+      "wan_device_roles": [
+        "ISP Equipment"
+      ],
+      "require_on_interfaces": true
+    },
+    "private-ip-vrf": {
+      "require_on_private_ips": true,
+      "require_on_public_ips": false
+    },
+    "wireless-normalization": {
+      "suppress_if_connected_wired_interface_is_complete": true,
+      "require_mode": true,
+      "require_untagged_vlan": true,
+      "require_primary_mac": true
+    },
+    "rack-placement": {
+      "exempt_child_devices": true,
+      "exempt_device_tags": [
+        "0u-rack-device"
+      ]
+    },
+    "poe-power": {
+      "check_powered_device_supply": true,
+      "require_pse_mode_on_peer": true,
+      "unknown_type_policy": "fail"
+    }
+  }
+}
