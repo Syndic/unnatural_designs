@@ -1,6 +1,13 @@
 repos:
   - repo: local
     hooks:
+      - id: bazel-mod-tidy
+        name: bazel mod tidy
+        language: system
+        entry: bazel mod tidy
+        pass_filenames: false
+        files: go\.(mod|work|sum)$
+
       - id: gazelle
         name: gazelle
         language: system
@@ -21,10 +28,3 @@ repos:
         entry: python meta/scripts/check_python_scale.py
         pass_filenames: false
         files: BUILD\.bazel$
-
-      - id: bazel-mod-tidy
-        name: bazel mod tidy
-        language: system
-        entry: bazel mod tidy
-        pass_filenames: false
-        files: go\.(mod|work|sum)$
