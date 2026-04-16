@@ -10,10 +10,11 @@ on:
     - cron: '0 2 * * 1'
 
 jobs:
-  # ── Go module completeness ─────────────────────────────────────────────────
-  # Verifies that every matrix.module list in this file matches the set of Go
-  # modules in the repo, and that every module has a .golangci.yml. Matrix
-  # jobs that run per-module depend on this so mismatches fail fast.
+  # ── Monorepo Structure Maintenance ────────────────────────────────────────────
+  # Checks that per-language tooling is fully wired up before per-module jobs
+  # run. Currently covers Go (module matrix completeness, .golangci.yml presence).
+  # lang-expand: add an equivalent completeness check for each adopted language
+  #   (e.g. verify pyproject.toml/ruff.toml present for Python modules).
   go-modules-check:
     name: Go module completeness check
     runs-on: ubuntu-latest
@@ -21,9 +22,12 @@ jobs:
       - uses: actions/checkout@v6
       - run: python3 meta/scripts/check_go_modules.py
 
-  # ── Semgrep ────────────────────────────────────────────────────────────────
-  # Source-level SAST: injection vulnerabilities, insecure patterns, secrets.
-  # No build required; safe to run alongside Bazel remote caching.
+  # ── Static Application Security Testing (SAST) ───────────────────────────────
+  # Analyses source code for security vulnerabilities — injection flaws, insecure
+  # API usage, hardcoded secrets — without running or building the code. Semgrep
+  # uses per-language rule packs; add one per adopted language.
+  # lang-expand: add p/<language> for each adopted language (semgrep.dev/r lists
+  #   available packs, e.g. p/java, p/typescript, p/rust).
   semgrep:
     name: Semgrep
     runs-on: ubuntu-latest
@@ -40,10 +44,13 @@ jobs:
             p/python
             p/secrets
 
-  # ── govulncheck ────────────────────────────────────────────────────────────
-  # Dependency CVE scanning: checks whether code actually calls into
-  # vulnerable dependency code paths (lower noise than SCA tools that only
-  # check go.sum). Runs once per Go module.
+  # ── Dependency CVE Scanning ───────────────────────────────────────────────────
+  # Checks whether the code calls into known-vulnerable dependency code paths,
+  # not just whether a vulnerable package is present (lower noise than pure
+  # manifest scanning). Runs once per module. Currently covers Go via govulncheck.
+  # lang-expand: add an equivalent per-language scanner as languages are adopted
+  #   (e.g. pip-audit for Python, cargo-audit for Rust, trivy fs --scanners vuln
+  #   for languages without a dedicated reachability tool).
   govulncheck:
     name: govulncheck (${{ matrix.module }})
     runs-on: ubuntu-latest
@@ -63,10 +70,12 @@ jobs:
         with:
           work-dir: ${{ matrix.module }}
 
-  # ── golangci-lint ──────────────────────────────────────────────────────────
-  # Code quality and security linting: includes gosec for Go-specific security
-  # patterns (weak crypto, insecure TLS, command injection, path traversal).
-  # Runs once per Go module.
+  # ── Code Quality and Security Linting ────────────────────────────────────────
+  # Enforces language-specific quality and security rules: type safety, insecure
+  # API patterns, weak crypto, resource leaks, and style. Runs once per module.
+  # Currently covers Go via golangci-lint (with gosec enabled in .golangci.yml).
+  # lang-expand: add an equivalent per-language linter as languages are adopted
+  #   (e.g. ruff + bandit for Python, clippy for Rust).
   golangci-lint:
     name: golangci-lint (${{ matrix.module }})
     runs-on: ubuntu-latest
@@ -83,10 +92,10 @@ jobs:
         with:
           working-directory: ${{ matrix.module }}
 
-  # ── Trivy ──────────────────────────────────────────────────────────────────
-  # Filesystem scan: secrets in source files, dependency CVEs, license
-  # compliance. Pinned to a commit SHA — Trivy's action tags were subject to
-  # a supply chain compromise in early 2026; always update via SHA, not tag.
+  # ── Supply Chain and Filesystem Scanning ─────────────────────────────────────
+  # Scans the entire repository for secrets committed to source, dependency CVEs
+  # across all ecosystems, and license compliance. Language-agnostic — Trivy
+  # covers new languages automatically as they are added.
   trivy:
     name: Trivy
     runs-on: ubuntu-latest
