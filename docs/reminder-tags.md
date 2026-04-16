@@ -55,8 +55,7 @@ comment should explain what makes the approach undesirable and why it was
 chosen anyway.
 
 If a better approach is known but blocked on something else, prefer `FIXME`
-with a note about the blocker. Ideally link both the hack and the blocker to
-GitHub issues so it is clear when the situation is unblocked.
+with a note about the blocker. (Ideally, there would be an issue for this, and an issue for the blocker, and the issues would be linked.)
 
 ```sh
 grep -rn "HACK:" .
@@ -77,17 +76,17 @@ grep -rn "NOTE:" .
 
 ---
 
-## `MAINTAIN(<task type>):`
+## `TEND(<task type>):`
 
 Marks something that is correct and complete at the time of writing, but will
 need attention in the future when something else in the repo changes. Unlike
 `FIXME`, there is nothing wrong with it now — the flag is a forward-looking
 reminder, not a criticism of current state.
 
-**Format:** `MAINTAIN(<task-type>): <what to do and when>`
+**Format:** `TEND(<task-type>): <what to do and when>`
 
 ```sh
-grep -rn "MAINTAIN(" .
+grep -rn "TEND(" .
 ```
 
 ### Task types
@@ -98,17 +97,8 @@ The marked config or job covers only the currently-adopted languages. When a
 new language is brought into the repo, grep for this task type and make the
 corresponding addition at each location.
 
-**Where it currently appears:**
-
-| Location | What to add |
-|---|---|
-| `.github/workflows/security.yml` — SAST | A Semgrep rule pack (`p/<language>`; see semgrep.dev/r) |
-| `.github/workflows/security.yml` — Dependency CVE Scanning | A dependency vulnerability scanner for the new language |
-| `.github/workflows/security.yml` — Code Quality and Security Linting | A linter/quality tool for the new language |
-| `.github/workflows/security.yml` — Monorepo Structure Maintenance | A completeness check (config file presence, module registration, etc.) |
-
 ```sh
-grep -rn "MAINTAIN(lang-expand)" .
+grep -rn "TEND(lang-expand)" .
 ```
 
 ---
@@ -117,6 +107,6 @@ grep -rn "MAINTAIN(lang-expand)" .
 
 - **New top-level tag:** Document it in this file following the same structure.
   Keep the tag itself short, uppercase, and distinct from existing tags.
-- **New `MAINTAIN` task type:** Add it under the task types section above with
+- **New `TEND` task type:** Add it under the task types section above with
   a description and a grep command. The comment at the call site should say
   enough that a reader knows what to do without opening this file.
