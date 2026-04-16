@@ -13,7 +13,7 @@ jobs:
   # ── Monorepo Structure Maintenance ────────────────────────────────────────────
   # Checks that per-language tooling is fully wired up before per-module jobs
   # run. Currently covers Go (module matrix completeness, .golangci.yml presence).
-  # lang-expand: add an equivalent completeness check for each adopted language
+  # MAINTAIN(lang-expand): add an equivalent completeness check for each adopted language
   #   (e.g. verify pyproject.toml/ruff.toml present for Python modules).
   go-modules-check:
     name: Go module completeness check
@@ -26,7 +26,7 @@ jobs:
   # Analyses source code for security vulnerabilities — injection flaws, insecure
   # API usage, hardcoded secrets — without running or building the code. Semgrep
   # uses per-language rule packs; add one per adopted language.
-  # lang-expand: add p/<language> for each adopted language (semgrep.dev/r lists
+  # MAINTAIN(lang-expand): add p/<language> for each adopted language (semgrep.dev/r lists
   #   available packs, e.g. p/java, p/typescript, p/rust).
   semgrep:
     name: Semgrep
@@ -48,7 +48,7 @@ jobs:
   # Checks whether the code calls into known-vulnerable dependency code paths,
   # not just whether a vulnerable package is present (lower noise than pure
   # manifest scanning). Runs once per module. Currently covers Go via govulncheck.
-  # lang-expand: add an equivalent per-language scanner as languages are adopted
+  # MAINTAIN(lang-expand): add an equivalent per-language scanner as languages are adopted
   #   (e.g. pip-audit for Python, cargo-audit for Rust, trivy fs --scanners vuln
   #   for languages without a dedicated reachability tool).
   govulncheck:
@@ -74,7 +74,7 @@ jobs:
   # Enforces language-specific quality and security rules: type safety, insecure
   # API patterns, weak crypto, resource leaks, and style. Runs once per module.
   # Currently covers Go via golangci-lint (with gosec enabled in .golangci.yml).
-  # lang-expand: add an equivalent per-language linter as languages are adopted
+  # MAINTAIN(lang-expand): add an equivalent per-language linter as languages are adopted
   #   (e.g. ruff + bandit for Python, clippy for Rust).
   golangci-lint:
     name: golangci-lint (${{ matrix.module }})
