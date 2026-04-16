@@ -10,6 +10,17 @@ on:
     - cron: '0 2 * * 1'
 
 jobs:
+  # ── Go module completeness ─────────────────────────────────────────────────
+  # Verifies that every matrix.module list in this file matches the set of Go
+  # modules in the repo, and that every module has a .golangci.yml. Matrix
+  # jobs that run per-module depend on this so mismatches fail fast.
+  go-modules-check:
+    name: Go module completeness check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - run: python3 meta/scripts/check_go_modules.py
+
   # ── Semgrep ────────────────────────────────────────────────────────────────
   # Source-level SAST: injection vulnerabilities, insecure patterns, secrets.
   # No build required; safe to run alongside Bazel remote caching.
@@ -35,6 +46,7 @@ jobs:
   govulncheck:
     name: govulncheck (${{ matrix.module }})
     runs-on: ubuntu-latest
+    needs: [go-modules-check]
     permissions:
       security-events: write
       contents: read
@@ -57,6 +69,7 @@ jobs:
   golangci-lint:
     name: golangci-lint (${{ matrix.module }})
     runs-on: ubuntu-latest
+    needs: [go-modules-check]
     strategy:
       fail-fast: false
       matrix:

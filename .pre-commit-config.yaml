@@ -8,6 +8,13 @@ repos:
         pass_filenames: false
         files: go\.(mod|work|sum)$
 
+      - id: check-go-modules
+        name: check Go module completeness
+        language: python
+        entry: python meta/scripts/check_go_modules.py
+        pass_filenames: false
+        files: go\.mod$|\.github/workflows/.*\.yml$|\.golangci\.yml$
+
       - id: gazelle
         name: gazelle
         language: system
