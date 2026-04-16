@@ -37,6 +37,7 @@ jobs:
         with:
           config: >-
             p/golang
+            p/python
             p/secrets
 
   # ── govulncheck ────────────────────────────────────────────────────────────
