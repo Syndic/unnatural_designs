@@ -1,0 +1,96 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly scan every Monday at 02:00 UTC
+    - cron: '0 2 * * 1'
+
+jobs:
+  # ── Semgrep ────────────────────────────────────────────────────────────────
+  # Source-level SAST: injection vulnerabilities, insecure patterns, secrets.
+  # No build required; safe to run alongside Bazel remote caching.
+  semgrep:
+    name: Semgrep
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: semgrep/semgrep-action@713efdd345f3035192eaa63f56867b88e63e4e5d # v1
+        with:
+          config: >-
+            p/golang
+            p/secrets
+
+  # ── govulncheck ────────────────────────────────────────────────────────────
+  # Dependency CVE scanning: checks whether code actually calls into
+  # vulnerable dependency code paths (lower noise than SCA tools that only
+  # check go.sum). Runs once per Go module.
+  govulncheck:
+    name: govulncheck (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        module:
+          - tools/network_infrastructure_maintenance
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: golang/govulncheck-action@b625fbe08f3bccbe446d94fbf87fcc875a4f50ee # v1.0.4
+        with:
+          work-dir: ${{ matrix.module }}
+
+  # ── golangci-lint ──────────────────────────────────────────────────────────
+  # Code quality and security linting: includes gosec for Go-specific security
+  # patterns (weak crypto, insecure TLS, command injection, path traversal).
+  # Runs once per Go module.
+  golangci-lint:
+    name: golangci-lint (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module:
+          - tools/network_infrastructure_maintenance
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9.2.0
+        with:
+          working-directory: ${{ matrix.module }}
+
+  # ── Trivy ──────────────────────────────────────────────────────────────────
+  # Filesystem scan: secrets in source files, dependency CVEs, license
+  # compliance. Pinned to a commit SHA — Trivy's action tags were subject to
+  # a supply chain compromise in early 2026; always update via SHA, not tag.
+  trivy:
+    name: Trivy
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: trivy.sarif
+
+      - uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: trivy.sarif
+          category: trivy

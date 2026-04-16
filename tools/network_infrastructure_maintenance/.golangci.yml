@@ -1,0 +1,20 @@
+linters:
+  enable:
+    # Security
+    - gosec       # Go-specific security issues: weak crypto, insecure TLS,
+                  # command injection, path traversal, hardcoded credentials
+    # Correctness
+    - bodyclose   # HTTP response bodies left unclosed (resource leak)
+    - noctx       # HTTP requests constructed without a context
+    - sqlclosecheck # sql.Rows/Stmt not closed
+    - errcheck    # Unhandled errors
+    # Quality
+    - staticcheck # Deep semantic analysis: deprecated API usage, correctness
+    - govet       # Suspicious constructs (shadowed vars, printf format mismatches)
+    - ineffassign # Assignments whose values are never used
+
+linters-settings:
+  gosec:
+    # G304 (file path from variable) and G304 produce noise on internal tools
+    # that deliberately accept configurable paths. Revisit as the codebase grows.
+    excludes: []
