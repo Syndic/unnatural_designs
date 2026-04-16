@@ -31,18 +31,16 @@ def registered_modules(root: Path) -> set[Path]:
                        ./other/module
                    )
 
-    Both forms are handled by tracking whether we are currently inside a
-    use (...) block. This is necessary to avoid false positives on factored
-    replace directives, whose entries also begin with './' when they reference
-    local paths (e.g. replace ( ./foo => ./bar )).
+    Both forms are handled by tracking whether we are currently inside a use (...) block. This is
+    necessary to avoid false positives on factored replace directives, whose entries also begin with
+    './' when they reference local paths (e.g. replace ( ./foo => ./bar )).
 
-    Since this script runs at the monorepo root, all legitimate use paths are
-    subdirectories and therefore begin with './'. Paths beginning with '../'
-    would reference modules outside the repository entirely and are not
-    expected here.
+    Since this script runs at the monorepo root, all legitimate use paths are subdirectories and
+    therefore begin with './'. Paths beginning with '../' would reference modules outside the
+    repository entirely and are not expected here.
 
-    Other top-level directives (go, toolchain) and single-line replace
-    directives do not begin with './', so they are naturally ignored.
+    Other top-level directives (go, toolchain) and single-line replace directives do not begin with
+    './', so they are naturally ignored.
     """
     go_work = root / "go.work"
     modules = set()

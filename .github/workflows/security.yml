@@ -7,12 +7,12 @@ on:
     branches: [main]
   schedule:
     # Weekly scan every Monday at 02:00 UTC
-    - cron: '0 2 * * 1'
+    - cron: "0 2 * * 1"
 
 jobs:
   # ── Monorepo Structure Maintenance ────────────────────────────────────────────
-  # Checks that per-language tooling is fully wired up before per-module jobs
-  # run. Currently covers Go (module matrix completeness, .golangci.yml presence).
+  # Checks that per-language tooling is fully wired up before per-module jobs run. Currently covers
+  # Go (module matrix completeness, .golangci.yml presence).
   # TEND(lang-expand): add an equivalent completeness check for each adopted language
   #   (e.g. verify pyproject.toml/ruff.toml present for Python modules).
   go-modules-check:
@@ -23,11 +23,11 @@ jobs:
       - run: python3 meta/scripts/check_go_modules.py
 
   # ── Static Application Security Testing (SAST) ───────────────────────────────
-  # Analyses source code for security vulnerabilities — injection flaws, insecure
-  # API usage, hardcoded secrets — without running or building the code. Semgrep
-  # uses per-language rule packs; add one per adopted language.
-  # TEND(lang-expand): add p/<language> for each adopted language (semgrep.dev/r lists
-  #   available packs, e.g. p/java, p/typescript, p/rust).
+  # Analyses source code for security vulnerabilities — injection flaws, insecure API usage,
+  # hardcoded secrets — without running or building the code. Semgrep uses per-language rule packs;
+  # add one per adopted language.
+  # TEND(lang-expand): add p/<language> for each adopted language (semgrep.dev/r lists available
+  #   packs, e.g. p/java, p/typescript, p/rust).
   semgrep:
     name: Semgrep
     runs-on: ubuntu-latest
@@ -45,9 +45,9 @@ jobs:
             p/secrets
 
   # ── Dependency CVE Scanning ───────────────────────────────────────────────────
-  # Checks whether the code calls into known-vulnerable dependency code paths,
-  # not just whether a vulnerable package is present (lower noise than pure
-  # manifest scanning). Runs once per module. Currently covers Go via govulncheck.
+  # Checks whether the code calls into known-vulnerable dependency code paths, not just whether a
+  # vulnerable package is present (lower noise than pure manifest scanning). Runs once per module.
+  # Currently covers Go via govulncheck.
   # TEND(lang-expand): add an equivalent per-language scanner as languages are adopted
   #   (e.g. pip-audit for Python, cargo-audit for Rust, trivy fs --scanners vuln
   #   for languages without a dedicated reachability tool).
@@ -71,9 +71,9 @@ jobs:
           work-dir: ${{ matrix.module }}
 
   # ── Code Quality and Security Linting ────────────────────────────────────────
-  # Enforces language-specific quality and security rules: type safety, insecure
-  # API patterns, weak crypto, resource leaks, and style. Runs once per module.
-  # Currently covers Go via golangci-lint (with gosec enabled in .golangci.yml).
+  # Enforces language-specific quality and security rules: type safety, insecure API patterns,
+  # weak crypto, resource leaks, and style. Runs once per module. Currently covers Go via
+  # golangci-lint (with gosec enabled in .golangci.yml).
   # TEND(lang-expand): add an equivalent per-language linter as languages are adopted
   #   (e.g. ruff + bandit for Python, clippy for Rust).
   golangci-lint:
@@ -93,9 +93,9 @@ jobs:
           working-directory: ${{ matrix.module }}
 
   # ── Supply Chain and Filesystem Scanning ─────────────────────────────────────
-  # Scans the entire repository for secrets committed to source, dependency CVEs
-  # across all ecosystems, and license compliance. Language-agnostic — Trivy
-  # covers new languages automatically as they are added.
+  # Scans the entire repository for secrets committed to source, dependency CVEs across all
+  # ecosystems, and license compliance. Language-agnostic — Trivy covers new languages automatically
+  # as they are added.
   trivy:
     name: Trivy
     runs-on: ubuntu-latest

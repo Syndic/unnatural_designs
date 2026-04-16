@@ -35,8 +35,8 @@ def workflow_module_lists(workflow_file: Path) -> list[tuple[str, frozenset[Path
     """Parse a GitHub Actions workflow file and return all matrix.module lists.
 
     Returns one (job_name, module_set) pair per matrix.module block found.
-    job_name is the YAML job key, captured on a best-effort basis by tracking
-    keys at indent 2 inside the jobs: block; falls back to '<unknown>'.
+    job_name is the YAML job key, captured on a best-effort basis by tracking keys at indent 2
+    inside the jobs: block; falls back to '<unknown>'.
 
     Parsing is line-oriented and indent-aware, with no third-party dependencies.
     The GitHub Actions YAML structure is regular enough to make this reliable:
@@ -48,9 +48,9 @@ def workflow_module_lists(workflow_file: Path) -> list[tuple[str, frozenset[Path
                 module:        # marks start of module list
                   - some/path  # collected as a module entry
 
-    The parser uses two guard checks that fire before each line is processed,
-    handling dedent out of the module list and out of the matrix block. This
-    avoids re-processing lines across state transitions.
+    The parser uses two guard checks that fire before each line is processed, handling dedent out
+    of the module list and out of the matrix block. This avoids re-processing lines across state
+    transitions.
     """
     text = workflow_file.read_text()
     result: list[tuple[str, frozenset[Path]]] = []
@@ -80,9 +80,9 @@ def workflow_module_lists(workflow_file: Path) -> list[tuple[str, frozenset[Path
                 current_job = stripped[:-1]
 
         # ── Guard: leaving module list ─────────────────────────────────────
-        # Any line at or above the module: key's indent signals that the list
-        # is over. Save the accumulated entries and decide which state to
-        # return to based on whether we're still inside the matrix block.
+        # Any line at or above the module: key's indent signals that the list is over. Save the
+        # accumulated entries and decide which state to return to based on whether we're still
+        # inside the matrix block.
         if state == "in_module" and indent <= module_indent:
             if current is not None:
                 result.append((current_job, frozenset(current)))
