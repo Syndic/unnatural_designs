@@ -17,8 +17,7 @@ Relevant tooling: `buildfarm` (open source), or Buildbuddy's paid RBE tier.
 
 Currently, local Bazel remote cache credentials are stored in `.bazelrc.user` (gitignored). This
 is acceptable for a single-user machine but not rigorous. Other secrets are stored in
-//secrets, which is gitignored. I'd like to make sure that nothing ever gets committed there. I'd 
-like to implement a check that nothing other than the markdown file is ever committed there.
+//secrets, which is gitignored.
 
 A proper solution would retrieve secrets from a secrets manager (e.g. macOS Keychain, 1Password
 CLI) rather than storing them in a file on disk.
