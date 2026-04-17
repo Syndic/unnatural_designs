@@ -20,6 +20,25 @@ py_test(
 )
 
 py_library(
+    name = "check_go_modules_lib",
+    srcs = ["check_go_modules.py"],
+)
+
+py_binary(
+    name = "check_go_modules",
+    srcs = ["check_go_modules.py"],
+    main = "check_go_modules.py",
+)
+
+py_test(
+    name = "test_check_go_modules",
+    size = "small",
+    srcs = ["test_check_go_modules.py"],
+    main = "test_check_go_modules.py",
+    deps = [":check_go_modules_lib"],
+)
+
+py_library(
     name = "check_python_scale_lib",
     srcs = ["check_python_scale.py"],
 )

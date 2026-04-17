@@ -17,6 +17,10 @@ bazel-*
 # Local user overrides (don't commit — each dev has their own)
 .bazelrc.user
 
+# ── Secrets ──────────────────────────────────────────────────────────────────────
+secrets/*
+!secrets/secrets.md
+
 # ── Python ─────────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]

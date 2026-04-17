@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Counts py_library, py_binary, and py_test target declarations across all
-BUILD.bazel files in the repo. Fails if the count exceeds THRESHOLD, as a
-signal to evaluate enabling Gazelle's Python plugin.
+Counts py_library, py_binary, and py_test target declarations across all BUILD.bazel files in the
+repo. Fails if the count exceeds THRESHOLD, as a signal to evaluate enabling Gazelle's Python
+plugin.
 
 When this check fails, do one of:
   - Enable Gazelle Python support (see rules_python docs for Gazelle integration)
@@ -33,9 +33,9 @@ def workspace_root() -> Path:
 def count_python_targets(root: Path) -> dict[Path, int]:
     """Count py_* target declarations per BUILD.bazel file, relative to root.
 
-    Comment lines (those whose first non-whitespace character is #) are
-    excluded before matching, so commented-out targets do not inflate the count.
-    Bazel output symlinks (bazel-*) and .git are excluded.
+    Comment lines (those whose first non-whitespace character is #) are excluded before matching,
+    so commented-out targets do not inflate the count. Bazel output symlinks (bazel-*) and .git
+    are excluded.
     """
     counts: dict[Path, int] = {}
     for build_file in root.rglob("BUILD.bazel"):

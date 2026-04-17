@@ -1,0 +1,121 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly scan every Monday at 02:00 UTC
+    - cron: "0 2 * * 1"
+
+jobs:
+  # ── Monorepo Structure Maintenance ────────────────────────────────────────────
+  # Checks that per-language tooling is fully wired up before per-module jobs run. Currently covers
+  # Go (module matrix completeness, .golangci.yml presence).
+  # TEND(lang-expand): add an equivalent completeness check for each adopted language
+  #   (e.g. verify pyproject.toml/ruff.toml present for Python modules).
+  go-modules-check:
+    name: Go module completeness check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - run: python3 meta/scripts/check_go_modules.py
+
+  # ── Static Application Security Testing (SAST) ───────────────────────────────
+  # Analyses source code for security vulnerabilities — injection flaws, insecure API usage,
+  # hardcoded secrets — without running or building the code. Semgrep uses per-language rule packs;
+  # add one per adopted language.
+  # TEND(lang-expand): add p/<language> for each adopted language (semgrep.dev/r lists available
+  #   packs, e.g. p/java, p/typescript, p/rust).
+  semgrep:
+    name: Semgrep
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: semgrep/semgrep-action@713efdd345f3035192eaa63f56867b88e63e4e5d # v1
+        with:
+          config: >-
+            p/golang
+            p/python
+            p/secrets
+
+  # ── Dependency CVE Scanning ───────────────────────────────────────────────────
+  # Checks whether the code calls into known-vulnerable dependency code paths, not just whether a
+  # vulnerable package is present (lower noise than pure manifest scanning). Runs once per module.
+  # Currently covers Go via govulncheck.
+  # TEND(lang-expand): add an equivalent per-language scanner as languages are adopted
+  #   (e.g. pip-audit for Python, cargo-audit for Rust, trivy fs --scanners vuln
+  #   for languages without a dedicated reachability tool).
+  govulncheck:
+    name: govulncheck (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    needs: [go-modules-check]
+    permissions:
+      security-events: write
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        module:
+          - tools/network_infrastructure_maintenance
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: golang/govulncheck-action@b625fbe08f3bccbe446d94fbf87fcc875a4f50ee # v1.0.4
+        with:
+          work-dir: ${{ matrix.module }}
+
+  # ── Code Quality and Security Linting ────────────────────────────────────────
+  # Enforces language-specific quality and security rules: type safety, insecure API patterns,
+  # weak crypto, resource leaks, and style. Runs once per module. Currently covers Go via
+  # golangci-lint (with gosec enabled in .golangci.yml).
+  # TEND(lang-expand): add an equivalent per-language linter as languages are adopted
+  #   (e.g. ruff + bandit for Python, clippy for Rust).
+  golangci-lint:
+    name: golangci-lint (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    needs: [go-modules-check]
+    strategy:
+      fail-fast: false
+      matrix:
+        module:
+          - tools/network_infrastructure_maintenance
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9.2.0
+        with:
+          working-directory: ${{ matrix.module }}
+
+  # ── Supply Chain and Filesystem Scanning ─────────────────────────────────────
+  # Scans the entire repository for secrets committed to source, dependency CVEs across all
+  # ecosystems, and license compliance. Language-agnostic — Trivy covers new languages automatically
+  # as they are added.
+  trivy:
+    name: Trivy
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: trivy.sarif
+
+      - uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: trivy.sarif
+          category: trivy
