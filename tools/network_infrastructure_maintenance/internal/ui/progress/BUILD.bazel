@@ -1,0 +1,32 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "progress",
+    srcs = [
+        "plain.go",
+        "reporter.go",
+        "rich.go",
+    ],
+    importpath = "github.com/Syndic/unnatural_designs/tools/network_infrastructure_maintenance/internal/ui/progress",
+    visibility = ["//tools/network_infrastructure_maintenance:__subpackages__"],
+    deps = [
+        "//tools/network_infrastructure_maintenance/internal/netbox",
+        "//tools/network_infrastructure_maintenance/internal/shared",
+        "@com_github_vbauerster_mpb_v8//:mpb",
+        "@com_github_vbauerster_mpb_v8//decor",
+    ],
+)
+
+go_test(
+    name = "progress_test",
+    size = "small",
+    srcs = [
+        "plain_test.go",
+        "reporter_test.go",
+    ],
+    embed = [":progress"],
+    deps = [
+        "//tools/network_infrastructure_maintenance/internal/netbox",
+        "//tools/network_infrastructure_maintenance/internal/shared",
+    ],
+)

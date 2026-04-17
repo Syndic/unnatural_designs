@@ -12,10 +12,19 @@ import (
 // ObjectTypeInterface is the NetBox content-type string for dcim.interface.
 const ObjectTypeInterface = "dcim.interface"
 
+// TaskProgress is the per-task callback returned from
+// LoadObserver.SnapshotTaskStart. It is invoked once per page response while
+// the named task is in flight; observers that don't track per-page progress
+// may return nil from SnapshotTaskStart.
+type TaskProgress = PageProgressFunc
+
 // LoadObserver receives progress notifications during snapshot loading.
 type LoadObserver interface {
 	SnapshotAttemptStart(attempt, maxAttempts, taskCount int)
-	SnapshotTaskStart(name string)
+	// SnapshotTaskStart announces that the named fetch is about to begin and
+	// returns a per-task progress callback (or nil if the observer doesn't
+	// need per-page updates).
+	SnapshotTaskStart(name string) TaskProgress
 	SnapshotTaskComplete(completed, total int, stats FetchTiming, totalRequests int)
 	SnapshotLoadError(attempt, maxAttempts int, err error)
 	SnapshotLoadRetryDelay(delay time.Duration)
@@ -69,14 +78,14 @@ func LoadConsistentSnapshot(ctx context.Context, client *Client, maxAttempts int
 
 type snapshotTask struct {
 	name string
-	run  func(context.Context, *Client, *Snapshot) (FetchTiming, error)
+	run  func(context.Context, *Client, *Snapshot, PageProgressFunc) (FetchTiming, error)
 }
 
 func fetchTask[T any](name, path string, set func(*Snapshot, []T)) snapshotTask {
 	return snapshotTask{
 		name: name,
-		run: func(ctx context.Context, c *Client, s *Snapshot) (FetchTiming, error) {
-			data, stats, err := fetchAll[T](ctx, c, path)
+		run: func(ctx context.Context, c *Client, s *Snapshot, progress PageProgressFunc) (FetchTiming, error) {
+			data, stats, err := fetchAll[T](ctx, c, path, progress)
 			set(s, data)
 			return stats, err
 		},
@@ -140,13 +149,14 @@ func loadSnapshot(ctx context.Context, c *Client, obs LoadObserver) (Snapshot, e
 	var wg sync.WaitGroup
 	for _, task := range tasks {
 		task := task
+		var progress PageProgressFunc
 		if obs != nil {
-			obs.SnapshotTaskStart(task.name)
+			progress = obs.SnapshotTaskStart(task.name)
 		}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			stats, err := task.run(ctx, c, &snap)
+			stats, err := task.run(ctx, c, &snap, progress)
 			stats.Name = task.name
 			results <- taskResult{name: task.name, stats: stats, err: err}
 		}()
@@ -212,9 +222,9 @@ func (s *Snapshot) buildIndexes() {
 	}
 }
 
-func fetchAll[T any](ctx context.Context, client *Client, path string) ([]T, FetchTiming, error) {
+func fetchAll[T any](ctx context.Context, client *Client, path string, progress PageProgressFunc) ([]T, FetchTiming, error) {
 	started := time.Now()
-	out, requests, pages, err := FetchAll[T](ctx, client, path)
+	out, requests, pages, err := FetchAllWithProgress[T](ctx, client, path, progress)
 	if err != nil {
 		return nil, FetchTiming{}, err
 	}

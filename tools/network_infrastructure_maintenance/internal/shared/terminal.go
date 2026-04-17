@@ -48,6 +48,11 @@ func shouldColor(file *os.File) bool {
 	if term := os.Getenv("TERM"); term == "" || term == TermDumb {
 		return false
 	}
+	return IsTerminal(file)
+}
+
+// IsTerminal reports whether file is connected to an interactive terminal.
+func IsTerminal(file *os.File) bool {
 	info, err := file.Stat()
 	if err != nil {
 		return false

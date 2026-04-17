@@ -12,6 +12,7 @@ import (
 
 	netbox "github.com/Syndic/unnatural_designs/tools/network_infrastructure_maintenance/internal/netbox"
 	"github.com/Syndic/unnatural_designs/tools/network_infrastructure_maintenance/internal/shared"
+	"github.com/Syndic/unnatural_designs/tools/network_infrastructure_maintenance/internal/ui/progress"
 )
 
 var stderrColors shared.Colorizer
@@ -29,6 +30,7 @@ func main() {
 		configFile     = flag.String(flagConfig, envOrDefault(envNetBoxAuditCfg, defaultConfigPath()), "Path to audit policy JSON")
 		format         = flag.String(flagFormat, shared.FormatText, "Output format: "+shared.FormatText+" or "+shared.FormatJSON)
 		colorMode      = flag.String(flagColor, envOrDefault(envNetBoxAuditColor, shared.ColorAuto), "Color mode for text output: "+shared.ColorAuto+", "+shared.ColorAlways+", "+shared.ColorNever)
+		progressMode   = flag.String(flagProgress, progress.ModeAutoName, "Progress UI mode: "+progress.ModeAutoName+", "+progress.ModeRichName+", "+progress.ModePlainName+", "+progress.ModeOffName)
 		maxAttempts    = flag.Int(flagMaxAttempts, defaultMaxAttempt, "Maximum attempts to load a coherent snapshot")
 		retryDelay     = flag.Duration(flagRetryDelay, 3*time.Second, "Delay between snapshot retries")
 		failOnFindings = flag.Bool(flagFailOnFindings, false, "Exit non-zero if any check reports findings")
@@ -91,13 +93,24 @@ func main() {
 			},
 		},
 	}
-	reporter := newProgressReporter()
+
+	mode, err := progress.ParseMode(*progressMode)
+	if err != nil {
+		fatalf("Invalid progress mode %q: %v", *progressMode, err)
+	}
+	reporter := progress.New(os.Stderr, mode, stderrColors)
+	defer func() { _ = reporter.Close() }()
+
 	configLabel := "built-in defaults"
 	if strings.TrimSpace(*configFile) != "" {
 		configLabel = *configFile
 	}
-	reporter.Printf("Starting NetBox audit against %s using %s", client.BaseURL, configLabel)
-	reporter.AnnounceChecks(checks)
+	reporter.Startupf("Starting NetBox audit against %s using %s", client.BaseURL, configLabel)
+	checkIDs := make([]string, 0, len(checks))
+	for _, c := range checks {
+		checkIDs = append(checkIDs, c.ID())
+	}
+	reporter.AnnounceChecks(checkIDs)
 
 	runStarted := time.Now()
 	ctx := context.Background()
@@ -109,6 +122,9 @@ func main() {
 	reporter.ChecksStart(len(checks))
 	rep := runAudit(ctx, snap, config, checks, reporter)
 	rep.Timing.Total = time.Since(runStarted)
+	if err := reporter.Close(); err != nil {
+		fatalf("Failed to flush progress renderer: %v", err)
+	}
 
 	switch *format {
 	case shared.FormatJSON:
