@@ -39,6 +39,25 @@ py_test(
 )
 
 py_library(
+    name = "check_secrets_dir_lib",
+    srcs = ["check_secrets_dir.py"],
+)
+
+py_binary(
+    name = "check_secrets_dir",
+    srcs = ["check_secrets_dir.py"],
+    main = "check_secrets_dir.py",
+)
+
+py_test(
+    name = "test_check_secrets_dir",
+    size = "small",
+    srcs = ["test_check_secrets_dir.py"],
+    main = "test_check_secrets_dir.py",
+    deps = [":check_secrets_dir_lib"],
+)
+
+py_library(
     name = "check_python_scale_lib",
     srcs = ["check_python_scale.py"],
 )

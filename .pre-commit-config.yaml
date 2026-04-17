@@ -29,6 +29,13 @@ repos:
         pass_filenames: false
         files: go\.(mod|work)$
 
+      - id: check-secrets-dir
+        name: check secrets directory
+        language: python
+        entry: python meta/scripts/check_secrets_dir.py
+        pass_filenames: true
+        files: ^secrets/
+
       - id: check-python-scale
         name: check Python target scale
         language: python
