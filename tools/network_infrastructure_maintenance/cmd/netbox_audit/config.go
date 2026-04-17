@@ -12,13 +12,13 @@ import (
 
 const (
 	defaultBaseURL    = "http://mini.dev.yanch.ar:8000"
-	defaultTokenFile  = ".netbox_api_token"
+	defaultTokenFile  = ".netbox_api_token" //nolint:gosec // this is a filename, not a hardcoded value
 	defaultConfigFile = "netbox_audit.config.json"
 	defaultMaxAttempt = 5
 )
 
 type auditConfig struct {
-	Rules  auditRules  `json:"rules"`
+	Rules  auditRules   `json:"rules"`
 	Checks checksConfig `json:"checks"`
 }
 
@@ -70,7 +70,7 @@ func loadAuditConfig(path string, required bool) (auditConfig, error) {
 	if strings.TrimSpace(path) == "" {
 		return cfg, nil
 	}
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // Yeah, we're loading a config file.
 	if err != nil {
 		if os.IsNotExist(err) && !required {
 			return cfg, nil

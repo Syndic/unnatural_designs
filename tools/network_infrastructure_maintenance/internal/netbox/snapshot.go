@@ -62,7 +62,7 @@ func LoadConsistentSnapshot(ctx context.Context, client *Client, maxAttempts int
 		}
 	}
 	if lastErr == nil {
-		lastErr = errors.New("Ran out of attempts to capture a coherent snapshot. Gave up.")
+		lastErr = errors.New("ran out of attempts to capture a coherent snapshot and gave up")
 	}
 	return Snapshot{}, lastErr
 }

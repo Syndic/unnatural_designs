@@ -38,7 +38,11 @@ func InterfaceVRF(s netbox.Snapshot, rules InterfaceVRFRules) CheckResult {
 		if isWANInterface(it, dev, s.DevicesByID, rules) {
 			continue
 		}
-		if !(len(it.ConnectedEndpoints) > 0 || len(s.IPsByInterface[it.ID]) > 0 || interfaceHasMAC(it) || it.Mode != nil || it.UntaggedVLAN != nil) {
+		if len(it.ConnectedEndpoints) == 0 &&
+			len(s.IPsByInterface[it.ID]) == 0 &&
+			!interfaceHasMAC(it) &&
+			it.Mode == nil &&
+			it.UntaggedVLAN == nil {
 			continue
 		}
 		findings = append(findings, fmt.Sprintf("%s %s is missing VRF", dev.Name, it.Name))

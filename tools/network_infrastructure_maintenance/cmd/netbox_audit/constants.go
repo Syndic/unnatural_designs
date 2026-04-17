@@ -5,7 +5,7 @@ const (
 	envNetBoxAuditCfg   = "NETBOX_AUDIT_CONFIG"
 
 	flagBaseURL        = "netbox-base-url"
-	flagTokenFile      = "netbox-token-file"
+	flagTokenFile      = "netbox-token-file" //nolint:gosec // this is a flag, not a hardcoded value
 	flagConfig         = "config"
 	flagFormat         = "format"
 	flagColor          = "color"

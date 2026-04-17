@@ -567,7 +567,7 @@ func expandModuleTemplateName(templateName, bayName string) string {
 func frontTemplatesToTyped(in []netbox.FrontPortTemplate) []netbox.TypedComponentTemplate {
 	out := make([]netbox.TypedComponentTemplate, 0, len(in))
 	for _, fp := range in {
-		out = append(out, netbox.TypedComponentTemplate{ID: fp.ID, DeviceType: fp.DeviceType, ModuleType: fp.ModuleType, Name: fp.Name, Type: fp.Type})
+		out = append(out, netbox.TypedComponentTemplate(fp))
 	}
 	return out
 }
@@ -575,7 +575,7 @@ func frontTemplatesToTyped(in []netbox.FrontPortTemplate) []netbox.TypedComponen
 func rearTemplatesToTyped(in []netbox.RearPortTemplate) []netbox.TypedComponentTemplate {
 	out := make([]netbox.TypedComponentTemplate, 0, len(in))
 	for _, rp := range in {
-		out = append(out, netbox.TypedComponentTemplate{ID: rp.ID, DeviceType: rp.DeviceType, ModuleType: rp.ModuleType, Name: rp.Name, Type: rp.Type})
+		out = append(out, netbox.TypedComponentTemplate(rp))
 	}
 	return out
 }
