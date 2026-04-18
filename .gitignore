@@ -54,3 +54,9 @@ target/
 *.swp
 *.swo
 *~
+
+# ── Claude Code ────────────────────────────────────────────────────────────────
+# settings.local.json holds per-developer overrides — never shared
+# worktrees/ is ephemeral scratch space used during development
+.claude/settings.local.json
+.claude/worktrees/
