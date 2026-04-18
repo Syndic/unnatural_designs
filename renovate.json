@@ -4,6 +4,35 @@
     "config:recommended",
     ":dependencyDashboard"
   ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "fileMatch": ["^MODULE\\.bazel$"],
+      "matchStrings": [
+        "go_sdk\\.download\\(\\s*version\\s*=\\s*\"(?<currentValue>[^\"]+)\""
+      ],
+      "datasourceTemplate": "golang-version",
+      "depNameTemplate": "go"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["^MODULE\\.bazel$"],
+      "matchStrings": [
+        "python\\.toolchain\\(\\s*python_version\\s*=\\s*\"(?<currentValue>[^\"]+)\""
+      ],
+      "datasourceTemplate": "python-version",
+      "depNameTemplate": "python"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["^go\\.work$", "(^|/)go\\.mod$"],
+      "matchStrings": [
+        "^go (?<currentValue>\\d+\\.\\d+(?:\\.\\d+)?)"
+      ],
+      "datasourceTemplate": "golang-version",
+      "depNameTemplate": "go"
+    }
+  ],
   "packageRules": [
     {
       "matchManagers": [
@@ -22,6 +51,16 @@
         "github-actions"
       ],
       "groupName": "GitHub Actions"
+    },
+    {
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "matchDepNames": [
+        "go",
+        "python"
+      ],
+      "groupName": "Language toolchain SDKs"
     }
   ]
 }
