@@ -29,6 +29,13 @@ const taskNameWidth = 30
 //   - The check-execution phase is intentionally not given per-check bars —
 //     checks run in microseconds, so a single "Running N checks…" /
 //     "Checks complete" line pair is sufficient.
+//
+// The renderer is single-phase by lifetime: mpb owns the terminal during the
+// snapshot phase and is shut down via finalizeSnapshotRenderer when the
+// checks phase begins. Post-shutdown writes go straight to stderr — this
+// avoids a race where mpb's async writer can drop check-phase lines if its
+// internal refresh tick doesn't fire between ChecksStart and Close (the
+// checks phase typically completes in microseconds).
 type richReporter struct {
 	w      *os.File
 	colors shared.Colorizer
@@ -37,6 +44,7 @@ type richReporter struct {
 	mu       sync.Mutex
 	agg      *mpb.Bar
 	bars     map[string]*mpb.Bar
+	snapDone bool // true once the mpb renderer has been torn down
 	closed   bool
 	closeErr error
 }
@@ -162,8 +170,31 @@ func (r *richReporter) SnapshotLoadRetryDelay(delay time.Duration) {
 	fmt.Fprintf(r.p, "  retrying in %s\n", shared.FormatDuration(delay))
 }
 
+// finalizeSnapshotRenderer drains the mpb renderer and switches the reporter
+// into "post-snapshot" mode. After this returns, all writes go directly to
+// stderr; the aggregate bar (and any per-task summary lines that were already
+// flushed) freezes in place at the bottom of the live region.
+//
+// Idempotent — safe to call from ChecksStart and again from Close.
+func (r *richReporter) finalizeSnapshotRenderer() {
+	r.mu.Lock()
+	if r.snapDone {
+		r.mu.Unlock()
+		return
+	}
+	r.snapDone = true
+	r.mu.Unlock()
+	// Wait blocks until every bar is in a terminal state (complete or aborted)
+	// and the render goroutine drains any pending writer output before
+	// returning. After this point, r.p must not be written to.
+	r.p.Wait()
+}
+
 func (r *richReporter) ChecksStart(total int) {
-	fmt.Fprintf(r.p, "Running %d checks…\n", total)
+	r.finalizeSnapshotRenderer()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	fmt.Fprintf(r.w, "Running %d checks…\n", total)
 }
 
 func (r *richReporter) CheckCompleted(_, _ int, name string, findings int, dur time.Duration) {
@@ -172,7 +203,9 @@ func (r *richReporter) CheckCompleted(_, _ int, name string, findings int, dur t
 	if findings == 0 {
 		return
 	}
-	fmt.Fprintf(r.p, "  %s %s  %d finding(s)  %s\n",
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	fmt.Fprintf(r.w, "  %s %s  %d finding(s)  %s\n",
 		r.colors.Warn("!"),
 		name,
 		findings,
@@ -185,12 +218,16 @@ func (r *richReporter) ChecksComplete(total, withFindings int, dur time.Duration
 	if withFindings > 0 {
 		marker = r.colors.Warn("!")
 	}
-	fmt.Fprintf(r.p, "%s Checks complete  %d/%d  %d with findings  %s\n",
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	fmt.Fprintf(r.w, "%s Checks complete  %d/%d  %d with findings  %s\n",
 		marker, total, total, withFindings, shared.FormatDuration(dur),
 	)
 }
 
-// Close drains the renderer. Safe to call more than once.
+// Close drains the renderer if the checks phase never began (e.g. snapshot
+// load failed). When ChecksStart has already torn the renderer down, Close
+// is effectively a no-op. Safe to call more than once.
 func (r *richReporter) Close() error {
 	r.mu.Lock()
 	already := r.closed
@@ -199,6 +236,6 @@ func (r *richReporter) Close() error {
 	if already {
 		return r.closeErr
 	}
-	r.p.Wait()
+	r.finalizeSnapshotRenderer()
 	return nil
 }
