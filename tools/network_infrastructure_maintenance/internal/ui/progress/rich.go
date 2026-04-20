@@ -65,12 +65,12 @@ func newRichReporter(stderr *os.File, colors shared.Colorizer) *richReporter {
 func (r *richReporter) Startupf(format string, args ...any) {
 	// Startup banner is printed before any bars exist; write directly to
 	// stderr so it appears at the top of the run output.
-	fmt.Fprintf(r.w, "[netbox-audit] "+format+"\n", args...)
+	_, _ = fmt.Fprintf(r.w, "[netbox-audit] "+format+"\n", args...)
 }
 
 func (r *richReporter) AnnounceChecks(ids []string) {
 	// Keep this brief — the full list will appear in the final report.
-	fmt.Fprintf(r.w, "[netbox-audit] %d checks selected\n", len(ids))
+	_, _ = fmt.Fprintf(r.w, "[netbox-audit] %d checks selected\n", len(ids))
 }
 
 func (r *richReporter) SnapshotAttemptStart(attempt, max, totalTasks int) {
@@ -80,7 +80,7 @@ func (r *richReporter) SnapshotAttemptStart(attempt, max, totalTasks int) {
 		// On retry, write a one-line note above the live region. The
 		// previous attempt's aggregate bar will have been completed/removed
 		// by SnapshotLoadError handling.
-		fmt.Fprintf(r.p, "Snapshot attempt %d/%d (previous attempt detected a mid-load change)\n", attempt, max)
+		_, _ = fmt.Fprintf(r.p, "Snapshot attempt %d/%d (previous attempt detected a mid-load change)\n", attempt, max)
 	}
 	r.agg = r.p.New(int64(totalTasks),
 		mpb.BarStyle().Lbound("[").Filler("=").Tip(">").Padding(" ").Rbound("]"),
@@ -127,7 +127,7 @@ func (r *richReporter) SnapshotTaskComplete(_, _ int, stats netbox.FetchTiming, 
 	// Print the one-line summary above the live region, mark the per-task
 	// bar complete (which removes it via BarRemoveOnComplete), and advance
 	// the aggregate bar.
-	fmt.Fprintf(r.p, "  %s %-*s %5d items  %2d req  %7s\n",
+	_, _ = fmt.Fprintf(r.p, "  %s %-*s %5d items  %2d req  %7s\n",
 		r.colors.Pass("✓"),
 		taskNameWidth,
 		stats.Name,
@@ -150,7 +150,7 @@ func (r *richReporter) SnapshotTaskComplete(_, _ int, stats netbox.FetchTiming, 
 }
 
 func (r *richReporter) SnapshotLoadError(attempt, maxAttempts int, err error) {
-	fmt.Fprintf(r.p, "  %s snapshot attempt %d/%d failed: %v\n",
+	_, _ = fmt.Fprintf(r.p, "  %s snapshot attempt %d/%d failed: %v\n",
 		r.colors.Fail("✗"), attempt, maxAttempts, err)
 	r.mu.Lock()
 	// Drop any per-task bars that are still alive — on retry the loader will
@@ -167,7 +167,7 @@ func (r *richReporter) SnapshotLoadError(attempt, maxAttempts int, err error) {
 }
 
 func (r *richReporter) SnapshotLoadRetryDelay(delay time.Duration) {
-	fmt.Fprintf(r.p, "  retrying in %s\n", shared.FormatDuration(delay))
+	_, _ = fmt.Fprintf(r.p, "  retrying in %s\n", shared.FormatDuration(delay))
 }
 
 // finalizeSnapshotRenderer drains the mpb renderer and switches the reporter
@@ -194,7 +194,7 @@ func (r *richReporter) ChecksStart(total int) {
 	r.finalizeSnapshotRenderer()
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	fmt.Fprintf(r.w, "Running %d checks…\n", total)
+	_, _ = fmt.Fprintf(r.w, "Running %d checks…\n", total)
 }
 
 func (r *richReporter) CheckCompleted(_, _ int, name string, findings int, dur time.Duration) {
@@ -205,7 +205,7 @@ func (r *richReporter) CheckCompleted(_, _ int, name string, findings int, dur t
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	fmt.Fprintf(r.w, "  %s %s  %d finding(s)  %s\n",
+	_, _ = fmt.Fprintf(r.w, "  %s %s  %d finding(s)  %s\n",
 		r.colors.Warn("!"),
 		name,
 		findings,
@@ -220,7 +220,7 @@ func (r *richReporter) ChecksComplete(total, withFindings int, dur time.Duration
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	fmt.Fprintf(r.w, "%s Checks complete  %d/%d  %d with findings  %s\n",
+	_, _ = fmt.Fprintf(r.w, "%s Checks complete  %d/%d  %d with findings  %s\n",
 		marker, total, total, withFindings, shared.FormatDuration(dur),
 	)
 }

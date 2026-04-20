@@ -41,8 +41,8 @@ func TestNewAutoSelectsPlainWhenNotTTY(t *testing.T) {
 	if err != nil {
 		t.Fatalf("os.Pipe: %v", err)
 	}
-	defer r.Close()
-	defer w.Close()
+	defer func() { _ = r.Close() }()
+	defer func() { _ = w.Close() }()
 
 	rep := New(w, ModeAuto, shared.Colorizer{})
 	defer func() { _ = rep.Close() }()
@@ -57,8 +57,8 @@ func TestNewOffReturnsOffReporter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("os.Pipe: %v", err)
 	}
-	defer r.Close()
-	defer w.Close()
+	defer func() { _ = r.Close() }()
+	defer func() { _ = w.Close() }()
 
 	rep := New(w, ModeOff, shared.Colorizer{})
 	defer func() { _ = rep.Close() }()

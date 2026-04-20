@@ -30,7 +30,7 @@ func newPlainReporter(stderr *os.File, colors shared.Colorizer) *plainReporter {
 func (p *plainReporter) printf(format string, args ...any) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	fmt.Fprintf(p.w, format+"\n", args...)
+	_, _ = fmt.Fprintf(p.w, format+"\n", args...)
 }
 
 func (p *plainReporter) Startupf(format string, args ...any) {
