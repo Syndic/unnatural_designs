@@ -39,13 +39,25 @@ func printTextReport(rep report, colors shared.Colorizer) {
 
 	if len(rep.Timing.Snapshot.Fetches) > 0 {
 		fmt.Printf("Snapshot collections by duration:\n")
-		for _, fetch := range sortTimingDescending(rep.Timing.Snapshot.Fetches, func(f netbox.FetchTiming) time.Duration { return f.Duration }) {
-			fmt.Printf("- %s: %s, %d requests, %d items\n", fetch.Name, shared.FormatDuration(fetch.Duration), fetch.Requests, fetch.Items)
+		for _, fetch := range sortTimingDescending(
+			rep.Timing.Snapshot.Fetches,
+			func(f netbox.FetchTiming) time.Duration { return f.Duration },
+		) {
+			fmt.Printf(
+				"- %s: %s, %d requests, %d items\n",
+				fetch.Name,
+				shared.FormatDuration(fetch.Duration),
+				fetch.Requests,
+				fetch.Items,
+			)
 		}
 	}
 	if len(rep.Timing.Checks) > 0 {
 		fmt.Printf("Check durations:\n")
-		for _, timing := range sortTimingDescending(rep.Timing.Checks, func(t checkTiming) time.Duration { return t.Duration }) {
+		for _, timing := range sortTimingDescending(
+			rep.Timing.Checks,
+			func(t checkTiming) time.Duration { return t.Duration },
+		) {
 			fmt.Printf("- %s: %s, %d findings\n", timing.Name, shared.FormatDuration(timing.Duration), timing.Findings)
 		}
 	}

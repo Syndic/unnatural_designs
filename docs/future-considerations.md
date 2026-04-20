@@ -15,19 +15,19 @@ Relevant tooling: `buildfarm` (open source), or Buildbuddy's paid RBE tier.
 
 ## Local Secret Management
 
-Currently, local Bazel remote cache credentials are stored in `.bazelrc.user` (gitignored). This
-is acceptable for a single-user machine but not rigorous. Other secrets are stored in
-//secrets, which is gitignored.
+Currently, local Bazel remote cache credentials are stored in `.bazelrc.user` (gitignored). This is
+acceptable for a single-user machine but not rigorous. Other secrets are stored in //secrets, which
+is gitignored.
 
-A proper solution would retrieve secrets from a secrets manager (e.g. macOS Keychain, 1Password
-CLI) rather than storing them in a file on disk.
+A proper solution would retrieve secrets from a secrets manager (e.g. macOS Keychain, 1Password CLI)
+rather than storing them in a file on disk.
 
 ---
 
 ## Renovate Trigger Frequency
 
-Renovate appears to trigger on every branch push rather than only on changes to main. This is
-more frequent than expected and worth investigating — it may be a configuration issue or a default
+Renovate appears to trigger on every branch push rather than only on changes to main. This is more
+frequent than expected and worth investigating — it may be a configuration issue or a default
 behaviour that can be tightened.
 
 ---
@@ -40,8 +40,8 @@ there is meaningful code to measure. Candidate tooling:
 - **Go**: `go test -coverprofile` + a coverage reporting service (e.g. Codecov, Coveralls)
 - **Python**: `coverage.py` + the same reporting service
 
-Code quality linting (e.g. `golangci-lint` for Go, `ruff` for Python) is also worth adding as a
-CI job.
+Code quality linting (e.g. `golangci-lint` for Go, `ruff` for Python) is also worth adding as a CI
+job.
 
 ---
 
@@ -52,4 +52,4 @@ Gazelle has a Python plugin bundled with `rules_python` that can auto-generate `
 because the Python footprint is currently small.
 
 This is actively tracked: the `python-scale-check` CI job and pre-commit hook will fail when the
-py_* target count exceeds the configured threshold, at which point this item should be actioned.
+py\_\* target count exceeds the configured threshold, at which point this item should be actioned.

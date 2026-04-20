@@ -1,4 +1,6 @@
 {
   "go.lintTool": "golangci-lint",
-  "go.lintOnSave": "package"
+  "go.lintOnSave": "package",
+  "prettier.printWidth": 100,
+  "prettier.proseWrap": "always"
 }
