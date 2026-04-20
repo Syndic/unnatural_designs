@@ -8,19 +8,19 @@ repos:
         pass_filenames: false
         files: go\.(mod|work|sum)$
 
-      - id: check-go-modules
-        name: check Go module completeness
-        language: python
-        entry: python meta/scripts/check_go_modules.py
-        pass_filenames: false
-        files: go\.mod$|\.github/workflows/.*\.yml$|\.golangci\.yml$
-
       - id: gazelle
         name: gazelle
         language: system
         entry: bazel run //:gazelle
         pass_filenames: false
         files: \.go$
+
+      - id: check-go-modules
+        name: check Go module completeness
+        language: python
+        entry: python meta/scripts/check_go_modules.py
+        pass_filenames: false
+        files: go\.mod$|\.github/workflows/.*\.yml$|\.golangci\.yml$
 
       - id: check-go-work
         name: check go.work consistency
@@ -29,16 +29,16 @@ repos:
         pass_filenames: false
         files: go\.(mod|work)$
 
-      - id: check-secrets-dir
-        name: check secrets directory
-        language: python
-        entry: python meta/scripts/check_secrets_dir.py
-        pass_filenames: true
-        files: ^secrets/
-
       - id: check-python-scale
         name: check Python target scale
         language: python
         entry: python meta/scripts/check_python_scale.py
         pass_filenames: false
         files: BUILD\.bazel$
+
+      - id: check-secrets-dir
+        name: check secrets directory
+        language: python
+        entry: python meta/scripts/check_secrets_dir.py
+        pass_filenames: true
+        files: ^secrets/
