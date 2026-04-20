@@ -55,11 +55,12 @@ Two GitHub Actions workflows run on every push and pull request to `main`.
 | Job                           | Trigger condition                                                                                   |
 | ----------------------------- | --------------------------------------------------------------------------------------------------- |
 | Gazelle check                 | Always — verifies BUILD files match source                                                          |
+| Go module completeness check  | Always — verifies every Go module is in the workflow matrices and has linter config                 |
 | go.work check                 | Always — verifies all Go modules are registered in `go.work`                                        |
 | Python scale check            | Always — fails if `py_*` target count exceeds threshold (see `meta/scripts/check_python_scale.py`) |
-| Go module completeness check  | Always — verifies every Go module is in the workflow matrices and has linter config                 |
+| Secrets check                 | Always — verifies the `secrets/` directory contains no committed files                             |
 | golangci-lint                 | After module check passes — runs per Go module                                                      |
-| Build and test                | After all structural checks pass                                                                    |
+| Build and test                | After all checks above pass                                                                         |
 
 **Security** — also runs on a weekly schedule (Mondays at 02:00 UTC):
 
