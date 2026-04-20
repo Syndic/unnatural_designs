@@ -13,7 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/setup-bazel-remote
-        with: 
+        with:
           buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
       - run: bazel run --config=remote //:gazelle -- -mode=diff
 
