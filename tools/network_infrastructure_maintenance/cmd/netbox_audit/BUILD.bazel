@@ -8,7 +8,6 @@ go_library(
         "constants.go",
         "main.go",
         "models.go",
-        "progress.go",
         "report.go",
     ],
     importpath = "github.com/Syndic/unnatural_designs/tools/network_infrastructure_maintenance/cmd/netbox_audit",
@@ -17,6 +16,7 @@ go_library(
         "//tools/network_infrastructure_maintenance/internal/audit",
         "//tools/network_infrastructure_maintenance/internal/netbox",
         "//tools/network_infrastructure_maintenance/internal/shared",
+        "//tools/network_infrastructure_maintenance/internal/ui/progress",
     ],
 )
 

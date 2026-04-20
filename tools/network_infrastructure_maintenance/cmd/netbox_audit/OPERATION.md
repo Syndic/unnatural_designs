@@ -9,6 +9,7 @@
 | `-config` | _(none)_ | Path to a JSON policy config file |
 | `-format` | `text` | Output format: `text` or `json` |
 | `-color` | `auto` | ANSI color in text output: `auto`, `always`, or `never` |
+| `-progress` | `auto` | Progress UI mode: `auto`, `rich`, `plain`, or `off` |
 | `-max-snapshot-attempts` | `5` | How many times to retry an incoherent snapshot |
 | `-snapshot-retry-delay` | `3s` | Delay between snapshot retries |
 | `-fail-on-findings` | `false` | Exit with code 2 if any check produces findings |
@@ -24,9 +25,22 @@ All flags can be set via environment variables. CLI flags take precedence over e
 | `NETBOX_TOKEN_FILE` | `-netbox-token-file` |
 | `NETBOX_AUDIT_CONFIG` | `-config` |
 | `NETBOX_AUDIT_COLOR` | `-color` |
-| `NO_COLOR` | Sets color to `never` (standard convention) |
+| `NO_COLOR` | Sets color to `never` (standard convention); also forces `-progress plain` when `-progress auto` is in effect |
 
 `NETBOX_TOKEN` lets you supply the token directly without a file, which is useful in CI environments where writing a token file is awkward.
+
+## Progress UI
+
+The `-progress` flag controls how snapshot-fetch and check-execution progress is rendered to **stderr** (the final report on stdout is unaffected).
+
+| Mode | Behaviour |
+|------|-----------|
+| `auto` (default) | `rich` when stderr is an interactive TTY, `NO_COLOR` is unset, and `TERM` is not `dumb` or empty. Otherwise `plain`. |
+| `rich` | A pinned multi-line region at the bottom of the terminal: aggregate progress bar plus one bar per in-flight collection (rendered as a spinner until NetBox returns the collection's first page, then a determinate bar). Completed collections scroll above as one-line summaries. Checks are summarised with one start line, one line per check that produced findings, and one completion line. |
+| `plain` | Line-oriented logs suitable for CI pipelines and pipes. One line per snapshot-collection completion, one line per snapshot retry, and a single check-phase summary line. |
+| `off` | No progress output on stderr at all. The final report on stdout is unaffected. |
+
+Force `-progress rich` when running through a wrapper that misreports TTY status (e.g. some `tmux` configurations or recording tools); force `-progress plain` for log capture even when running in a TTY.
 
 ## Output: text format
 

@@ -61,7 +61,20 @@ func (c *Client) LatestChange(ctx context.Context) (ObjectChange, error) {
 	return p.Results[0], nil
 }
 
+// PageProgressFunc is invoked after each page response during a paginated
+// fetch. totalCount is NetBox's "count" field (the authoritative total item
+// count, repeated on every page), itemsSoFar is the count appended to the
+// caller's slice so far, and requestsSoFar is the number of HTTP requests
+// completed so far.
+type PageProgressFunc func(itemsSoFar, totalCount, requestsSoFar int)
+
 func FetchAll[T any](ctx context.Context, client *Client, path string) ([]T, int, int, error) {
+	return FetchAllWithProgress[T](ctx, client, path, nil)
+}
+
+// FetchAllWithProgress is like FetchAll but invokes progress (if non-nil)
+// after each page is parsed.
+func FetchAllWithProgress[T any](ctx context.Context, client *Client, path string, progress PageProgressFunc) ([]T, int, int, error) {
 	urlStr, err := client.ResolveURL(path)
 	if err != nil {
 		return nil, 0, 0, err
@@ -81,6 +94,9 @@ func FetchAll[T any](ctx context.Context, client *Client, path string) ([]T, int
 			return nil, requests, pagesSeen, err
 		}
 		out = append(out, p.Results...)
+		if progress != nil {
+			progress(len(out), p.Count, requests)
+		}
 		if p.Next != nil {
 			urlStr = *p.Next
 		} else {

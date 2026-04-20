@@ -9,6 +9,7 @@ import (
 
 	audit "github.com/Syndic/unnatural_designs/tools/network_infrastructure_maintenance/internal/audit"
 	netbox "github.com/Syndic/unnatural_designs/tools/network_infrastructure_maintenance/internal/netbox"
+	"github.com/Syndic/unnatural_designs/tools/network_infrastructure_maintenance/internal/ui/progress"
 )
 
 type Check interface {
@@ -90,7 +91,7 @@ func selectChecks(registry []Check, cfg auditConfig) ([]Check, error) {
 	return selected, nil
 }
 
-func runAudit(ctx context.Context, snap netbox.Snapshot, cfg auditConfig, checks []Check, reporter *progressReporter) report {
+func runAudit(ctx context.Context, snap netbox.Snapshot, cfg auditConfig, checks []Check, reporter progress.Reporter) report {
 	start := time.Now()
 	results := make([]audit.CheckResult, len(checks))
 	timings := make([]checkTiming, len(checks))
@@ -125,13 +126,17 @@ func runAudit(ctx context.Context, snap netbox.Snapshot, cfg auditConfig, checks
 		close(out)
 	}()
 	completed := 0
+	withFindings := 0
 	for item := range out {
 		results[item.index] = item.result
 		timings[item.index] = item.timing
 		completed++
-		reporter.CheckCompleted(completed, len(checks), item.timing)
+		if item.timing.Findings > 0 {
+			withFindings++
+		}
+		reporter.CheckCompleted(completed, len(checks), item.timing.Name, item.timing.Findings, item.timing.Duration)
 	}
-	reporter.ChecksComplete(len(checks))
+	reporter.ChecksComplete(len(checks), withFindings, time.Since(start))
 
 	return report{
 		Snapshot: snapshotMeta{Attempts: snap.SnapshotAttempts, Change: snap.LatestChange},

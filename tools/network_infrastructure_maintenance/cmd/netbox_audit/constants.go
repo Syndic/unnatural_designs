@@ -9,6 +9,7 @@ const (
 	flagConfig         = "config"
 	flagFormat         = "format"
 	flagColor          = "color"
+	flagProgress       = "progress"
 	flagMaxAttempts    = "max-snapshot-attempts"
 	flagRetryDelay     = "snapshot-retry-delay"
 	flagFailOnFindings = "fail-on-findings"
