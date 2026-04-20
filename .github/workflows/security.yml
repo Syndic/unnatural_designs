@@ -72,6 +72,20 @@ jobs:
         with:
           work-dir: ${{ matrix.module }}
 
+  govulncheck-all:
+    name: govulncheck (all modules)
+    runs-on: ubuntu-latest
+    needs: [govulncheck]
+    if: always()
+    steps:
+      - name: Verify all govulncheck jobs passed
+        run: |
+          if [ "${{ needs.govulncheck.result }}" != "success" ]; then
+            echo "govulncheck result: ${{ needs.govulncheck.result }}"
+            exit 1
+          fi
+          echo "All govulncheck jobs passed"
+
   # ── Supply Chain and Filesystem Scanning ─────────────────────────────────────
   # Scans the entire repository for secrets committed to source, dependency CVEs across all
   # ecosystems, and license compliance. Language-agnostic — Trivy covers new languages automatically
