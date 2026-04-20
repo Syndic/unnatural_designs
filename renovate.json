@@ -7,23 +7,15 @@
   "customManagers": [
     {
       "customType": "regex",
-      "managerFilePatterns": [
-        "/^MODULE\\.bazel$/"
-      ],
-      "matchStrings": [
-        "go_sdk\\.download\\(\\s*version\\s*=\\s*\"(?<currentValue>[^\"]+)\""
-      ],
+      "managerFilePatterns": [ "/^MODULE\\.bazel$/" ],
+      "matchStrings": [ "go_sdk\\.download\\(\\s*version\\s*=\\s*\"(?<currentValue>[^\"]+)\"" ],
       "datasourceTemplate": "golang-version",
       "depNameTemplate": "go"
     },
     {
       "customType": "regex",
-      "managerFilePatterns": [
-        "/^MODULE\\.bazel$/"
-      ],
-      "matchStrings": [
-        "python\\.toolchain\\(\\s*python_version\\s*=\\s*\"(?<currentValue>[^\"]+)\""
-      ],
+      "managerFilePatterns": [ "/^MODULE\\.bazel$/" ],
+      "matchStrings": [ "python\\.toolchain\\(\\s*python_version\\s*=\\s*\"(?<currentValue>[^\"]+)\"" ],
       "datasourceTemplate": "python-version",
       "depNameTemplate": "python"
     },
@@ -33,40 +25,27 @@
         "/^go\\.work$/",
         "/(^|/)go\\.mod$/"
       ],
-      "matchStrings": [
-        "^go (?<currentValue>\\d+\\.\\d+(?:\\.\\d+)?)"
-      ],
+      "matchStrings": [ "^go (?<currentValue>\\d+\\.\\d+(?:\\.\\d+)?)" ],
       "datasourceTemplate": "golang-version",
       "depNameTemplate": "go"
     }
   ],
   "packageRules": [
     {
-      "matchManagers": [
-        "bazel-module"
-      ],
+      "matchManagers": [ "bazel-module" ],
       "groupName": "Bazel toolchains and rulesets"
     },
     {
-      "matchManagers": [
-        "gomod"
-      ],
+      "matchManagers": [ "gomod" ],
       "groupName": "Go dependencies"
     },
     {
-      "matchManagers": [
-        "github-actions"
-      ],
+      "matchManagers": [ "github-actions" ],
       "groupName": "GitHub Actions"
     },
     {
-      "matchManagers": [
-        "custom.regex"
-      ],
-      "matchDepNames": [
-        "go",
-        "python"
-      ],
+      "matchManagers": [ "custom.regex" ],
+      "matchDepNames": [ "go", "python" ],
       "groupName": "Language toolchain SDKs"
     }
   ]
