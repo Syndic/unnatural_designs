@@ -79,8 +79,12 @@ jobs:
     if: always()
     steps:
       - name: Verify all govulncheck jobs passed
-        if: needs.govulncheck.result != 'success'
-        run: exit 1
+        run: |
+          if [ "${{ needs.govulncheck.result }}" != "success" ]; then
+            echo "govulncheck result: ${{ needs.govulncheck.result }}"
+            exit 1
+          fi
+          echo "All govulncheck jobs passed"
 
   # ── Supply Chain and Filesystem Scanning ─────────────────────────────────────
   # Scans the entire repository for secrets committed to source, dependency CVEs across all
