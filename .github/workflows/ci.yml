@@ -25,7 +25,7 @@ jobs:
       - run: python3 meta/scripts/check_go_work.py
 
   python-scale-check:
-    name: Python scale check - Are we using enough python to warrant configuring/enabling Gazelle python support?
+    name: Python scale check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
