@@ -32,16 +32,13 @@ behaviour that can be tightened.
 
 ---
 
-## Code Quality and Coverage Reporting
+## Code Coverage Reporting
 
-No code quality metrics or test coverage reporting is currently in place. Worth adding to CI once
-there is meaningful code to measure. Candidate tooling:
+`golangci-lint` is in place for Go code quality. No test coverage reporting is currently set up.
+Worth adding to CI once there is meaningful code to measure. Candidate tooling:
 
 - **Go**: `go test -coverprofile` + a coverage reporting service (e.g. Codecov, Coveralls)
 - **Python**: `coverage.py` + the same reporting service
-
-Code quality linting (e.g. `golangci-lint` for Go, `ruff` for Python) is also worth adding as a CI
-job.
 
 ---
 

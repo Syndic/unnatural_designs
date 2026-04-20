@@ -68,10 +68,8 @@ go run ./cmd/netbox_audit -config netbox_audit.config.json
 
 ## Build
 
-The module uses only the Go standard library (no third-party dependencies).
-
 ```bash
-cd network_maintainence_tools
+cd tools/network_infrastructure_maintenance
 go build ./cmd/netbox_audit
 ./netbox_audit -netbox-token-file ../.netbox_api_token
 ```
