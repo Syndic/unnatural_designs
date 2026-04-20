@@ -69,6 +69,7 @@ Two GitHub Actions workflows run on every push and pull request to `main`.
 | Go module completeness check  | Gate for the per-module security jobs below                                      |
 | Semgrep                       | SAST — scans for injection flaws, insecure API usage, and hardcoded secrets      |
 | govulncheck                   | Dependency CVE scanning — checks reachable call paths against the Go vuln DB     |
+| govulncheck-all               | A single static target that github can require pass for branch protection rules  |
 | Trivy                         | Supply chain and filesystem scanning — secrets, CVEs across all ecosystems       |
 
 ## Automation
