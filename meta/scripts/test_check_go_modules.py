@@ -511,6 +511,40 @@ class TestCheckGolangciConfigs(unittest.TestCase):
             (root / "tools/foo/.golangci.yml").mkdir(parents=True, exist_ok=True)
             self.assertEqual(check_golangci_configs(root, found_modules(root)), 1)
 
+    def test_root_config_satisfies_module_without_own_config(self):
+        """A root-level .golangci.yml is accepted for a module that has no per-module config."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_module(root, "tools/foo")
+            (root / ".golangci.yml").write_text("linters:\n  enable:\n    - gosec\n")
+            self.assertEqual(check_golangci_configs(root, found_modules(root)), 0)
+
+    def test_root_config_satisfies_multiple_modules(self):
+        """A single root-level .golangci.yml covers all modules in the repo."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_module(root, "tools/foo")
+            make_module(root, "libs/bar")
+            (root / ".golangci.yml").write_text("linters:\n  enable:\n    - gosec\n")
+            self.assertEqual(check_golangci_configs(root, found_modules(root)), 0)
+
+    def test_intermediate_directory_config_satisfies_module(self):
+        """A .golangci.yml anywhere between the module dir and the repo root is accepted."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_module(root, "tools/foo")
+            (root / "tools").mkdir(parents=True, exist_ok=True)
+            (root / "tools" / ".golangci.yml").write_text("linters:\n  enable:\n    - gosec\n")
+            self.assertEqual(check_golangci_configs(root, found_modules(root)), 0)
+
+    def test_root_directory_named_golangci_yml_does_not_satisfy(self):
+        """A directory named .golangci.yml at the root must not satisfy the check."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_module(root, "tools/foo")
+            (root / ".golangci.yml").mkdir(parents=True, exist_ok=True)
+            self.assertEqual(check_golangci_configs(root, found_modules(root)), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
