@@ -136,6 +136,7 @@ func (r *richReporter) SnapshotTaskComplete(_, _ int, stats netbox.FetchTiming, 
 		shared.FormatDuration(stats.Duration),
 	)
 	r.mu.Lock()
+	defer r.mu.Unlock()
 	if bar, ok := r.bars[stats.Name]; ok {
 		// SetTotal(N, true) marks complete regardless of current item count,
 		// which handles the zero-item collection case where total was never
@@ -146,13 +147,13 @@ func (r *richReporter) SnapshotTaskComplete(_, _ int, stats netbox.FetchTiming, 
 	if r.agg != nil {
 		r.agg.Increment()
 	}
-	r.mu.Unlock()
 }
 
 func (r *richReporter) SnapshotLoadError(attempt, maxAttempts int, err error) {
 	_, _ = fmt.Fprintf(r.p, "  %s snapshot attempt %d/%d failed: %v\n",
 		r.colors.Fail("✗"), attempt, maxAttempts, err)
 	r.mu.Lock()
+	defer r.mu.Unlock()
 	// Drop any per-task bars that are still alive — on retry the loader will
 	// create fresh ones for the next attempt.
 	for name, bar := range r.bars {
@@ -163,7 +164,6 @@ func (r *richReporter) SnapshotLoadError(attempt, maxAttempts int, err error) {
 		r.agg.Abort(true)
 		r.agg = nil
 	}
-	r.mu.Unlock()
 }
 
 func (r *richReporter) SnapshotLoadRetryDelay(delay time.Duration) {

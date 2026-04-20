@@ -30,15 +30,15 @@ func (o *recordingObserver) SnapshotTaskStart(name string) TaskProgress {
 	o.mu.Unlock()
 	return func(items, total, reqs int) {
 		o.mu.Lock()
+		defer o.mu.Unlock()
 		o.ticks[name]++
-		o.mu.Unlock()
 	}
 }
 
 func (o *recordingObserver) SnapshotTaskComplete(_ int, _ int, stats FetchTiming, _ int) {
 	o.mu.Lock()
+	defer o.mu.Unlock()
 	o.completes = append(o.completes, stats.Name)
-	o.mu.Unlock()
 }
 
 func (o *recordingObserver) SnapshotLoadError(int, int, error) {}
