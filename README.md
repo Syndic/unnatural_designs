@@ -30,7 +30,9 @@ bazel run //:gazelle
 After adding new external Go dependencies, run:
 
 ```
-bazel run //:gazelle-update-repos
+go get github.com/example/pkg
+bazel mod tidy
+bazel run //:gazelle
 ```
 
 ### Remote Cache
@@ -46,14 +48,28 @@ Then pass `--config=remote` to any Bazel command to use the cache.
 
 ## CI
 
-GitHub Actions runs four jobs on every push and pull request to `main`:
+Two GitHub Actions workflows run on every push and pull request to `main`.
 
-| Job                | Trigger condition                                                                                  |
-| ------------------ | -------------------------------------------------------------------------------------------------- |
-| Gazelle check      | Always — verifies BUILD files match source                                                         |
-| go.work check      | Always — verifies all Go modules are registered in `go.work`                                       |
-| Python scale check | Always — fails if `py_*` target count exceeds threshold (see `meta/scripts/check_python_scale.py`) |
-| Build and test     | After all checks pass                                                                              |
+**CI** — code-change-driven checks:
+
+| Job                           | Trigger condition                                                                                   |
+| ----------------------------- | --------------------------------------------------------------------------------------------------- |
+| Gazelle check                 | Always — verifies BUILD files match source                                                          |
+| Go module completeness check  | Always — verifies every Go module is in the workflow matrices and has linter config                 |
+| go.work check                 | Always — verifies all Go modules are registered in `go.work`                                        |
+| Python scale check            | Always — fails if `py_*` target count exceeds threshold (see `meta/scripts/check_python_scale.py`) |
+| Secrets check                 | Always — verifies the `secrets/` directory contains no committed files                             |
+| golangci-lint                 | After module check passes — runs per Go module                                                      |
+| Build and test                | After all checks above pass                                                                         |
+
+**Security** — also runs on a weekly schedule (Mondays at 02:00 UTC):
+
+| Job                           | Purpose                                                                          |
+| ----------------------------- | -------------------------------------------------------------------------------- |
+| Go module completeness check  | Gate for the per-module security jobs below                                      |
+| Semgrep                       | SAST — scans for injection flaws, insecure API usage, and hardcoded secrets      |
+| govulncheck                   | Dependency CVE scanning — checks reachable call paths against the Go vuln DB     |
+| Trivy                         | Supply chain and filesystem scanning — secrets, CVEs across all ecosystems       |
 
 ## Automation
 
@@ -66,12 +82,15 @@ pre-commit install
 
 The hooks and their triggers:
 
-| Hook                   | Triggers on                   |
-| ---------------------- | ----------------------------- |
-| `gazelle`              | `*.go` files                  |
-| `check-go-work`        | `go.mod`, `go.work`           |
-| `check-python-scale`   | `BUILD.bazel` files           |
-| `gazelle-update-repos` | `go.mod`, `go.work`, `go.sum` |
+| Hook                 | Triggers on                                              |
+| -------------------- | -------------------------------------------------------- |
+| `bazel-mod-tidy`     | `go.mod`, `go.work`, `go.sum`                            |
+| `check-go-modules`   | `go.mod`, workflow `.yml` files, `.golangci.yml`         |
+| `gazelle`            | `*.go` files                                             |
+| `check-go-work`      | `go.mod`, `go.work`                                      |
+| `check-secrets-dir`  | files under `secrets/`                                   |
+| `check-python-scale` | `BUILD.bazel` files                                      |
 
 **Dependency updates** are managed automatically by [Renovate](https://docs.renovatebot.com), which
-groups Bazel, Go, and GitHub Actions updates into separate PRs.
+groups updates into separate PRs: Bazel toolchains and rulesets, Go dependencies, GitHub Actions,
+and language toolchain SDKs (Go and Python version pins in `MODULE.bazel`).

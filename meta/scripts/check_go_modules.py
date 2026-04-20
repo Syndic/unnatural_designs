@@ -4,7 +4,8 @@ Verifies that all Go modules in the repo are consistently tracked:
 
   1. Every matrix.module list in .github/workflows/*.yml contains exactly
      the set of Go modules known from go.mod discovery (no missing, no stale).
-  2. Every Go module has a .golangci.yml configuration file.
+  2. Every Go module has a .golangci.yml reachable via golangci-lint's config
+     search (per-module file or a shared root-level fallback).
 
 Usage: ./meta/scripts/check_go_modules.py
 """
@@ -148,15 +149,27 @@ def check_workflow_matrices(root: Path, modules: set[Path]) -> int:
 
 
 def check_golangci_configs(root: Path, modules: set[Path]) -> int:
-    """Check that every Go module has a .golangci.yml configuration file.
+    """Check that every Go module has a .golangci.yml reachable via golangci-lint's
+    config search (module directory or any parent up to the repo root).
+
+    A root-level .golangci.yml is valid shared config — golangci-lint walks up
+    the directory tree when no per-module config is present.
 
     Returns the number of errors found.
     """
     errors = 0
     for mod in sorted(modules):
-        config = root / mod / ".golangci.yml"
-        if not config.is_file():
-            print(f"MISSING .golangci.yml in: ./{mod}")
+        candidate = root / mod
+        found = False
+        while True:
+            if (candidate / ".golangci.yml").is_file():
+                found = True
+                break
+            if candidate == root:
+                break
+            candidate = candidate.parent
+        if not found:
+            print(f"MISSING .golangci.yml for: ./{mod} (no config in module dir or any parent up to repo root)")
             errors += 1
     return errors
 

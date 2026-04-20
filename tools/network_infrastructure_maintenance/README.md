@@ -10,7 +10,7 @@ This repository contains tools for managing a home network modelled in
 
 Validates the NetBox model for internal consistency. Runs 18 configurable checks covering device
 fields, cabling, IP addressing, VRF assignment, PoE power, DHCP reservations, module bay linkage,
-and more. Produces a human-readable or JSON report.
+and more. Produces a human-readable or JSON report with an optional rich terminal progress UI.
 
 → See [`cmd/netbox_audit/README.md`](cmd/netbox_audit/README.md)
 
