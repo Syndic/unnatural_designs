@@ -4,15 +4,6 @@ Items flagged during development as worth revisiting when the time is right.
 
 ---
 
-## Bazel Remote Execution
-
-Remote caching (Buildbuddy) is in place. The next step is remote execution — farming build actions
-out to a pool of workers. This would allow parallelising builds across local machines.
-
-Relevant tooling: `buildfarm` (open source), or Buildbuddy's paid RBE tier.
-
----
-
 ## Local Secret Management
 
 Currently, local Bazel remote cache credentials are stored in `.bazelrc.user` (gitignored). This is

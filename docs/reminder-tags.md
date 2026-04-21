@@ -96,6 +96,14 @@ into the repo, grep for this task type and make the corresponding addition at ea
 grep -rn "TEND(lang-expand)" .
 ```
 
+#### `optimization`
+
+Marks a configuration or setting that may be suboptimal and should be reviewed in the future.
+
+```sh
+grep -rn "TEND(optimization)" .
+```
+
 ---
 
 ## Adding a new tag or task type
