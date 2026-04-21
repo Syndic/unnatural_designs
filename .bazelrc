@@ -8,6 +8,9 @@ common --incompatible_allow_tags_propagation
 # Don't let environment variables sneak into the build.
 build --incompatible_strict_action_env
 
+# Don't implicitly create __init__.py files.
+build --incompatible_default_to_explicit_init_py
+
 # --- Remote cache (default: on for all commands, all hosts) ---
 # The API key is not stored here. Add it to .bazelrc.user (gitignored):
 #   common --remote_header=x-buildbuddy-api-key=YOUR_KEY
@@ -24,6 +27,25 @@ test --test_verbose_timeout_warnings
 # On any build failure, print the full command line that failed
 build --verbose_failures
 
+# Don't upload build events for targets with the "no-remote" tag.
+build --incompatible_remote_build_event_upload_respect_no_cache
+
+# Allow the Bazel server to check directory sources for changes. Ensures that the Bazel server
+# notices when a directory changes, if you have a directory listed in the srcs of some target.
+# Docs: https://bazel.build/reference/command-line-reference#flag--host_jvm_args
+startup --host_jvm_args=-DBAZEL_TRACK_SOURCE_DIRECTORIES=1
+
+# Allow exclusive tests to run in the sandbox. Fixes a bug where Bazel doesn't enable sandboxing for
+# tests with `tags=["exclusive"]`.
+# Docs: https://bazel.build/reference/command-line-reference#flag--incompatible_exclusive_test_sandboxed
+common --incompatible_exclusive_test_sandboxed
+
+# Set default value of `allow_empty` to `False` in `glob()`. This prevents a common mistake when
+# attempting to use `glob()` to match files in a subdirectory that is opaque to the current package
+# because it contains a BUILD file. See https://github.com/bazelbuild/bazel/issues/8195.
+# Docs: https://bazel.build/reference/command-line-reference#flag--incompatible_disallow_empty_glob
+common --incompatible_disallow_empty_glob
+
 
 # --- --config=remote: laptop offloading builds to the remote executor (no BES). ---
 common:remote --remote_executor=grpcs://remote.buildbuddy.io
@@ -32,6 +54,13 @@ build:remote --remote_download_outputs=toplevel
 
 # Without this flag, a mid-build eviction fails the whole invocation; with it, Bazel retries.
 build:remote --experimental_remote_cache_eviction_retries=5
+
+# Always download coverage files for tests from the remote cache. By default, coverage files are not
+# downloaded on test result cache hits when --remote_download_minimal is enabled, making it impossible
+# to generate a full coverage report.
+# Docs: https://bazel.build/reference/command-line-reference#flag--experimental_fetch_all_coverage_outputs
+# ditching remote cache results
+common:remote --experimental_fetch_all_coverage_outputs
 
 # Claude thinks that the default for local builds is roughly <CPU count>, and for remote builds is
 # ~200. If that's true, the value I was going to set is lower than the default.
