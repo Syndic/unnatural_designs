@@ -27,9 +27,6 @@ test --test_verbose_timeout_warnings
 # On any build failure, print the full command line that failed
 build --verbose_failures
 
-# Don't upload build events for targets with the "no-remote" tag.
-build --incompatible_remote_build_event_upload_respect_no_cache
-
 # Allow the Bazel server to check directory sources for changes. Ensures that the Bazel server
 # notices when a directory changes, if you have a directory listed in the srcs of some target.
 # Docs: https://bazel.build/reference/command-line-reference#flag--host_jvm_args
@@ -59,7 +56,6 @@ build:remote --experimental_remote_cache_eviction_retries=5
 # downloaded on test result cache hits when --remote_download_minimal is enabled, making it impossible
 # to generate a full coverage report.
 # Docs: https://bazel.build/reference/command-line-reference#flag--experimental_fetch_all_coverage_outputs
-# ditching remote cache results
 common:remote --experimental_fetch_all_coverage_outputs
 
 # Claude thinks that the default for local builds is roughly <CPU count>, and for remote builds is
@@ -74,12 +70,15 @@ common:ci --config=remote
 build:ci --bes_backend=grpcs://remote.buildbuddy.io
 build:ci --bes_results_url=https://app.buildbuddy.io/invocation/
 
+# Only send BEP events for outputs that actually made it to the remote cache.
+# Keeps output from locally-executed / no-cache / no-remote actions out of BuildBuddy.
+build:ci --remote_build_event_upload=minimal
 # Logs which bazelrc flags are active - invaluable for debugging CI weirdness
 common:ci --announce_rc
 # Adds timestamps to action output; helpful when parsing slow builds
 build:ci --show_timestamps
 # GitHub Actions renders ANSI; force color since stdout isn't a TTY
-build:ci --color=yes
+common:ci --color=yes
 # Tell us _everything_
 test:ci --test_output=all
 
