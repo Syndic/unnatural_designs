@@ -14,5 +14,5 @@ runs:
         bazelisk-cache: true
         disk-cache: ${{ github.workflow }}
         repository-cache: true
-    - run: echo "build:remote --remote_header=x-buildbuddy-api-key=${{ inputs.buildbuddy-api-key }}" >> .bazelrc.user
+    - run: echo "common --remote_header=x-buildbuddy-api-key=${{ inputs.buildbuddy-api-key }}" >> .bazelrc.user
       shell: bash

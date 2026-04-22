@@ -15,7 +15,7 @@ jobs:
       - uses: ./.github/actions/setup-bazel-remote
         with:
           buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
-      - run: bazel run --config=remote //:gazelle -- -mode=diff
+      - run: bazel run --config=ci //:gazelle -- -mode=diff
 
   go-modules-check:
     name: Go module completeness check
@@ -77,4 +77,4 @@ jobs:
       - uses: ./.github/actions/setup-bazel-remote
         with:
           buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
-      - run: bazel test --config=remote //...
+      - run: bazel test --config=ci //...

@@ -3,6 +3,10 @@ module(
     version = "0.0.0",
 )
 
+# ── Platforms ─────────────────────────────────────────────────────────────────────────────────────
+# Standard OS/CPU constraints used by //platforms:*.
+bazel_dep(name = "platforms", version = "1.0.0")
+
 # ── Go ────────────────────────────────────────────────────────────────────────────────────────────
 bazel_dep(name = "rules_go", version = "0.60.0")
 bazel_dep(name = "gazelle", version = "0.50.0")

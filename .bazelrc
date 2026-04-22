@@ -8,12 +8,92 @@ common --incompatible_allow_tags_propagation
 # Don't let environment variables sneak into the build.
 build --incompatible_strict_action_env
 
-# Remote cache (Buildbuddy)
+# Don't implicitly create __init__.py files.
+build --incompatible_default_to_explicit_init_py
+
+# --- Remote cache (default: on for all commands, all hosts) ---
 # The API key is not stored here. Add it to .bazelrc.user (gitignored):
-#   build:remote --remote_header=x-buildbuddy-api-key=YOUR_KEY
-build:remote --remote_cache=grpcs://remote.buildbuddy.io
-build:remote --remote_cache_compression=true
-build:remote --remote_timeout=600
+#   common --remote_header=x-buildbuddy-api-key=YOUR_KEY
+common --remote_cache=grpcs://remote.buildbuddy.io
+common --remote_timeout=10m
+build --remote_cache_compression=true
+
+# Disable network access for sandboxed actions by default.
+build --sandbox_default_allow_network=false
+
+# Show output of failing tests inline instead of requiring `cat bazel-testlogs/...`
+test --test_output=errors
+test --test_verbose_timeout_warnings
+# On any build failure, print the full command line that failed
+build --verbose_failures
+
+# Allow the Bazel server to check directory sources for changes. Ensures that the Bazel server
+# notices when a directory changes, if you have a directory listed in the srcs of some target.
+# Docs: https://bazel.build/reference/command-line-reference#flag--host_jvm_args
+startup --host_jvm_args=-DBAZEL_TRACK_SOURCE_DIRECTORIES=1
+
+# Allow exclusive tests to run in the sandbox. Fixes a bug where Bazel doesn't enable sandboxing for
+# tests with `tags=["exclusive"]`.
+# Docs: https://bazel.build/reference/command-line-reference#flag--incompatible_exclusive_test_sandboxed
+common --incompatible_exclusive_test_sandboxed
+
+# Set default value of `allow_empty` to `False` in `glob()`. This prevents a common mistake when
+# attempting to use `glob()` to match files in a subdirectory that is opaque to the current package
+# because it contains a BUILD file. See https://github.com/bazelbuild/bazel/issues/8195.
+# Docs: https://bazel.build/reference/command-line-reference#flag--incompatible_disallow_empty_glob
+common --incompatible_disallow_empty_glob
+
+
+# --- --config=remote: laptop offloading builds to the remote executor (no BES). ---
+common:remote --remote_executor=grpcs://remote.buildbuddy.io
+build:remote --remote_local_fallback
+build:remote --remote_download_outputs=toplevel
+
+# Without this flag, a mid-build eviction fails the whole invocation; with it, Bazel retries.
+build:remote --experimental_remote_cache_eviction_retries=5
+
+# Always download coverage files for tests from the remote cache. By default, coverage files are not
+# downloaded on test result cache hits when --remote_download_minimal is enabled, making it impossible
+# to generate a full coverage report.
+# Docs: https://bazel.build/reference/command-line-reference#flag--experimental_fetch_all_coverage_outputs
+common:remote --experimental_fetch_all_coverage_outputs
+
+# Claude thinks that the default for local builds is roughly <CPU count>, and for remote builds is
+# ~200. If that's true, the value I was going to set is lower than the default.
+# TEND(optimization): Check the BuildBuddy invocation timeline occasionally to look for underutilization.
+# Gaps where few actions are in flight can indicate that this value should be raised.
+# common:remote --jobs=100
+
+
+# --- --config=ci: Expected to run from GitHub Actions. Starts with :remote and adds remote executor + BES reporting. ---
+common:ci --config=remote
+build:ci --bes_backend=grpcs://remote.buildbuddy.io
+build:ci --bes_results_url=https://app.buildbuddy.io/invocation/
+
+# Only send BEP events for outputs that actually made it to the remote cache.
+# Keeps output from locally-executed / no-cache / no-remote actions out of BuildBuddy.
+build:ci --remote_build_event_upload=minimal
+# Logs which bazelrc flags are active - invaluable for debugging CI weirdness
+common:ci --announce_rc
+# Adds timestamps to action output; helpful when parsing slow builds
+build:ci --show_timestamps
+# GitHub Actions renders ANSI; force color since stdout isn't a TTY
+common:ci --color=yes
+# Tell us _everything_
+test:ci --test_output=all
+
+
+# --- --config=local: disable all remote features (offline / debugging). ---
+common:local --remote_cache=
+common:local --remote_executor=
+build:local --bes_backend=
+build:local --bes_results_url=
+
+
+# --- Target platform shortcuts ---
+build:linux_x86_64 --platforms=//platforms:linux_x86_64
+build:linux_arm64 --platforms=//platforms:linux_arm64
+build:darwin_arm64 --platforms=//platforms:darwin_arm64
 
 # Allow users to specify personal .bazelrc.user files.
 try-import %workspace%/.bazelrc.user

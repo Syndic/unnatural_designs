@@ -35,42 +35,54 @@ bazel mod tidy
 bazel run //:gazelle
 ```
 
-### Remote Cache
+### Remote Cache and Execution
 
-Builds use [Buildbuddy](https://buildbuddy.io) as a remote cache. CI is configured automatically.
-For local builds, add the following to `.bazelrc.user` (gitignored):
+Builds use [Buildbuddy](https://buildbuddy.io) for both remote caching and remote execution (on
+Linux x86_64). CI is configured automatically.
+
+For local use, add your API key to `.bazelrc.user` (gitignored):
 
 ```
-build:remote --remote_header=x-buildbuddy-api-key=YOUR_KEY
+common --remote_header=x-buildbuddy-api-key=YOUR_KEY
 ```
 
-Then pass `--config=remote` to any Bazel command to use the cache.
+The remote cache is enabled by default on every Bazel invocation. Additional configs:
+
+| Config            | Use when                                                                |
+| ----------------- | ----------------------------------------------------------------------- |
+| _(default)_       | Normal local/IDE/pre-commit usage - remote cache reads and writes.      |
+| `--config=remote` | Offload a build from your laptop to the remote executor (linux_x86_64). |
+| `--config=ci`     | Used by GitHub Actions: remote executor + BES reporting.                |
+| `--config=local`  | Disable all remote features (offline, or debugging cache issues).       |
+
+Target platform shortcuts are also available: `--config=linux_x86_64`, `--config=linux_arm64`,
+`--config=darwin_arm64`. See [`//platforms`](platforms/BUILD.bazel) for the platform definitions.
 
 ## CI
 
 Two GitHub Actions workflows run on every push and pull request to `main`.
 
-**CI** — code-change-driven checks:
+**CI** - code-change-driven checks:
 
-| Job                           | Trigger condition                                                                                   |
-| ----------------------------- | --------------------------------------------------------------------------------------------------- |
-| Gazelle check                 | Always — verifies BUILD files match source                                                          |
-| Go module completeness check  | Always — verifies every Go module is in the workflow matrices and has linter config                 |
-| go.work check                 | Always — verifies all Go modules are registered in `go.work`                                        |
-| Python scale check            | Always — fails if `py_*` target count exceeds threshold (see `meta/scripts/check_python_scale.py`) |
-| Secrets check                 | Always — verifies the `secrets/` directory contains no committed files                             |
-| golangci-lint                 | After module check passes — runs per Go module                                                      |
-| Build and test                | After all checks above pass                                                                         |
+| Job                          | Trigger condition                                                                                  |
+| ---------------------------- | -------------------------------------------------------------------------------------------------- |
+| Gazelle check                | Always - verifies BUILD files match source                                                         |
+| Go module completeness check | Always - verifies every Go module is in the workflow matrices and has linter config                |
+| go.work check                | Always - verifies all Go modules are registered in `go.work`                                       |
+| Python scale check           | Always - fails if `py_*` target count exceeds threshold (see `meta/scripts/check_python_scale.py`) |
+| Secrets check                | Always - verifies the `secrets/` directory contains no committed files                             |
+| golangci-lint                | After module check passes - runs per Go module                                                     |
+| Build and test               | After all checks above pass                                                                        |
 
-**Security** — also runs on a weekly schedule (Mondays at 02:00 UTC):
+**Security** - also runs on a weekly schedule (Mondays at 02:00 UTC):
 
-| Job                           | Purpose                                                                          |
-| ----------------------------- | -------------------------------------------------------------------------------- |
-| Go module completeness check  | Gate for the per-module security jobs below                                      |
-| Semgrep                       | SAST — scans for injection flaws, insecure API usage, and hardcoded secrets      |
-| govulncheck                   | Dependency CVE scanning — checks reachable call paths against the Go vuln DB     |
-| govulncheck-all               | A single static target that github can require pass for branch protection rules  |
-| Trivy                         | Supply chain and filesystem scanning — secrets, CVEs across all ecosystems       |
+| Job                          | Purpose                                                                         |
+| ---------------------------- | ------------------------------------------------------------------------------- |
+| Go module completeness check | Gate for the per-module security jobs below                                     |
+| Semgrep                      | SAST - scans for injection flaws, insecure API usage, and hardcoded secrets     |
+| govulncheck                  | Dependency CVE scanning - checks reachable call paths against the Go vuln DB    |
+| govulncheck-all              | A single static target that github can require pass for branch protection rules |
+| Trivy                        | Supply chain and filesystem scanning - secrets, CVEs across all ecosystems      |
 
 ## Automation
 
@@ -83,14 +95,14 @@ pre-commit install
 
 The hooks and their triggers:
 
-| Hook                 | Triggers on                                              |
-| -------------------- | -------------------------------------------------------- |
-| `bazel-mod-tidy`     | `go.mod`, `go.work`, `go.sum`                            |
-| `check-go-modules`   | `go.mod`, workflow `.yml` files, `.golangci.yml`         |
-| `gazelle`            | `*.go` files                                             |
-| `check-go-work`      | `go.mod`, `go.work`                                      |
-| `check-secrets-dir`  | files under `secrets/`                                   |
-| `check-python-scale` | `BUILD.bazel` files                                      |
+| Hook                 | Triggers on                                      |
+| -------------------- | ------------------------------------------------ |
+| `bazel-mod-tidy`     | `go.mod`, `go.work`, `go.sum`                    |
+| `check-go-modules`   | `go.mod`, workflow `.yml` files, `.golangci.yml` |
+| `gazelle`            | `*.go` files                                     |
+| `check-go-work`      | `go.mod`, `go.work`                              |
+| `check-secrets-dir`  | files under `secrets/`                           |
+| `check-python-scale` | `BUILD.bazel` files                              |
 
 **Dependency updates** are managed automatically by [Renovate](https://docs.renovatebot.com), which
 groups updates into separate PRs: Bazel toolchains and rulesets, Go dependencies, GitHub Actions,
