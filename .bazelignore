@@ -1,7 +1,0 @@
-# Paths Bazel should skip when walking the workspace.
-# Entries are workspace-relative directory paths; globs are not supported.
-
-# Claude Code drops worktrees, settings, and session state here. Without this entry, Bazel
-# discovers BUILD files inside checked-out worktrees and tries to treat them as part of the
-# primary workspace.
-.claude
