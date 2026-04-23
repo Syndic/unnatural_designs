@@ -98,7 +98,11 @@ func newInterfaceDriftCheck(templates []netbox.InterfaceTemplate, instances []ne
 	}
 }
 
-func newTypedDriftCheck(label string, templates []netbox.TypedComponentTemplate, instances []netbox.TypedComponent) componentDriftCheck {
+func newTypedDriftCheck(
+	label string,
+	templates []netbox.TypedComponentTemplate,
+	instances []netbox.TypedComponent,
+) componentDriftCheck {
 	byDT := map[int]map[string]componentSpec{}
 	byMT := map[int]map[string]componentSpec{}
 	for _, t := range templates {
@@ -128,7 +132,11 @@ func newTypedDriftCheck(label string, templates []netbox.TypedComponentTemplate,
 	}
 }
 
-func newNamedDriftCheck(label string, templates []netbox.NamedComponentTemplate, instances []netbox.NamedComponent) componentDriftCheck {
+func newNamedDriftCheck(
+	label string,
+	templates []netbox.NamedComponentTemplate,
+	instances []netbox.NamedComponent,
+) componentDriftCheck {
 	byDT := map[int]map[string]componentSpec{}
 	byMT := map[int]map[string]componentSpec{}
 	for _, t := range templates {
@@ -152,7 +160,11 @@ func newNamedDriftCheck(label string, templates []netbox.NamedComponentTemplate,
 	}
 }
 
-func compareComponentMaps(label string, expected, actual map[string]componentSpec, diff func(expected, actual componentSpec) []string) []string {
+func compareComponentMaps(
+	label string,
+	expected, actual map[string]componentSpec,
+	diff func(expected, actual componentSpec) []string,
+) []string {
 	if expected == nil {
 		expected = map[string]componentSpec{}
 	}
@@ -221,7 +233,9 @@ func poeSupplySufficient(supplyType, requiredType string, rules POEPowerRules) (
 		return false, "Power Supplying Equipment interface has an unrecognized poe_type"
 	}
 
-	//TODO: I'd like to add a tag to the model to indicate that a device is being powered directly instead of through PoE. This logic will need to change. Or maybe the logic that decides to call this could check for that tag and skip this check.
+	//TODO: I'd like to add a tag to the model to indicate that a device is being powered directly
+	// instead of through PoE. This logic will need to change. Or maybe the logic that decides to call
+	// this could check for that tag and skip this check.
 	if supplyRank >= requiredRank {
 		return true, ""
 	}
@@ -243,7 +257,12 @@ func poeTypeRank(v string) (int, bool) {
 	}
 }
 
-func isWANInterface(it netbox.Iface, dev netbox.Device, devices map[int]netbox.Device, rules InterfaceVRFRules) bool {
+func isWANInterface(
+	it netbox.Iface,
+	dev netbox.Device,
+	devices map[int]netbox.Device,
+	rules InterfaceVRFRules,
+) bool {
 	if rules.IsWANRole(dev.Role.Name) {
 		return true
 	}
@@ -316,8 +335,8 @@ func taggedRanges(ranges []netbox.IPRange, slug string) []netbox.IPRange {
 func overlappingRanges(a, b []netbox.IPRange) []string {
 	var findings []string
 	for _, ra := range a {
-		astart, aok := parseAddr(ra.StartAddress)
-		aend, aendOK := parseAddr(ra.EndAddress)
+		astart, aok := bareAddr(ra.StartAddress)
+		aend, aendOK := bareAddr(ra.EndAddress)
 		if !aok || !aendOK {
 			continue
 		}
@@ -325,13 +344,19 @@ func overlappingRanges(a, b []netbox.IPRange) []string {
 			if vrfID(ra.VRF) != vrfID(rb.VRF) {
 				continue
 			}
-			bstart, bok := parseAddr(rb.StartAddress)
-			bend, bendOK := parseAddr(rb.EndAddress)
+			bstart, bok := bareAddr(rb.StartAddress)
+			bend, bendOK := bareAddr(rb.EndAddress)
 			if !bok || !bendOK || astart.BitLen() != bstart.BitLen() {
 				continue
 			}
 			if rangesOverlap(astart, aend, bstart, bend) {
-				findings = append(findings, fmt.Sprintf("Range overlap between %s-%s and %s-%s", ra.StartAddress, ra.EndAddress, rb.StartAddress, rb.EndAddress))
+				findings = append(
+					findings,
+					fmt.Sprintf(
+						"Range overlap between %s-%s and %s-%s",
+						ra.StartAddress, ra.EndAddress, rb.StartAddress, rb.EndAddress,
+					),
+				)
 			}
 		}
 	}
@@ -352,8 +377,8 @@ func ipInRanges(ip netbox.IPAddress, ranges []netbox.IPRange) bool {
 		if vrfID(ip.VRF) != vrfID(r.VRF) {
 			continue
 		}
-		start, ok1 := parseAddr(r.StartAddress)
-		end, ok2 := parseAddr(r.EndAddress)
+		start, ok1 := bareAddr(r.StartAddress)
+		end, ok2 := bareAddr(r.EndAddress)
 		if !ok1 || !ok2 || start.BitLen() != addr.BitLen() {
 			continue
 		}
@@ -386,7 +411,12 @@ func interfaceHasMAC(it netbox.Iface) bool {
 }
 
 func wiredInterfaceComplete(it netbox.Iface, ips []netbox.IPAddress) bool {
-	return len(it.ConnectedEndpoints) > 0 && (it.VRF != nil || it.Mode != nil || it.UntaggedVLAN != nil || len(ips) > 0 || interfaceHasMAC(it))
+	return len(it.ConnectedEndpoints) > 0 &&
+		(it.VRF != nil ||
+			it.Mode != nil ||
+			it.UntaggedVLAN != nil ||
+			len(ips) > 0 ||
+			interfaceHasMAC(it))
 }
 
 func isWirelessType(t string) bool {
@@ -424,10 +454,6 @@ func bareAddr(cidr string) (netip.Addr, bool) {
 		return addr, true
 	}
 	return netip.Addr{}, false
-}
-
-func parseAddr(value string) (netip.Addr, bool) {
-	return bareAddr(value)
 }
 
 func vrfID(vrf *netbox.VRFRef) int {
@@ -583,7 +609,13 @@ func rearTemplatesToTyped(in []netbox.RearPortTemplate) []netbox.TypedComponentT
 func frontPortsToTyped(in []netbox.FrontPort) []netbox.TypedComponent {
 	out := make([]netbox.TypedComponent, 0, len(in))
 	for _, fp := range in {
-		out = append(out, netbox.TypedComponent{ID: fp.ID, Name: fp.Name, Device: fp.Device, Module: fp.Module, Type: fp.Type})
+		out = append(out, netbox.TypedComponent{
+			ID:     fp.ID,
+			Name:   fp.Name,
+			Device: fp.Device,
+			Module: fp.Module,
+			Type:   fp.Type,
+		})
 	}
 	return out
 }
@@ -591,7 +623,13 @@ func frontPortsToTyped(in []netbox.FrontPort) []netbox.TypedComponent {
 func rearPortsToTyped(in []netbox.RearPort) []netbox.TypedComponent {
 	out := make([]netbox.TypedComponent, 0, len(in))
 	for _, rp := range in {
-		out = append(out, netbox.TypedComponent{ID: rp.ID, Name: rp.Name, Device: rp.Device, Module: rp.Module, Type: rp.Type})
+		out = append(out, netbox.TypedComponent{
+			ID:     rp.ID,
+			Name:   rp.Name,
+			Device: rp.Device,
+			Module: rp.Module,
+			Type:   rp.Type,
+		})
 	}
 	return out
 }
@@ -599,7 +637,12 @@ func rearPortsToTyped(in []netbox.RearPort) []netbox.TypedComponent {
 func moduleBaysToNamed(in []netbox.ModuleBay) []netbox.NamedComponent {
 	out := make([]netbox.NamedComponent, 0, len(in))
 	for _, mb := range in {
-		out = append(out, netbox.NamedComponent{ID: mb.ID, Name: mb.Name, Device: mb.Device, Module: mb.Module})
+		out = append(out, netbox.NamedComponent{
+			ID:     mb.ID,
+			Name:   mb.Name,
+			Device: mb.Device,
+			Module: mb.Module,
+		})
 	}
 	return out
 }

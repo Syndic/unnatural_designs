@@ -51,5 +51,5 @@ func ModuleConsistency(s netbox.Snapshot) CheckResult {
 		}
 	}
 	sort.Strings(findings)
-	return CheckResult{Name: "Module Consistency", Findings: findings}
+	return CheckResult{Findings: findings}
 }

@@ -37,5 +37,5 @@ func DHCPReservations(s netbox.Snapshot) CheckResult {
 		}
 	}
 	sort.Strings(findings)
-	return CheckResult{Name: "DHCP Reservations", Findings: findings}
+	return CheckResult{Findings: findings}
 }
