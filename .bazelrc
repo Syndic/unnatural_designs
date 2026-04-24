@@ -48,26 +48,29 @@ coverage --combined_report=lcov
 coverage --experimental_fetch_all_coverage_outputs
 
 
-# --- --config=remote: laptop offloading builds to the remote executor (no BES). ---
-common:remote --remote_executor=grpcs://remote.buildbuddy.io
-build:remote --remote_local_fallback
-build:remote --remote_download_outputs=toplevel
+# --- --config=remote_bb: offload builds/tests to BuildBuddy's remote executors (no BES). ---
+# Naming convention: remote-executor configs are suffixed with the backend (`_bb` = BuildBuddy).
+# Additional remote backends (e.g. a future `:remote_rpi` for a Raspberry Pi CM5 cluster on
+# linux_arm64) would follow the same pattern and set their own --platforms.
+common:remote_bb --remote_executor=grpcs://remote.buildbuddy.io
+build:remote_bb --remote_local_fallback
+build:remote_bb --remote_download_outputs=toplevel
 
 # Without this flag, a mid-build eviction fails the whole invocation; with it, Bazel retries.
-build:remote --experimental_remote_cache_eviction_retries=5
+build:remote_bb --experimental_remote_cache_eviction_retries=5
 
 # The report-merge step can't run remotely — it needs every per-test file materialised locally.
-coverage:remote --strategy=CoverageReport=local
+coverage:remote_bb --strategy=CoverageReport=local
 
 # Claude thinks that the default for local builds is roughly <CPU count>, and for remote builds is
 # ~200. If that's true, the value I was going to set is lower than the default.
 # TEND(optimization): Check the BuildBuddy invocation timeline occasionally to look for underutilization.
 # Gaps where few actions are in flight can indicate that this value should be raised.
-# common:remote --jobs=100
+# common:remote_bb --jobs=100
 
 
-# --- --config=ci: Expected to run from GitHub Actions. Starts with :remote and adds remote executor + BES reporting. ---
-common:ci --config=remote
+# --- --config=ci: Expected to run from GitHub Actions. Starts with :remote_bb and adds BES reporting. ---
+common:ci --config=remote_bb
 build:ci --bes_backend=grpcs://remote.buildbuddy.io
 build:ci --bes_results_url=https://app.buildbuddy.io/invocation/
 

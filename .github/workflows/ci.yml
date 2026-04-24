@@ -91,7 +91,7 @@ jobs:
         with:
           buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
       # Coverage-specific flags (--combined_report, --experimental_fetch_all_coverage_outputs,
-      # --strategy=CoverageReport=local under :remote) live in .bazelrc under the `coverage`
+      # --strategy=CoverageReport=local under :remote_bb) live in .bazelrc under the `coverage`
       # command scope, so `bazel coverage //...` produces an identical report locally and in CI.
       #
       # TEND(lang-expand): `bazel coverage //...` picks up every language whose rules emit
