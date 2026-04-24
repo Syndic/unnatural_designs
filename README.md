@@ -113,6 +113,8 @@ VS Code-derived editors (e.g. Google Antigravity). Recommended extensions
   `golangci-lint` on save at package scope, surfacing inline findings that match what CI enforces.
 - [`emeraldwalk.runonsave`](https://marketplace.visualstudio.com/items?itemName=emeraldwalk.RunOnSave) -
   triggers the repo-health scripts on save.
+- [`ryanluker.vscode-coverage-gutters`](https://marketplace.visualstudio.com/items?itemName=ryanluker.vscode-coverage-gutters) -
+  paints gutter marks in Go files from a local `bazel coverage //...` run.
 
 | On-save check        | Triggers on                                |
 | -------------------- | ------------------------------------------ |
@@ -120,6 +122,12 @@ VS Code-derived editors (e.g. Google Antigravity). Recommended extensions
 | `check-go-modules`   | `go.mod`, workflow `.yml`, `.golangci.yml` |
 | `check-go-work`      | `go.mod`, `go.work`                        |
 | `check-python-scale` | `BUILD.bazel` files                        |
+
+**Viewing coverage locally**: run `bazel coverage //...` from the repo root, then open the
+Command Palette and pick _Coverage Gutters: Display Coverage_ (or _Watch_ for live updates).
+The merged lcov lives at `bazel-out/_coverage/_coverage_report.dat`; the extension is
+pre-configured in [`.vscode/settings.json`](.vscode/settings.json) to find it there. CI uploads
+the same file to Codecov, so local gutters and the Codecov dashboard reflect the same data.
 
 **Dependency updates** are managed automatically by [Renovate](https://docs.renovatebot.com), which
 groups updates into separate PRs: Bazel toolchains and rulesets, Go dependencies, GitHub Actions,
