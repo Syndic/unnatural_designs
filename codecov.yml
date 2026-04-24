@@ -1,0 +1,40 @@
+# Codecov configuration.
+# Docs: https://docs.codecov.com/docs/codecov-yaml
+#
+# Coverage is uploaded as a single merged lcov produced by `bazel coverage //...`.
+# Per-language breakdowns are handled here via components, not via separate CI uploads —
+# `bazel coverage` already aggregates across languages, and splitting the upload would
+# fight that model.
+
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+    patch:
+      default:
+        target: auto
+        threshold: 0%
+
+component_management:
+  default_rules:
+    statuses:
+      - type: project
+        target: auto
+        threshold: 1%
+  # TEND(lang-expand): add one entry per language adopted in the repo so Codecov emits a
+  # per-language breakdown. The Python entry is pre-seeded but inert until Python tests exist.
+  individual_components:
+    - component_id: go
+      name: Go
+      paths:
+        - "**/*.go"
+    - component_id: python
+      name: Python
+      paths:
+        - "**/*.py"
+
+comment:
+  layout: "header, diff, components, files, footer"
+  require_changes: false

@@ -73,6 +73,7 @@ Two GitHub Actions workflows run on every push and pull request to `main`.
 | Secrets check                | Always - verifies the `secrets/` directory contains no committed files                             |
 | golangci-lint                | After module check passes - runs per Go module                                                     |
 | Build and test               | After all checks above pass                                                                        |
+| Coverage                     | After build and test - `bazel coverage //...`, uploads merged lcov to Codecov                      |
 
 **Security** - also runs on a weekly schedule (Mondays at 02:00 UTC):
 
@@ -86,23 +87,39 @@ Two GitHub Actions workflows run on every push and pull request to `main`.
 
 ## Automation
 
-**Pre-commit hooks** (via [pre-commit](https://pre-commit.com)) run a subset of CI checks locally
-before each commit. To install:
+**Pre-commit hooks** (via [pre-commit](https://pre-commit.com)) run a narrow set of checks before
+each commit. To install:
 
 ```
 pre-commit install
 ```
 
-The hooks and their triggers:
+Only hooks that either fix the problem they detect (`bazel-mod-tidy`, `gazelle`) or prevent unsafe
+content from entering the repo (`check-secrets-dir`) run here. Verification-only checks live in the
+editor instead (see **Editor integration** below) so they can surface findings without blocking a
+commit when you want to switch contexts.
 
-| Hook                 | Triggers on                                      |
-| -------------------- | ------------------------------------------------ |
-| `bazel-mod-tidy`     | `go.mod`, `go.work`, `go.sum`                    |
-| `check-go-modules`   | `go.mod`, workflow `.yml` files, `.golangci.yml` |
-| `gazelle`            | `*.go` files                                     |
-| `check-go-work`      | `go.mod`, `go.work`                              |
-| `check-secrets-dir`  | files under `secrets/`                           |
-| `check-python-scale` | `BUILD.bazel` files                              |
+| Hook                | Triggers on                   |
+| ------------------- | ----------------------------- |
+| `bazel-mod-tidy`    | `go.mod`, `go.work`, `go.sum` |
+| `gazelle`           | `*.go` files                  |
+| `check-secrets-dir` | files under `secrets/`        |
+
+**Editor integration** (via `.vscode/`) - runs the non-fixing checks on save. Works in VS Code and
+VS Code-derived editors (e.g. Google Antigravity). Recommended extensions
+(`.vscode/extensions.json`):
+
+- [`golang.go`](https://marketplace.visualstudio.com/items?itemName=golang.go) - runs
+  `golangci-lint` on save at package scope, surfacing inline findings that match what CI enforces.
+- [`emeraldwalk.runonsave`](https://marketplace.visualstudio.com/items?itemName=emeraldwalk.RunOnSave) -
+  triggers the repo-health scripts on save.
+
+| On-save check        | Triggers on                                |
+| -------------------- | ------------------------------------------ |
+| `golangci-lint`      | `*.go` files                               |
+| `check-go-modules`   | `go.mod`, workflow `.yml`, `.golangci.yml` |
+| `check-go-work`      | `go.mod`, `go.work`                        |
+| `check-python-scale` | `BUILD.bazel` files                        |
 
 **Dependency updates** are managed automatically by [Renovate](https://docs.renovatebot.com), which
 groups updates into separate PRs: Bazel toolchains and rulesets, Go dependencies, GitHub Actions,
