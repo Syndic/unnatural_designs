@@ -2,5 +2,27 @@
   "go.lintTool": "golangci-lint",
   "go.lintOnSave": "package",
   "prettier.printWidth": 100,
-  "prettier.proseWrap": "always"
+  "prettier.proseWrap": "always",
+
+  "// Coverage Gutters": "Paints gutter marks from a local `bazel coverage //...` run. Bazel writes the merged lcov to bazel-out/_coverage/_coverage_report.dat; search is scoped there.",
+  "coverage-gutters.coverageFileNames": ["_coverage_report.dat", "lcov.info"],
+  "coverage-gutters.coverageBaseDir": "bazel-out",
+
+  "// Repo-health checks on save": "These scripts used to run in pre-commit. Moved here so they don't gate commits - they print to an output channel and do not block saving. Install the `emeraldwalk.runonsave` extension (recommended in extensions.json) for this to activate.",
+  "emeraldwalk.runonsave": {
+    "commands": [
+      {
+        "match": "(go\\.mod|\\.github/workflows/.*\\.yml|\\.golangci\\.yml)$",
+        "cmd": "python3 ${workspaceFolder}/meta/scripts/check_go_modules.py"
+      },
+      {
+        "match": "go\\.(mod|work)$",
+        "cmd": "python3 ${workspaceFolder}/meta/scripts/check_go_work.py"
+      },
+      {
+        "match": "BUILD\\.bazel$",
+        "cmd": "python3 ${workspaceFolder}/meta/scripts/check_python_scale.py"
+      }
+    ]
+  }
 }

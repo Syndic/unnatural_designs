@@ -23,13 +23,11 @@ behaviour that can be tightened.
 
 ---
 
-## Code Coverage Reporting
+## Python Coverage Reporting
 
-`golangci-lint` is in place for Go code quality. No test coverage reporting is currently set up.
-Worth adding to CI once there is meaningful code to measure. Candidate tooling:
-
-- **Go**: `go test -coverprofile` + a coverage reporting service (e.g. Codecov, Coveralls)
-- **Python**: `coverage.py` + the same reporting service
+Go coverage is now reported via `bazel coverage //...` + Codecov in the CI `coverage` job.
+Python coverage is not yet wired in; `coverage.py` output can be merged into the same Codecov
+upload once there is meaningful Python code to measure.
 
 ---
 

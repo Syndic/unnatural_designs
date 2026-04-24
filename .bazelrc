@@ -43,6 +43,10 @@ common --incompatible_exclusive_test_sandboxed
 # Docs: https://bazel.build/reference/command-line-reference#flag--incompatible_disallow_empty_glob
 common --incompatible_disallow_empty_glob
 
+coverage --combined_report=lcov
+# Required so coverage files are returned on remote-cache hits (not just on misses).
+coverage --experimental_fetch_all_coverage_outputs
+
 
 # --- --config=remote: laptop offloading builds to the remote executor (no BES). ---
 common:remote --remote_executor=grpcs://remote.buildbuddy.io
@@ -52,11 +56,8 @@ build:remote --remote_download_outputs=toplevel
 # Without this flag, a mid-build eviction fails the whole invocation; with it, Bazel retries.
 build:remote --experimental_remote_cache_eviction_retries=5
 
-# Always download coverage files for tests from the remote cache. By default, coverage files are not
-# downloaded on test result cache hits when --remote_download_minimal is enabled, making it impossible
-# to generate a full coverage report.
-# Docs: https://bazel.build/reference/command-line-reference#flag--experimental_fetch_all_coverage_outputs
-common:remote --experimental_fetch_all_coverage_outputs
+# The report-merge step can't run remotely — it needs every per-test file materialised locally.
+coverage:remote --strategy=CoverageReport=local
 
 # Claude thinks that the default for local builds is roughly <CPU count>, and for remote builds is
 # ~200. If that's true, the value I was going to set is lower than the default.
