@@ -1,0 +1,10 @@
+filegroup(
+    name = "sysroot",
+    srcs = glob(
+        ["**"],
+        exclude = [
+            "usr/lib/*/qt-default/**",
+        ],
+    ),
+    visibility = ["//visibility:public"],
+)

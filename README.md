@@ -62,6 +62,31 @@ follow the same naming pattern.
 Target platform shortcuts are also available: `--config=linux_x86_64`, `--config=linux_arm64`,
 `--config=darwin_arm64`. See [`//platforms`](platforms/BUILD.bazel) for the platform definitions.
 
+### Cross-compilation
+
+A hermetic LLVM toolchain ([`toolchains_llvm`](https://github.com/bazel-contrib/toolchains_llvm))
+is registered alongside Chromium-published Debian sysroots, so any host can produce binaries
+for any linux target:
+
+| Host  | → linux_x86_64 | → linux_arm64 | → darwin_arm64        |
+| ----- | -------------- | ------------- | --------------------- |
+| Mac   | ✓              | ✓             | ✓ (host Apple toolchain) |
+| Linux | ✓              | ✓             | ✗ (Apple SDK is Mac-only) |
+
+Build for a non-host target with the platform shortcut, e.g.:
+
+```
+bazel build //tools/... --config=linux_arm64
+```
+
+Tests cannot be cross-compiled locally — they need an execution platform that can run them, so
+target ≠ host requires a remote executor. Use `--config=remote_bb` to dispatch tests to
+BuildBuddy.
+
+The chromium sysroot URLs and BuildBuddy executor image (pinned in
+[`//platforms`](platforms/BUILD.bazel) by digest) are tracked by Renovate; updates arrive as PRs
+like any other dependency bump.
+
 ## CI
 
 Two GitHub Actions workflows run on every push and pull request to `main`.

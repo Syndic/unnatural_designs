@@ -6,6 +6,18 @@ platform(
         "@platforms//os:linux",
         "@platforms//cpu:x86_64",
     ],
+    # exec_properties only fire when this platform is used as the *execution* platform on a
+    # remote backend that understands them (BuildBuddy does). Local builds and target-only
+    # uses ignore them. We pin BuildBuddy's executor to ubuntu-22-04 because the default
+    # is Ubuntu 16.04 (glibc 2.23), too old for our prebuilt clang. The linux-exec LLVM
+    # distribution registered in MODULE.bazel must match this image's library set
+    # (currently: LLVM 17.0.6 ubuntu-22.04, which links against libtinfo6).
+    exec_properties = {
+        # Pinned by tag + digest for reproducibility. The :latest tag gives Renovate something
+        # to track; the @sha256:... digest is what Bazel actually pulls.
+        # renovate: datasource=docker depName=gcr.io/flame-public/rbe-ubuntu22-04
+        "container-image": "docker://gcr.io/flame-public/rbe-ubuntu22-04:latest@sha256:0d84a80bb0fc36ba5381942adcf6493249594dcc9044845c617b78c9b621cae3",
+    },
 )
 
 platform(

@@ -56,6 +56,24 @@ common:remote_bb --remote_executor=grpcs://remote.buildbuddy.io
 build:remote_bb --remote_local_fallback
 build:remote_bb --remote_download_outputs=toplevel
 
+# BuildBuddy's remote executors are linux_x86_64, so every remote action runs on that platform.
+# We pin execution platform accordingly and default target platform to linux_x86_64 (the common
+# case), but target is overridable by stacking another target-platform config on top, e.g.
+# `--config=remote_bb --config=linux_arm64` to cross-compile linux_arm64 binaries on a BB
+# executor. darwin targets are not reachable via BB (Apple SDK is host-Mac-only).
+common:remote_bb --platforms=//platforms:linux_x86_64
+common:remote_bb --extra_execution_platforms=//platforms:linux_x86_64
+# --host_platform tells Bazel to build host/exec tools (e.g. rules_go's `builder`, protoc) for
+# linux_x86_64 instead of the physical host. Without this, on a Mac the resolver picks
+# @@platforms//host:host (darwin_arm64) as the exec platform, producing Mach-O binaries that
+# BuildBuddy's Linux executors can't run ("Exec format error").
+common:remote_bb --host_platform=//platforms:linux_x86_64
+
+# Use platform-based toolchain resolution for C/C++ (the new model). Required to pick up the
+# hermetic LLVM toolchain registered in MODULE.bazel instead of Bazel's legacy host-cc lookup,
+# which fails on a cross-platform build.
+build --incompatible_enable_cc_toolchain_resolution
+
 # Without this flag, a mid-build eviction fails the whole invocation; with it, Bazel retries.
 build:remote_bb --experimental_remote_cache_eviction_retries=5
 

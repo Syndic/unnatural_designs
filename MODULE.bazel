@@ -27,3 +27,97 @@ bazel_dep(name = "rules_python", version = "1.9.0")
 
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")
 python.toolchain(python_version = "3.14")
+
+# ── C/C++ cross-compile toolchain ─────────────────────────────────────────────────────────────────
+# Hermetic LLVM toolchain with linux sysroots, so any host (mac or linux) can build for any
+# linux target. `clang` is inherently a cross-compiler; the sysroot supplies the target-OS
+# glibc headers and libraries that clang links against. darwin targets continue to use the
+# host Apple toolchain on Mac hosts (Apple SDK can't legally ship off a Mac).
+#
+# Targeted cross-compile matrix:
+#   Host Mac   → linux_x86_64, linux_arm64, darwin_arm64
+#   Host Linux → linux_x86_64, linux_arm64  (darwin_arm64 unreachable, Apple licensing)
+#
+# Even a same-arch build (e.g. linux_x86_64 exec → linux_x86_64 target on BuildBuddy) uses the
+# hermetic sysroot rather than the executor's system libraries, keeping outputs reproducible.
+bazel_dep(name = "toolchains_llvm", version = "1.7.0")
+
+llvm = use_extension("@toolchains_llvm//toolchain/extensions:llvm.bzl", "llvm")
+
+# Host-native toolchain (runs on the developer's machine — mac or linux). toolchains_llvm
+# auto-picks the right LLVM distribution based on the current host.
+llvm.toolchain(
+    name = "llvm_toolchain",
+    llvm_version = "18.1.8",
+)
+llvm.sysroot(
+    name = "llvm_toolchain",
+    label = "@sysroot_linux_x86_64//:sysroot",
+    targets = ["linux-x86_64"],
+)
+llvm.sysroot(
+    name = "llvm_toolchain",
+    label = "@sysroot_linux_arm64//:sysroot",
+    targets = ["linux-aarch64"],
+)
+use_repo(llvm, "llvm_toolchain")
+
+register_toolchains("@llvm_toolchain//:all")
+
+# Linux-x86_64-exec toolchain (runs on BuildBuddy's executors). Required under --config=remote_bb
+# because we force exec platform = linux_x86_64 via --host_platform, so the C++ toolchain must
+# itself be a linux binary. Sysroot labels are shared with the host toolchain above.
+#
+# Pinned to LLVM 17.0.6's ubuntu-22.04 prebuilt because:
+#   * Our BuildBuddy executor image (//platforms:linux_x86_64 exec_properties) is ubuntu-22.04.
+#   * 18.1.8 only ships an ubuntu-18.04 prebuilt, which links against libtinfo5 — Ubuntu 22.04
+#     only has libtinfo6, so that build fails to load.
+#   * 17.0.6 has an ubuntu-22.04 prebuilt that links against libtinfo6.
+# When LLVM ships an ubuntu-22.04 (or newer) prebuilt for a more recent version, bump both
+# this version and the strip_prefix/url to match.
+llvm.toolchain(
+    name = "llvm_toolchain_linux_x86_64",
+    exec_arch = "amd64",
+    exec_os = "linux",
+    llvm_version = "17.0.6",
+    sha256 = {"": "884ee67d647d77e58740c1e645649e29ae9e8a6fe87c1376be0f3a30f3cc9ab3"},
+    strip_prefix = {"": "clang+llvm-17.0.6-x86_64-linux-gnu-ubuntu-22.04"},
+    urls = {"": ["https://github.com/llvm/llvm-project/releases/download/llvmorg-17.0.6/clang+llvm-17.0.6-x86_64-linux-gnu-ubuntu-22.04.tar.xz"]},
+)
+llvm.sysroot(
+    name = "llvm_toolchain_linux_x86_64",
+    label = "@sysroot_linux_x86_64//:sysroot",
+    targets = ["linux-x86_64"],
+)
+llvm.sysroot(
+    name = "llvm_toolchain_linux_x86_64",
+    label = "@sysroot_linux_arm64//:sysroot",
+    targets = ["linux-aarch64"],
+)
+use_repo(llvm, "llvm_toolchain_linux_x86_64")
+
+register_toolchains("@llvm_toolchain_linux_x86_64//:all")
+
+# Chromium-published Debian Bullseye sysroots — the de-facto standard hermetic linux sysroot
+# used by Chromium, Electron, and many Bazel projects (e.g. bazelbuild/examples hello-cross).
+# Updating: pick a newer hash from https://commondatastorage.googleapis.com/chrome-linux-sysroot/
+# and update the sha256.
+#
+# Using http_archive + a custom BUILD file (rather than toolchains_llvm's built-in `sysroot`
+# rule) so we can exclude the Qt config directory, which contains a dangling symlink that
+# Bazel's sandbox refuses to materialise.
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+http_archive(
+    name = "sysroot_linux_x86_64",
+    build_file = "//build/sysroot:BUILD.bazel",
+    sha256 = "5df5be9357b425cdd70d92d4697d07e7d55d7a923f037c22dc80a78e85842d2c",
+    urls = ["https://commondatastorage.googleapis.com/chrome-linux-sysroot/toolchain/4f611ec025be98214164d4bf9fbe8843f58533f7/debian_bullseye_amd64_sysroot.tar.xz"],
+)
+
+http_archive(
+    name = "sysroot_linux_arm64",
+    build_file = "//build/sysroot:BUILD.bazel",
+    sha256 = "d303cf3faf7804c9dd24c9b6b167d0345d41d7fe4bfb7d34add3ab342f6a236c",
+    urls = ["https://commondatastorage.googleapis.com/chrome-linux-sysroot/toolchain/906cc7c6bf47d4bd969a3221fc0602c6b3153caa/debian_bullseye_arm64_sysroot.tar.xz"],
+)
