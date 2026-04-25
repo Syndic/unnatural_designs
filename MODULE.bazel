@@ -44,11 +44,25 @@ bazel_dep(name = "toolchains_llvm", version = "1.7.0")
 
 llvm = use_extension("@toolchains_llvm//toolchain/extensions:llvm.bzl", "llvm")
 
-# Host-native toolchain (runs on the developer's machine — mac or linux). toolchains_llvm
-# auto-picks the right LLVM distribution based on the current host.
+# Host-native toolchain (runs on the developer's machine — mac or linux). On mac we use
+# 18.1.8 (default). On linux-x86_64 we override to 17.0.6's ubuntu-22.04 prebuilt because
+# 18.1.8 only ships an ubuntu-18.04 build that links against libtinfo5, which Ubuntu 22.04+
+# (including BuildBuddy's executor and recent GitHub runners) no longer ships.
 llvm.toolchain(
     name = "llvm_toolchain",
-    llvm_version = "18.1.8",
+    llvm_versions = {
+        "": "18.1.8",
+        "linux-x86_64": "17.0.6",
+    },
+    sha256 = {
+        "linux-x86_64": "884ee67d647d77e58740c1e645649e29ae9e8a6fe87c1376be0f3a30f3cc9ab3",
+    },
+    strip_prefix = {
+        "linux-x86_64": "clang+llvm-17.0.6-x86_64-linux-gnu-ubuntu-22.04",
+    },
+    urls = {
+        "linux-x86_64": ["https://github.com/llvm/llvm-project/releases/download/llvmorg-17.0.6/clang+llvm-17.0.6-x86_64-linux-gnu-ubuntu-22.04.tar.xz"],
+    },
 )
 llvm.sysroot(
     name = "llvm_toolchain",
