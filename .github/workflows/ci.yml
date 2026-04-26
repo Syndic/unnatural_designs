@@ -45,6 +45,18 @@ jobs:
       - uses: actions/checkout@v6
       - run: python3 meta/scripts/check_secrets_dir.py
 
+  no-cgo-check:
+    name: No-cgo policy check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      # `go list -deps` is what surfaces transitive cgo, so the runner needs Go in PATH.
+      # Pinned via the toolchain version in MODULE.bazel to keep the source-of-truth singular.
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: tools/network_infrastructure_maintenance/go.mod
+      - run: python3 meta/scripts/check_no_cgo.py
+
   # TEND(lang-expand): this job lints Go only. When a new language is adopted, add a sibling
   # job (e.g. ruff for Python) — do not extend this matrix, the linter is Go-specific.
   golangci-lint:
@@ -72,6 +84,7 @@ jobs:
       go-work-check,
       python-scale-check,
       secrets-check,
+      no-cgo-check,
       golangci-lint,
     ]
     steps:

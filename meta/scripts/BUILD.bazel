@@ -75,3 +75,22 @@ py_test(
     main = "test_check_python_scale.py",
     deps = [":check_python_scale_lib"],
 )
+
+py_library(
+    name = "check_no_cgo_lib",
+    srcs = ["check_no_cgo.py"],
+)
+
+py_binary(
+    name = "check_no_cgo",
+    srcs = ["check_no_cgo.py"],
+    main = "check_no_cgo.py",
+)
+
+py_test(
+    name = "test_check_no_cgo",
+    size = "small",
+    srcs = ["test_check_no_cgo.py"],
+    main = "test_check_no_cgo.py",
+    deps = [":check_no_cgo_lib"],
+)

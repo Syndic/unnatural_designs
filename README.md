@@ -62,6 +62,37 @@ follow the same naming pattern.
 Target platform shortcuts are also available: `--config=linux_x86_64`, `--config=linux_arm64`,
 `--config=darwin_arm64`. See [`//platforms`](platforms/BUILD.bazel) for the platform definitions.
 
+### Cross-compilation
+
+Any host can build for any supported target with no extra setup, because the build is
+**pure-Go by policy** (see [`docs/future-considerations.md`](docs/future-considerations.md#introducing-cgo-or-python-c-extensions)).
+The Go toolchain ships every `GOOS`/`GOARCH` pair, so cross-compile needs no C toolchain,
+no LLVM, and no sysroot.
+
+| Host  | → linux_x86_64 | → linux_arm64 | → darwin_arm64 |
+| ----- | -------------- | ------------- | -------------- |
+| Mac   | ✓              | ✓             | ✓              |
+| Linux | ✓              | ✓             | ✓              |
+
+Build for a non-host target with the platform shortcut, e.g.:
+
+```
+bazel build //tools/... --config=linux_arm64
+```
+
+Linux outputs are statically linked (no glibc dependency) and can be dropped directly
+into a `FROM scratch` container.
+
+Tests cannot be cross-compiled locally — they need an execution platform that can run
+them, so target ≠ host requires a remote executor. Use `--config=remote_bb` to dispatch
+tests to BuildBuddy.
+
+The pure-Go assumption is enforced by [`meta/scripts/check_no_cgo.py`](meta/scripts/check_no_cgo.py),
+which runs as the `no-cgo-check` CI job and rejects both direct `import "C"` and any
+transitive dependency that compiles native code. Adding cgo or Python C-extensions would
+require rebuilding the cross-compile infrastructure on a hermetic C/C++ toolchain — see
+the linked future-considerations entry.
+
 ## CI
 
 Two GitHub Actions workflows run on every push and pull request to `main`.
@@ -75,6 +106,7 @@ Two GitHub Actions workflows run on every push and pull request to `main`.
 | go.work check                | Always - verifies all Go modules are registered in `go.work`                                       |
 | Python scale check           | Always - fails if `py_*` target count exceeds threshold (see `meta/scripts/check_python_scale.py`) |
 | Secrets check                | Always - verifies the `secrets/` directory contains no committed files                             |
+| No-cgo policy check          | Always - rejects `import "C"` and transitive deps that compile C/C++/cgo/SWIG                      |
 | golangci-lint                | After module check passes - runs per Go module                                                     |
 | Build and test               | After all checks above pass                                                                        |
 | Coverage                     | After build and test - `bazel coverage //...`, uploads merged lcov to Codecov                      |
