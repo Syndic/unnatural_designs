@@ -78,15 +78,23 @@ def find_go_modules(root: Path) -> list[Path]:
 
 
 def find_cgo_in_deps(module_dir: Path) -> list[str]:
-    """Return import paths of dependencies that compile native code.
+    """Return import paths of third-party dependencies that compile native code.
 
     Runs `go list -deps` with CGO_ENABLED=1 so conditionally-compiled cgo packages are
     surfaced. Returns import paths whose package metadata declares non-empty CgoFiles,
     CFiles, CXXFiles, SwigFiles, or SysoFiles.
+
+    Stdlib packages (.Standard == true) are excluded — they routinely contain cgo files
+    behind build tags (runtime/cgo, net's system DNS resolver, os/user, syscall) that are
+    only compiled in when CGO_ENABLED=1 *and* something imports "C". Since our build runs
+    in pure mode (--@rules_go//go/config:pure), those paths are dead. The policy is about
+    our code and our third-party deps; the stdlib is not actionable.
     """
     fmt = (
+        "{{if not .Standard}}"
         "{{if or .CgoFiles .CFiles .CXXFiles .SwigFiles .SysoFiles}}"
         "{{.ImportPath}}"
+        "{{end}}"
         "{{end}}"
     )
     env = {**os.environ, "CGO_ENABLED": "1"}
