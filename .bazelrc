@@ -47,6 +47,15 @@ coverage --combined_report=lcov
 # Required so coverage files are returned on remote-cache hits (not just on misses).
 coverage --experimental_fetch_all_coverage_outputs
 
+# Force CGO_ENABLED=0 for every go_binary / go_library / go_test in the build. This is the
+# pivot point that makes "build any target from any host" simple: Go's own toolchain ships
+# every GOOS/GOARCH pair, so no C toolchain or sysroot is needed for cross-compile.
+#
+# This is a deliberate policy choice for the monorepo — see docs/future-considerations.md
+# ("Introducing cgo or Python C-Extensions") for the implications of changing it. CI enforces
+# the policy via meta/scripts/check_no_cgo.py.
+build --@rules_go//go/config:pure
+
 
 # --- --config=remote_bb: offload builds/tests to BuildBuddy's remote executors (no BES). ---
 # Naming convention: remote-executor configs are suffixed with the backend (`_bb` = BuildBuddy).
@@ -93,16 +102,6 @@ common:local --remote_executor=
 build:local --bes_backend=
 build:local --bes_results_url=
 
-
-# --- Pure-Go enforcement ---
-# Force CGO_ENABLED=0 for every go_binary / go_library / go_test in the build. This is the
-# pivot point that makes "build any target from any host" simple: Go's own toolchain ships
-# every GOOS/GOARCH pair, so no C toolchain or sysroot is needed for cross-compile.
-#
-# This is a deliberate policy choice for the monorepo — see docs/future-considerations.md
-# ("Introducing cgo or Python C-Extensions") for the implications of changing it. CI enforces
-# the policy via meta/scripts/check_no_cgo.sh.
-build --@rules_go//go/config:pure
 
 # --- Target platform shortcuts ---
 build:linux_x86_64 --platforms=//platforms:linux_x86_64
