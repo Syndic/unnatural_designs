@@ -51,10 +51,12 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       # `go list -deps` is what surfaces transitive cgo, so the runner needs Go in PATH.
-      # Pinned via the toolchain version in MODULE.bazel to keep the source-of-truth singular.
+      # Use go.work as the source-of-truth — it's the workspace-level Go version directive
+      # and matches the version Bazel installs in MODULE.bazel (per-module go.mod files
+      # only declare each module's minimum, which can drift below the workspace version).
       - uses: actions/setup-go@v5
         with:
-          go-version-file: tools/network_infrastructure_maintenance/go.mod
+          go-version-file: go.work
       - run: python3 meta/scripts/check_no_cgo.py
 
   # TEND(lang-expand): this job lints Go only. When a new language is adopted, add a sibling
