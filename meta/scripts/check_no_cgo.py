@@ -15,6 +15,10 @@ When this check fails:
   - If the cgo is in a transitive dep: pick a pure-Go alternative if one exists, or
     explicitly accept the cost and rebuild the cross-compile infrastructure first.
 
+Module discovery delegates to check_go_work.registered_modules — go.work is the canonical
+list, and check_go_work independently verifies that every on-disk go.mod is listed there,
+so trusting the workspace file here is safe.
+
 Usage: ./meta/scripts/check_no_cgo.py
 """
 
@@ -24,6 +28,14 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+# When invoked as `python3 meta/scripts/check_no_cgo.py` (the form used in CI and by
+# pre-commit), the workspace root is not on sys.path, so `from meta.scripts.X` would fail.
+# Adding the workspace root explicitly fixes that and is harmless under bazel py_binary,
+# where rules_python already makes the import resolvable.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from meta.scripts.check_go_work import registered_modules  # noqa: E402
 
 # Matches `import "C"` as a top-level statement (not inside a string or comment block).
 # cgo's preamble is a comment block above the import, but the `import "C"` line itself is
@@ -62,19 +74,6 @@ def find_cgo_in_sources(root: Path) -> list[Path]:
         if _CGO_IMPORT_RE.search(content):
             offenders.append(go_file.relative_to(root))
     return offenders
-
-
-def find_go_modules(root: Path) -> list[Path]:
-    """Return directories containing a go.mod, excluding bazel-* and .git."""
-    modules: list[Path] = []
-    for gomod in root.rglob("go.mod"):
-        if any(
-            part in _SKIP_DIR_NAMES or any(part.startswith(p) for p in _SKIP_DIR_PREFIXES)
-            for part in gomod.parts
-        ):
-            continue
-        modules.append(gomod.parent)
-    return modules
 
 
 def find_cgo_in_deps(module_dir: Path) -> list[str]:
@@ -124,7 +123,7 @@ def check(root: Path) -> int:
             print(f"  {path}")
         print()
 
-    modules = find_go_modules(root)
+    modules = sorted(registered_modules(root))
     if not shutil.which("go"):
         print(
             "warning: `go` is not on PATH; skipping transitive dependency check.\n"
@@ -132,18 +131,17 @@ def check(root: Path) -> int:
             file=sys.stderr,
         )
     else:
-        for module_dir in modules:
+        for module_rel in modules:
             try:
-                offenders = find_cgo_in_deps(module_dir)
+                offenders = find_cgo_in_deps(root / module_rel)
             except RuntimeError as e:
                 print(f"error: {e}", file=sys.stderr)
                 exit_code = 1
                 continue
             if offenders:
                 exit_code = 1
-                rel = module_dir.relative_to(root)
                 print(
-                    f"Module //{rel} has dependencies that compile C/C++/cgo/SWIG:"
+                    f"Module //{module_rel} has dependencies that compile C/C++/cgo/SWIG:"
                 )
                 for path in offenders:
                     print(f"  {path}")

@@ -79,12 +79,14 @@ py_test(
 py_library(
     name = "check_no_cgo_lib",
     srcs = ["check_no_cgo.py"],
+    deps = [":check_go_work_lib"],
 )
 
 py_binary(
     name = "check_no_cgo",
     srcs = ["check_no_cgo.py"],
     main = "check_no_cgo.py",
+    deps = [":check_go_work_lib"],
 )
 
 py_test(
