@@ -83,13 +83,14 @@ bazel build //tools/... --config=linux_arm64
 Linux outputs are statically linked (no glibc dependency) and can be dropped directly
 into a `FROM scratch` container.
 
-Test binaries cross-compile fine, but running them requires an executor whose host
-matches the target platform — there is no cross-platform emulation layer (qemu, Rosetta,
+While test binaries would cross-compile fine, running them requires an executor whose host
+matches the target platform. There is no cross-platform emulation layer (qemu, Rosetta,
 etc.) wired into the build, and there is no plan to add one. Tests are run on whichever
 platform is convenient (developer host or `--config=remote_bb`'s linux_x86_64 executor),
 on the working assumption that an environment-independent test which passes in one
-environment will pass in all of them. If we ever see evidence to the contrary, that
-assumption — not the build infrastructure — is what should change first.
+environment will pass in all of them. If we ever see evidence to the contrary, we'll want to
+figure out how the behavior became tied to the environment, and either make it independent
+again or figure out a way to ensure that test runs are completed in every relevant environment.
 
 The pure-Go assumption is enforced by [`meta/scripts/check_no_cgo.py`](meta/scripts/check_no_cgo.py),
 which runs as the `no-cgo-check` CI job and rejects both direct `import "C"` and any
