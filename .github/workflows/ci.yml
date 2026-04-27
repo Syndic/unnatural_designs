@@ -78,10 +78,10 @@ jobs:
           working-directory: ${{ matrix.module }}
 
   # Build and test runs once per supported target platform, on a runner whose host matches
-  # the target. Pure-Go cross-compile means each platform's build is cheap; running tests
-  # natively per platform is the only way (without an emulation layer we deliberately do
-  # not have) to actually exercise platform-specific code paths and catch regressions
-  # early. A failure on any matrix entry blocks the merge.
+  # the target. (Running tests natively per platform is the only way (without an emulation
+  # layer we do not have) to actually exercise platform-specific code paths and catch regressions
+  # early.) A failure on any matrix entry blocks the merge because build-and-test-all is a
+  # required status check.
   #
   # If a future supported target lacks a matching GitHub-hosted runner, that entry would
   # build-only (drop `test`); none of our current targets are in that situation.
@@ -114,9 +114,6 @@ jobs:
           buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
       # `--config=ci` brings in remote cache + BES; `--config=<platform>` pins the target
       # platform explicitly (matching the runner host, so test binaries execute natively).
-      # On non-x86_64 runners, BuildBuddy's remote executors can't run actions (they're
-      # linux_x86_64), so `--remote_local_fallback` (set under :remote_bb) routes actions
-      # to the local runner. The remote *cache* still works for every platform.
       - run: bazel test --config=ci --config=${{ matrix.platform }} //...
 
   build-and-test-all:
