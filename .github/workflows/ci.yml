@@ -120,7 +120,7 @@ jobs:
       - run: bazel test --config=ci --config=${{ matrix.platform }} //...
 
   build-and-test-all:
-    name: govulncheck (all modules)
+    name: Build and test (all targets)
     runs-on: ubuntu-latest
     needs: [build-and-test-per-target]
     if: always()
