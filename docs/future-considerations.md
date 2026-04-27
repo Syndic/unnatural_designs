@@ -110,6 +110,75 @@ drift.
 
 ---
 
+## Pure-Python Enforcement (Known Gap)
+
+We protect against cgo via `meta/scripts/check_no_cgo.py`, but **we do not currently
+have an analogous check for impure Python** — Python dependencies that ship native code
+(C extensions, Cython, etc.). This is a deliberate gap, not an oversight.
+
+### Why The Gap Exists
+
+The cgo check is cheap and authoritative: `go list -deps` is a toolchain-native query
+that surfaces native code in any package, and it could run against an existing 198-package
+dep graph the moment it was written. The Python equivalent is messier:
+
+- **Source-level scan is much weaker.** Python has no `import "C"` marker. The
+  user-visible idioms (`import ctypes`, Cython `.pyx`, `setup.py` `Extension(...)`) catch
+  the most blatant cases but miss the dominant failure mode: an innocent-looking
+  `import numpy` whose dependency is itself impure.
+- **Dependency-level scan needs an artifact we don't have.** The clean check is "every
+  resolved wheel in the lock file ends in `-py3-none-any.whl`," but there is no lock
+  file yet — `rules_python` is registered, the interpreter is pinned (3.14), but no
+  `pip` extension is configured and no Python deps are pinned anywhere.
+- **Building the check against zero deps means designing against a hypothetical
+  lock-file format with nothing to validate it on.**
+
+### Failure Modes Without The Check
+
+If someone introduces an impure Python dep tomorrow:
+
+- **Most likely first failure: build-time, reasonably clear.** `rules_python` requires
+  per-platform lock entries to resolve native wheels. The first cross-compile to a
+  target without a lock yields something like *"no matching wheel found for platform
+  linux_arm64"* — names the dep, names the platform, points the contributor toward the
+  pure-vs-impure distinction.
+- **Less likely but more painful: silent platform mismatch.** If locks are configured
+  for every platform and the wheels happen to install everywhere, the build succeeds.
+  The cost shows up later as larger artifacts, slower CI, and target-specific runtime
+  failures only on platforms that go untested. This is the case the check would catch
+  that build errors would not.
+
+### Plan: Build The Check When The First Impure Dep Lands
+
+Test-driven design for build infrastructure: write the check that would have caught the
+actual problem, not the check we imagine in advance. The first impure Python dep should
+be both:
+
+1. A trigger to add the check that would have flagged it, sized to the actual lock-file
+   format `rules_python` produces by then.
+2. A deliberate decision — not slipped in unnoticed because no check existed.
+
+The natural trigger to revisit aligns with the existing
+**Gazelle Python Support** entry: once `python-scale-check` starts firing because real
+Python targets are arriving, we will also have the lock file the check needs.
+
+### Sketch of The Eventual Check
+
+When implemented, the check is roughly:
+
+```python
+# meta/scripts/check_pure_python.py
+# Walks the rules_python lock file and asserts every resolved wheel filename matches
+# the pure-Python pattern: *-py3-none-any.whl. Fails on any platform-specific wheel
+# (e.g. *-cp311-cp311-manylinux_2_17_x86_64.whl).
+```
+
+Wired into CI alongside `no-cgo-check`. The README cross-compile section grows a sibling
+note: "Adding a Python C-extension would require rebuilding the cross-compile
+infrastructure to handle per-platform native wheels — see future-considerations."
+
+---
+
 ## Multi-Platform Fan-Out Build Target
 
 ### Problem
