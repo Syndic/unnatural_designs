@@ -173,9 +173,12 @@ When implemented, the check is roughly:
 # (e.g. *-cp311-cp311-manylinux_2_17_x86_64.whl).
 ```
 
-Wired into CI alongside `no-cgo-check`. The README cross-compile section grows a sibling
-note: "Adding a Python C-extension would require rebuilding the cross-compile
-infrastructure to handle per-platform native wheels — see future-considerations."
+Wired into CI alongside `no-cgo-check`. When this lands, the README cross-compile
+section should grow a sibling note: "Adding a Python C-extension would require
+introducing per-platform native-wheel resolution — `rules_python`'s `pip.parse` with
+`requirements_lock_<platform>` locks for every supported target, plus the realistic
+risk of wheel-availability gaps on niche platforms (musllinux, linux_arm64). See
+future-considerations."
 
 ---
 
@@ -269,9 +272,13 @@ build:remote_bb --//build/release:release_platforms=//platforms:linux_x86_64,//p
    listing the per-platform sub-binaries. See `rules_go`'s `go_cross_binary` and
    `rules_oci`'s `multi_platform_image` for working precedents.
 
-4. **CI does not need this.** CI already builds the matrix as separate jobs (one per
-   platform, parallel). The motivation is developer ergonomics + future release-bundle
-   targets, not CI throughput.
+4. **CI handles multi-platform via a runner matrix, not via this rule.** CI runs the
+   `build-and-test` job once per supported target on a matching-host runner (see
+   `.github/workflows/ci.yml`). That catches per-platform regressions early and runs
+   tests natively on each platform. The motivation for an in-Bazel fan-out target is
+   different: developer ergonomics (one local command instead of three) and future
+   release-bundle artifacts (e.g. a multi-arch container image whose inputs are
+   per-platform binaries from one build invocation).
 
 ### Suggested Trigger and Scope When Revisiting
 

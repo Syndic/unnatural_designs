@@ -77,9 +77,17 @@ jobs:
         with:
           working-directory: ${{ matrix.module }}
 
+  # Build and test runs once per supported target platform, on a runner whose host matches
+  # the target. Pure-Go cross-compile means each platform's build is cheap; running tests
+  # natively per platform is the only way (without an emulation layer we deliberately do
+  # not have) to actually exercise platform-specific code paths and catch regressions
+  # early. A failure on any matrix entry blocks the merge.
+  #
+  # If a future supported target lacks a matching GitHub-hosted runner, that entry would
+  # build-only (drop `test`); none of our current targets are in that situation.
   build-and-test:
-    name: Build and test
-    runs-on: ubuntu-latest
+    name: Build and test (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
     needs: [
       gazelle-check,
       go-modules-check,
@@ -89,12 +97,27 @@ jobs:
       no-cgo-check,
       golangci-lint,
     ]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux_x86_64
+            runner: ubuntu-latest
+          - platform: linux_arm64
+            runner: ubuntu-24.04-arm
+          - platform: darwin_arm64
+            runner: macos-latest
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/setup-bazel-remote
         with:
           buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
-      - run: bazel test --config=ci //...
+      # `--config=ci` brings in remote cache + BES; `--config=<platform>` pins the target
+      # platform explicitly (matching the runner host, so test binaries execute natively).
+      # On non-x86_64 runners, BuildBuddy's remote executors can't run actions (they're
+      # linux_x86_64), so `--remote_local_fallback` (set under :remote_bb) routes actions
+      # to the local runner. The remote *cache* still works for every platform.
+      - run: bazel test --config=ci --config=${{ matrix.platform }} //...
 
   coverage:
     name: Coverage
@@ -109,12 +132,17 @@ jobs:
       # --strategy=CoverageReport=local under :remote_bb) live in .bazelrc under the `coverage`
       # command scope, so `bazel coverage //...` produces an identical report locally and in CI.
       #
+      # Coverage runs on a single platform (linux_x86_64) by deliberate choice: it measures
+      # source-line coverage, which is platform-independent for pure-Go code without build
+      # tags. If we ever introduce platform-conditional code that needs per-target coverage
+      # measurement, this job would become a matrix like build-and-test.
+      #
       # TEND(lang-expand): `bazel coverage //...` picks up every language whose rules emit
       # coverage (rules_go does automatically). When adopting a new language, confirm its
       # ruleset is wired into Bazel's coverage collection — e.g. rules_python needs
       # coverage deps on py_test; rules_java needs JaCoCo. If coverage output is silently
       # missing for a language, that's the thing to check.
-      - run: bazel coverage --config=ci //...
+      - run: bazel coverage --config=ci --config=linux_x86_64 //...
       - name: Locate merged lcov
         id: lcov
         run: echo "path=$(bazel info output_path)/_coverage/_coverage_report.dat" >> "$GITHUB_OUTPUT"

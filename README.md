@@ -74,29 +74,47 @@ no LLVM, and no sysroot.
 | Mac   | ✓              | ✓             | ✓              |
 | Linux | ✓              | ✓             | ✓              |
 
-Build for a non-host target with the platform shortcut, e.g.:
+Linux outputs are statically linked (no glibc dependency) and can be dropped directly
+into a `FROM scratch` container.
+
+#### CI exercises every platform
+
+Every PR runs `bazel test //... --config=<platform>` on a matching-host runner for each
+supported target — `linux_x86_64` on `ubuntu-latest`, `linux_arm64` on
+`ubuntu-24.04-arm`, `darwin_arm64` on `macos-latest`. A change that breaks the build or
+tests on any platform fails CI before it can land. There is no cross-platform emulation
+layer (qemu, Rosetta) anywhere in the build, and no plan to add one — running tests
+natively on a matching host is what makes the matrix meaningful.
+
+#### Local builds default to the host platform
+
+Bare `bazel build //...` and `bazel test //...` build for the host. To build (or test)
+for a different target, add the platform-shortcut config:
 
 ```
 bazel build //tools/... --config=linux_arm64
 ```
 
-Linux outputs are statically linked (no glibc dependency) and can be dropped directly
-into a `FROM scratch` container.
+Tests that target a platform other than the host can be built locally but not executed —
+the binary won't run on the host's OS/arch. To verify your change builds across every
+supported platform from your dev box, run the three configs in turn (or wait for CI). A
+single command that fans out to every reachable target is on the future-considerations
+list and would land alongside the first multi-arch release artifact.
 
-While test binaries would cross-compile fine, running them requires an executor whose host
-matches the target platform. There is no cross-platform emulation layer (qemu, Rosetta,
-etc.) wired into the build, and there is no plan to add one. Tests are run on whichever
-platform is convenient (developer host or `--config=remote_bb`'s linux_x86_64 executor),
-on the working assumption that an environment-independent test which passes in one
-environment will pass in all of them. If we ever see evidence to the contrary, we'll want to
-figure out how the behavior became tied to the environment, and either make it independent
-again or figure out a way to ensure that test runs are completed in every relevant environment.
+#### Pure-Go is enforced
 
-The pure-Go assumption is enforced by [`meta/scripts/check_no_cgo.py`](meta/scripts/check_no_cgo.py),
-which runs as the `no-cgo-check` CI job and rejects both direct `import "C"` and any
-transitive dependency that compiles native code. Adding cgo or Python C-extensions would
-require rebuilding the cross-compile infrastructure on a hermetic C/C++ toolchain — see
-the linked future-considerations entry.
+[`meta/scripts/check_no_cgo.py`](meta/scripts/check_no_cgo.py) runs as the `no-cgo-check`
+CI job and rejects both direct `import "C"` and any transitive dependency that compiles
+native code. Adding cgo or Python C-extensions would require rebuilding the cross-compile
+story on a hermetic C/C++ toolchain (and accepting that darwin becomes Mac-only because
+the Apple SDK can't ship off macOS) — see the linked future-considerations entry for the
+implications.
+
+Tests are run on whichever platforms CI exercises, on the working assumption that an
+environment-independent test which passes in one environment will pass in all of them.
+If we ever see evidence to the contrary, we'll want to figure out how the behavior
+became tied to the environment and either make it independent again or ensure the
+relevant environments are covered.
 
 ## CI
 
