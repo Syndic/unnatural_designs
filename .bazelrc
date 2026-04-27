@@ -47,6 +47,15 @@ coverage --combined_report=lcov
 # Required so coverage files are returned on remote-cache hits (not just on misses).
 coverage --experimental_fetch_all_coverage_outputs
 
+# Force CGO_ENABLED=0 for every go_binary / go_library / go_test in the build. This is the
+# pivot point that makes "build any target from any host" simple: Go's own toolchain ships
+# every GOOS/GOARCH pair, so no C toolchain or sysroot is needed for cross-compile.
+#
+# This is a deliberate policy choice for the monorepo — see docs/future-considerations.md
+# ("Introducing cgo or Python C-Extensions") for the implications of changing it. CI enforces
+# the policy via meta/scripts/check_no_cgo.py.
+build --@rules_go//go/config:pure
+
 
 # --- --config=remote_bb: offload builds/tests to BuildBuddy's remote executors (no BES). ---
 # Naming convention: remote-executor configs are suffixed with the backend (`_bb` = BuildBuddy).
@@ -95,9 +104,19 @@ build:local --bes_results_url=
 
 
 # --- Target platform shortcuts ---
+# BuildBuddy has no linux_arm64 or darwin_arm64 executors, so the per-platform configs for
+# those targets also clear --remote_executor (set by --config=remote_bb / --config=ci). Without
+# this, non-x86_64 actions dispatch to a linux_x86_64 executor and fail with "Exec format error"
+# rather than falling back locally — BB accepts the action, then fails it. The remote *cache*
+# is unaffected; only execution routing changes. When a future :remote_rpi backend (or similar)
+# adds linux_arm64 executors, replace the clear here with a config-conditional executor URL.
 build:linux_x86_64 --platforms=//platforms:linux_x86_64
+
 build:linux_arm64 --platforms=//platforms:linux_arm64
+build:linux_arm64 --remote_executor=
+
 build:darwin_arm64 --platforms=//platforms:darwin_arm64
+build:darwin_arm64 --remote_executor=
 
 # Allow users to specify personal .bazelrc.user files.
 try-import %workspace%/.bazelrc.user
