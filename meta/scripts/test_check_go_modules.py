@@ -4,10 +4,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from meta.scripts._workspace import found_modules
 from meta.scripts.check_go_modules import (
     check_golangci_configs,
     check_workflow_matrices,
-    found_modules,
     workflow_module_lists,
 )
 

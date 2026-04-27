@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from meta.scripts.check_go_work import found_modules, registered_modules
+from meta.scripts._workspace import found_modules, registered_modules
 
 
 def write_go_work(root: Path, content: str) -> None:
