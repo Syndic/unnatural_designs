@@ -1,0 +1,6 @@
+# Files to copy into new worktrees. Uses .gitignore syntax.
+# Only files that match a pattern AND are gitignored are copied;
+# tracked files (e.g. secrets/secrets.md) are skipped automatically.
+
+.bazelrc.user
+secrets/*
