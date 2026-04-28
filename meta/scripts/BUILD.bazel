@@ -72,6 +72,15 @@ py_test(
     name = "test_check_python_scale",
     size = "small",
     srcs = ["test_check_python_scale.py"],
+    # TEMPORARY: Diagnostic for rules_python 2.0.0 + BuildBuddy. Per BB support,
+    # the default executor image is too old for python-build-standalone CPython
+    # 3.14 — sys._base_executable is unset, crashing the rules_python bootstrap.
+    # Applying their suggested image override on this single target to confirm
+    # the per-target route works before generalizing. Remove once we have a
+    # repo-wide fix (or once rules_python ships a guard for the missing attr).
+    exec_properties = {
+        "test.container-image": "gcr.io/flame-public/rbe-ubuntu24-04:latest",
+    },
     main = "test_check_python_scale.py",
     deps = [":check_python_scale_lib"],
 )

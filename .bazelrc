@@ -72,13 +72,6 @@ build:remote_bb --experimental_remote_cache_eviction_retries=5
 # The report-merge step can't run remotely — it needs every per-test file materialised locally.
 coverage:remote_bb --strategy=CoverageReport=local
 
-# Pin the BuildBuddy executor's test container to Ubuntu 24.04. The default executor image is
-# too old for python-build-standalone CPython 3.14: its glibc/path-resolution behaviour leaves
-# `sys._base_executable` unset, which crashes rules_python 2.0.0's bootstrap stub before any
-# test code runs. Per BuildBuddy support, the newer base image fixes this. Scoped to test
-# actions via the `test.` prefix; build actions still use the default image.
-build:remote_bb --remote_default_exec_properties=test.container-image=gcr.io/flame-public/rbe-ubuntu24-04:latest
-
 # Claude thinks that the default for local builds is roughly <CPU count>, and for remote builds is
 # ~200. If that's true, the value I was going to set is lower than the default.
 # TEND(optimization): Check the BuildBuddy invocation timeline occasionally to look for underutilization.
