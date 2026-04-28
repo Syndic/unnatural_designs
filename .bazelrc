@@ -11,6 +11,12 @@ build --incompatible_strict_action_env
 # Don't implicitly create __init__.py files.
 build --incompatible_default_to_explicit_init_py
 
+# rules_python 2.0.0's `script` bootstrap reads `sys._base_executable` unconditionally, which
+# isn't set on the BuildBuddy x86_64 executors and crashes every py_test before user code runs.
+# `system_python` uses a thin shell launcher around the same hermetic interpreter and avoids
+# the buggy code path. Remove once rules_python ships a guard for the missing attribute.
+common --@rules_python//python/config_settings:bootstrap_impl=system_python
+
 # --- Remote cache (default: on for all commands, all hosts) ---
 # The API key is not stored here. Add it to .bazelrc.user (gitignored):
 #   common --remote_header=x-buildbuddy-api-key=YOUR_KEY
