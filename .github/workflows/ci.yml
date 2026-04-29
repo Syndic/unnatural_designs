@@ -104,7 +104,7 @@ jobs:
           - platform: linux_x86_64
             runner: ubuntu-latest
           - platform: linux_arm64
-            runner: ubuntu-24.04-arm
+            runner: ubuntu-latest
           - platform: darwin_arm64
             runner: macos-latest
     steps:
@@ -113,7 +113,9 @@ jobs:
         with:
           buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
       # `--config=ci` brings in remote cache + BES; `--config=<platform>` pins the target
-      # platform explicitly (matching the runner host, so test binaries execute natively).
+      # platform explicitly. Linux actions execute on BuildBuddy executors of the matching
+      # arch (so the runner OS doesn't need to match the target); darwin actions execute on
+      # the runner since BB has no macOS executors.
       - run: bazel test --config=ci --config=${{ matrix.platform }} //...
 
   build-and-test-all:
