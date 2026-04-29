@@ -21,5 +21,5 @@ func RequiredDeviceFields(s netbox.Snapshot) CheckResult {
 		}
 	}
 	sort.Strings(findings)
-	return CheckResult{Name: "Required Device Fields", Findings: findings}
+	return CheckResult{Findings: findings}
 }

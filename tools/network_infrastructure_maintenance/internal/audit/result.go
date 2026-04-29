@@ -1,6 +1,5 @@
 package audit
 
-// CheckResult holds the outcome of a single audit check.
 type CheckResult struct {
 	Name     string        `json:"name"`
 	Findings []string      `json:"findings"`

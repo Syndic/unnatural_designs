@@ -33,5 +33,5 @@ func SwitchLinkSymmetry(s netbox.Snapshot) CheckResult {
 		}
 	}
 	sort.Strings(findings)
-	return CheckResult{Name: "Switch Link Symmetry", Findings: findings}
+	return CheckResult{Findings: findings}
 }

@@ -15,7 +15,7 @@ type POEPowerRules struct {
 
 func POEPower(s netbox.Snapshot, rules POEPowerRules) CheckResult {
 	if !rules.CheckPoweredDeviceSupply {
-		return CheckResult{Name: "PoE Power Sufficiency"}
+		return CheckResult{}
 	}
 	var findings []string
 	for _, it := range s.Interfaces {
@@ -48,5 +48,5 @@ func POEPower(s netbox.Snapshot, rules POEPowerRules) CheckResult {
 		}
 	}
 	sort.Strings(findings)
-	return CheckResult{Name: "PoE Power Sufficiency", Findings: findings}
+	return CheckResult{Findings: findings}
 }

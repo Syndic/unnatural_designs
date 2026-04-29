@@ -31,5 +31,5 @@ func IPVLANConsistency(s netbox.Snapshot) CheckResult {
 		}
 	}
 	sort.Strings(findings)
-	return CheckResult{Name: "IP / VLAN Consistency", Findings: findings}
+	return CheckResult{Findings: findings}
 }

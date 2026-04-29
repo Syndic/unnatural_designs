@@ -15,5 +15,5 @@ func DeviceLocations(s netbox.Snapshot) CheckResult {
 		}
 	}
 	sort.Strings(findings)
-	return CheckResult{Name: "Device Locations", Findings: findings}
+	return CheckResult{Findings: findings}
 }

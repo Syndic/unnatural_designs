@@ -26,5 +26,5 @@ func PlannedDevices(s netbox.Snapshot) CheckResult {
 		}
 	}
 	sort.Strings(findings)
-	return CheckResult{Name: "Planned Device Hygiene", Findings: findings}
+	return CheckResult{Findings: findings}
 }

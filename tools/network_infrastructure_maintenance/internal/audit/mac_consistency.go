@@ -35,5 +35,5 @@ func MACConsistency(s netbox.Snapshot) CheckResult {
 		}
 	}
 	sort.Strings(findings)
-	return CheckResult{Name: "MAC Consistency", Findings: findings}
+	return CheckResult{Findings: findings}
 }

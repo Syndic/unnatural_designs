@@ -20,5 +20,5 @@ func PatchPanelContinuity(s netbox.Snapshot) CheckResult {
 		}
 	}
 	sort.Strings(findings)
-	return CheckResult{Name: "Patch Panel Continuity", Findings: findings}
+	return CheckResult{Findings: findings}
 }

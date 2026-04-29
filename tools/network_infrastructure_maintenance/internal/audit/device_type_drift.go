@@ -43,5 +43,5 @@ func DeviceTypeDrift(s netbox.Snapshot) CheckResult {
 	if len(drifts) > 0 {
 		findings = []string{fmt.Sprintf("%d devices drift from their expected components", len(drifts))}
 	}
-	return CheckResult{Name: "Device Type Drift", Findings: findings, Extra: drifts}
+	return CheckResult{Findings: findings, Extra: drifts}
 }

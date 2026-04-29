@@ -68,34 +68,40 @@ func (c *Client) LatestChange(ctx context.Context) (ObjectChange, error) {
 // completed so far.
 type PageProgressFunc func(itemsSoFar, totalCount, requestsSoFar int)
 
-func FetchAll[T any](ctx context.Context, client *Client, path string) ([]T, int, int, error) {
+func FetchAll[T any](
+	ctx context.Context,
+	client *Client,
+	path string,
+) (items []T, requests, pages int, err error) {
 	return FetchAllWithProgress[T](ctx, client, path, nil)
 }
 
-// FetchAllWithProgress is like FetchAll but invokes progress (if non-nil)
-// after each page is parsed.
-func FetchAllWithProgress[T any](ctx context.Context, client *Client, path string, progress PageProgressFunc) ([]T, int, int, error) {
-	urlStr, err := client.ResolveURL(path)
+func FetchAllWithProgress[T any](
+	ctx context.Context,
+	client *Client,
+	path string,
+	progress PageProgressFunc,
+) (items []T, requests, pages int, err error) {
+	var urlStr string
+	urlStr, err = client.ResolveURL(path)
 	if err != nil {
-		return nil, 0, 0, err
+		return
 	}
-	var out []T
-	requests := 0
-	pagesSeen := 0
 	for urlStr != "" {
-		body, err := client.DoRequest(ctx, urlStr)
+		var body []byte
+		body, err = client.DoRequest(ctx, urlStr)
 		if err != nil {
-			return nil, requests, pagesSeen, err
+			return
 		}
 		requests++
-		pagesSeen++
+		pages++
 		var p page[T]
-		if err := json.Unmarshal(body, &p); err != nil {
-			return nil, requests, pagesSeen, err
+		if err = json.Unmarshal(body, &p); err != nil {
+			return
 		}
-		out = append(out, p.Results...)
+		items = append(items, p.Results...)
 		if progress != nil {
-			progress(len(out), p.Count, requests)
+			progress(len(items), p.Count, requests)
 		}
 		if p.Next != nil {
 			urlStr = *p.Next
@@ -103,7 +109,7 @@ func FetchAllWithProgress[T any](ctx context.Context, client *Client, path strin
 			urlStr = ""
 		}
 	}
-	return out, requests, pagesSeen, nil
+	return
 }
 
 func (c *Client) ResolveURL(path string) (string, error) {

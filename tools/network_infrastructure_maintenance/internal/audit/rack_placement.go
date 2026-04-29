@@ -45,5 +45,5 @@ func RackPlacement(s netbox.Snapshot, rules RackPlacementRules) CheckResult {
 		}
 	}
 	sort.Strings(findings)
-	return CheckResult{Name: "Rack Placement", Findings: findings}
+	return CheckResult{Findings: findings}
 }

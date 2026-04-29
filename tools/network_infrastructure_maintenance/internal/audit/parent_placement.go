@@ -34,5 +34,5 @@ func ParentPlacement(s netbox.Snapshot) CheckResult {
 		}
 	}
 	sort.Strings(findings)
-	return CheckResult{Name: "Parent Placement Consistency", Findings: findings}
+	return CheckResult{Findings: findings}
 }

@@ -22,7 +22,7 @@ func Cables(s netbox.Snapshot) CheckResult {
 		}
 	}
 	sort.Strings(findings)
-	return CheckResult{Name: "Cable Consistency", Findings: findings}
+	return CheckResult{Findings: findings}
 }
 
 func missingCableSide(c netbox.Cable) string {

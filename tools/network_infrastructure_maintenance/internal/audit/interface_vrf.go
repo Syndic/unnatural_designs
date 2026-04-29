@@ -24,7 +24,7 @@ func (r InterfaceVRFRules) IsWANRole(role string) bool {
 
 func InterfaceVRF(s netbox.Snapshot, rules InterfaceVRFRules) CheckResult {
 	if !rules.RequireOnInterfaces {
-		return CheckResult{Name: "Interface VRF Coverage"}
+		return CheckResult{}
 	}
 	var findings []string
 	for _, it := range s.Interfaces {
@@ -48,5 +48,5 @@ func InterfaceVRF(s netbox.Snapshot, rules InterfaceVRFRules) CheckResult {
 		findings = append(findings, fmt.Sprintf("%s %s is missing VRF", dev.Name, it.Name))
 	}
 	sort.Strings(findings)
-	return CheckResult{Name: "Interface VRF Coverage", Findings: findings}
+	return CheckResult{Findings: findings}
 }

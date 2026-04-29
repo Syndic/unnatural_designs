@@ -16,66 +16,71 @@ func Honeypots(s netbox.Snapshot) CheckResult {
 		}
 	}
 
-	prefixes := make([]netbox.Prefix, 0, len(s.Prefixes))
-	for _, p := range s.Prefixes {
-		if p.VLAN != nil {
-			prefixes = append(prefixes, p)
-		}
+	type vlanPrefix struct {
+		netboxPrefix netbox.Prefix
+		parsedPrefix netip.Prefix
 	}
-
+	var prefixes []vlanPrefix
 	var findings []string
-	for _, p := range prefixes {
-		prefixNet, err := netip.ParsePrefix(p.Prefix)
-		if err != nil {
-			findings = append(findings, fmt.Sprintf("prefix %s could not be parsed while checking honeypot coverage", p.Prefix))
+	for _, p := range s.Prefixes {
+		if p.VLAN == nil {
 			continue
 		}
+		parsedPrefix, err := netip.ParsePrefix(p.Prefix)
+		if err != nil {
+			findings = append(
+				findings,
+				fmt.Sprintf("prefix %s could not be parsed while checking honeypot coverage", p.Prefix),
+			)
+			continue
+		}
+		prefixes = append(prefixes, vlanPrefix{netboxPrefix: p, parsedPrefix: parsedPrefix})
+	}
 
-		found := false
-		for _, ip := range honeypots {
-			if vrfID(ip.VRF) != vrfID(p.VRF) {
+	for _, vp := range prefixes {
+		covered := false
+		for _, hp := range honeypots {
+			if vrfID(hp.VRF) != vrfID(vp.netboxPrefix.VRF) {
 				continue
 			}
-			addr, ok := bareAddr(ip.Address)
-			if !ok {
-				continue
-			}
-			if prefixNet.Contains(addr) {
-				found = true
+			addr, ok := bareAddr(hp.Address)
+			if ok && vp.parsedPrefix.Contains(addr) {
+				covered = true
 				break
 			}
 		}
-		if !found {
-			findings = append(findings, fmt.Sprintf("%s (%s) has no honeypot IP", p.Prefix, p.VLAN.Name))
+		if !covered {
+			findings = append(
+				findings,
+				fmt.Sprintf("%s (%s) has no honeypot IP", vp.netboxPrefix.Prefix, vp.netboxPrefix.VLAN.Name),
+			)
 		}
 	}
 
-	for _, ip := range honeypots {
-		addr, ok := bareAddr(ip.Address)
+	for _, hp := range honeypots {
+		addr, ok := bareAddr(hp.Address)
 		if !ok {
-			findings = append(findings, fmt.Sprintf("%s is tagged honeypot but could not be parsed", ip.Address))
+			findings = append(
+				findings,
+				fmt.Sprintf("%s is tagged honeypot but could not be parsed", hp.Address),
+			)
 			continue
 		}
-
 		matched := false
-		for _, p := range prefixes {
-			if vrfID(ip.VRF) != vrfID(p.VRF) {
-				continue
-			}
-			prefixNet, err := netip.ParsePrefix(p.Prefix)
-			if err != nil {
-				continue
-			}
-			if prefixNet.Contains(addr) {
+		for _, vp := range prefixes {
+			if vrfID(hp.VRF) == vrfID(vp.netboxPrefix.VRF) && vp.parsedPrefix.Contains(addr) {
 				matched = true
 				break
 			}
 		}
 		if !matched {
-			findings = append(findings, fmt.Sprintf("%s is tagged honeypot but is not inside any VLAN-backed prefix", ip.Address))
+			findings = append(
+				findings,
+				fmt.Sprintf("%s is tagged honeypot but is not inside any VLAN-backed prefix", hp.Address),
+			)
 		}
 	}
 
 	sort.Strings(findings)
-	return CheckResult{Name: "Honeypot Coverage", Findings: findings}
+	return CheckResult{Findings: findings}
 }

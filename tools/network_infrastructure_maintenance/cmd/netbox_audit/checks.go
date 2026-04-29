@@ -141,6 +141,7 @@ func runAudit(ctx context.Context, snap netbox.Snapshot, cfg auditConfig, checks
 			defer wg.Done()
 			started := time.Now()
 			result := check.Run(ctx, snap, cfg)
+			result.Name = check.Name()
 			duration := time.Since(started)
 			findingCount := len(result.Findings)
 			for _, drift := range result.Extra {

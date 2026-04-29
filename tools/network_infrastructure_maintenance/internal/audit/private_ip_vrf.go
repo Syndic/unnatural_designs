@@ -30,5 +30,5 @@ func PrivateIPVRF(s netbox.Snapshot, rules PrivateIPVRFRules) CheckResult {
 		}
 	}
 	sort.Strings(findings)
-	return CheckResult{Name: "Private IP VRF Coverage", Findings: findings}
+	return CheckResult{Findings: findings}
 }

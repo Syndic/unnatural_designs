@@ -61,5 +61,5 @@ func WirelessNormalization(s netbox.Snapshot, rules WirelessNormalizationRules) 
 		}
 	}
 	sort.Strings(findings)
-	return CheckResult{Name: "Wireless Normalization", Findings: findings}
+	return CheckResult{Findings: findings}
 }
