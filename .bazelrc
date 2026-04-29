@@ -104,16 +104,45 @@ build:local --bes_results_url=
 
 
 # --- Target platform shortcuts ---
-# BuildBuddy has no linux_arm64 or darwin_arm64 executors, so the per-platform configs for
-# those targets also clear --remote_executor (set by --config=remote_bb / --config=ci). Without
-# this, non-x86_64 actions dispatch to a linux_x86_64 executor and fail with "Exec format error"
-# rather than falling back locally — BB accepts the action, then fails it. The remote *cache*
-# is unaffected; only execution routing changes. When a future :remote_rpi backend (or similar)
-# adds linux_arm64 executors, replace the clear here with a config-conditional executor URL.
+# BuildBuddy serves linux_x86_64 and linux_arm64 executors. For each linux config we
+# register both the matching BB exec platform AND the matching BB cc toolchain so
+# toolchain resolution can dispatch actions (including Bazel-internal cpp tools like
+# ijar) to the correct arch's executor pool with a compatible cpp toolchain. We do
+# this per-config rather than globally in MODULE.bazel: a global registration would
+# expose BB's linux platforms / toolchains on the darwin runner too, where ijar would
+# pick a linux exec platform and then fail to find a compatible cc toolchain (the
+# host only has its auto-detected darwin cc toolchain).
+#
+# Without --extra_toolchains, the BB cc toolchains aren't considered during cpp
+# toolchain resolution at all (BB's transitive register_toolchains in their bzlmod
+# MODULE.bazel doesn't surface them in our build). The linux_x86_64 case happened
+# to work without this flag because the Linux runner's auto-detected local_config_cc
+# satisfies the BB linux_x86_64 exec platform's constraints; linux_arm64 doesn't
+# get the same accident.
+#
+# darwin_arm64 still has no remote executor, so its per-platform config clears
+# --remote_executor (otherwise BB would accept the action and fail it with "Exec format
+# error" on a Linux executor rather than the runner falling back locally). The remote
+# *cache* is unaffected; only execution routing changes.
+#
+# Devs on a non-linux host (e.g. macOS) who want `bazel test --config=linux_*` to
+# actually run the linux test binaries can opt in by adding the following to their
+# .bazelrc.user (which already holds the BB API key):
+#
+#     test:linux_x86_64 --config=remote_bb
+#     test:linux_arm64  --config=remote_bb
+#
+# Builds work locally without this (pure-Go cross-compile); only test *execution*
+# needs an arch-matched runtime. We don't enable this in the committed .bazelrc
+# because it'd silently couple "target linux" with "use BB" for everyone, including
+# devs on a native linux host who don't need or want remote execution.
 build:linux_x86_64 --platforms=//platforms:linux_x86_64
+build:linux_x86_64 --extra_execution_platforms=@toolchains_buildbuddy//platforms:linux_x86_64
+build:linux_x86_64 --extra_toolchains=@toolchains_buildbuddy//toolchains/cc:ubuntu_gcc_x86_64
 
 build:linux_arm64 --platforms=//platforms:linux_arm64
-build:linux_arm64 --remote_executor=
+build:linux_arm64 --extra_execution_platforms=@toolchains_buildbuddy//platforms:linux_arm64
+build:linux_arm64 --extra_toolchains=@toolchains_buildbuddy//toolchains/cc:ubuntu_gcc_arm64
 
 build:darwin_arm64 --platforms=//platforms:darwin_arm64
 build:darwin_arm64 --remote_executor=
