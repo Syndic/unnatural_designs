@@ -92,8 +92,8 @@ common:ci --announce_rc
 build:ci --show_timestamps
 # GitHub Actions renders ANSI; force color since stdout isn't a TTY
 common:ci --color=yes
-# Tell us _everything_
-test:ci --test_output=all
+# If we need you to tell us _everything_
+# test:ci --test_output=all
 
 
 # --- --config=local: disable all remote features (offline / debugging). ---
