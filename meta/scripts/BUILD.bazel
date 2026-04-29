@@ -1,5 +1,15 @@
 load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 
+# TEMPORARY (rules_python 2.0.0 + Python 3.14 + BuildBuddy):
+# Each py_test below sets exec_properties = {"test.container-image": ".../rbe-ubuntu24-04:latest"}.
+# BB's default test executor image is too old for python-build-standalone CPython 3.14 —
+# sys._base_executable ends up unset, which crashes rules_python 2.0.0's bootstrap stub
+# before any test code runs. Per BB support, pinning the test container to Ubuntu 24.04
+# fixes this. Per-target form is used because --remote_default_exec_properties and
+# exec_properties on //platforms:linux_x86_64 both failed to propagate; only target-level
+# exec_properties did. Remove once rules_python guards the missing attr or BB upgrades
+# its default executor image. See PR #36 for the investigation history.
+
 py_library(
     name = "check_go_work_lib",
     srcs = ["check_go_work.py"],
@@ -15,6 +25,7 @@ py_test(
     name = "test_check_go_work",
     size = "small",
     srcs = ["test_check_go_work.py"],
+    exec_properties = {"test.container-image": "gcr.io/flame-public/rbe-ubuntu24-04:latest"},
     main = "test_check_go_work.py",
     deps = [":check_go_work_lib"],
 )
@@ -34,6 +45,7 @@ py_test(
     name = "test_check_go_modules",
     size = "small",
     srcs = ["test_check_go_modules.py"],
+    exec_properties = {"test.container-image": "gcr.io/flame-public/rbe-ubuntu24-04:latest"},
     main = "test_check_go_modules.py",
     deps = [":check_go_modules_lib"],
 )
@@ -53,6 +65,7 @@ py_test(
     name = "test_check_secrets_dir",
     size = "small",
     srcs = ["test_check_secrets_dir.py"],
+    exec_properties = {"test.container-image": "gcr.io/flame-public/rbe-ubuntu24-04:latest"},
     main = "test_check_secrets_dir.py",
     deps = [":check_secrets_dir_lib"],
 )
@@ -72,6 +85,7 @@ py_test(
     name = "test_check_python_scale",
     size = "small",
     srcs = ["test_check_python_scale.py"],
+    exec_properties = {"test.container-image": "gcr.io/flame-public/rbe-ubuntu24-04:latest"},
     main = "test_check_python_scale.py",
     deps = [":check_python_scale_lib"],
 )
@@ -93,6 +107,7 @@ py_test(
     name = "test_check_no_cgo",
     size = "small",
     srcs = ["test_check_no_cgo.py"],
+    exec_properties = {"test.container-image": "gcr.io/flame-public/rbe-ubuntu24-04:latest"},
     main = "test_check_no_cgo.py",
     deps = [":check_no_cgo_lib"],
 )

@@ -6,17 +6,6 @@ platform(
         "@platforms//os:linux",
         "@platforms//cpu:x86_64",
     ],
-    # Pin BuildBuddy's test container to Ubuntu 24.04. The default executor image is too
-    # old for python-build-standalone CPython 3.14: its glibc/path-resolution behaviour
-    # leaves sys._base_executable unset, which crashes rules_python 2.0.0's bootstrap
-    # stub before any test code runs. The `test.` prefix scopes this to test actions only;
-    # build actions still use BB's default image. Per-target verification confirmed this
-    # specific image fixes the bootstrap on rules_python 2.0.0 + Python 3.14. Remove (or
-    # revisit the image tag) once rules_python ships a guard for the missing attribute,
-    # or once BuildBuddy's default executor image is upgraded.
-    exec_properties = {
-        "test.container-image": "gcr.io/flame-public/rbe-ubuntu24-04:latest",
-    },
 )
 
 platform(
