@@ -23,10 +23,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from meta.scripts._workspace import find_files, workspace_root  # noqa: E402
 
-# Bumped from 15 when meta/scripts/_workspace.py was extracted as shared infrastructure
-# (one extra py_library plus its py_test). The signal still holds: when the count of
-# application Python targets crosses this, evaluate Gazelle.
-THRESHOLD = 20
+# DO NOT BUMP THIS VALUE WITHOUT EXPLICIT OWNER APPROVAL.
+#
+# This threshold exists to get the owner's attention. When the count of py_* targets
+# crosses it, the owner evaluates whether it is time to adopt Gazelle (or some other
+# scaling step). A failing check IS the signal — silently raising THRESHOLD to make CI green
+# defeats the entire mechanism.
+#
+# If you hit this failure: stop, surface it, and ask the owner.
+# Do not "fix" it by editing this number; that hides the signal.
+# Given an overeager LLM's attempt to "fix an issue without bothering anyone about it", CODEOWNERS
+# now guards this file so the change cannot be merged without the owner's review.
+THRESHOLD = 15
 
 # Matches py_library(, py_binary(, py_test( at the start of a non-comment line.
 _PYTHON_TARGET_RE = re.compile(r"^\s*(py_library|py_binary|py_test)\s*\(")
