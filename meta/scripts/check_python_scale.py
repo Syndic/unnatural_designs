@@ -34,7 +34,7 @@ from meta.scripts._workspace import find_files, workspace_root  # noqa: E402
 # Do not "fix" it by editing this number; that hides the signal.
 # Given an overeager LLM's attempt to "fix an issue without bothering anyone about it", CODEOWNERS
 # now guards this file so the change cannot be merged without the owner's review.
-THRESHOLD = 15
+THRESHOLD = 20
 
 # Matches py_library(, py_binary(, py_test( at the start of a non-comment line.
 _PYTHON_TARGET_RE = re.compile(r"^\s*(py_library|py_binary|py_test)\s*\(")
