@@ -7,4 +7,4 @@
 #
 # See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
 
-meta/scripts/check_python_scale.py @Syndic
+meta/scripts/check_python_scale.py @Syndic @UnnaturalDesigns
