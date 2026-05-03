@@ -5,7 +5,7 @@ module(
 
 # ── Platforms ─────────────────────────────────────────────────────────────────────────────────────
 # Standard OS/CPU constraints used by //platforms:*.
-bazel_dep(name = "platforms", version = "1.0.0")
+bazel_dep(name = "platforms", version = "1.1.0")
 
 # ── BuildBuddy remote execution ───────────────────────────────────────────────────────────────────
 # Provides exec-platform definitions (linux_x86_64, linux_arm64) and CC toolchains for BB's
