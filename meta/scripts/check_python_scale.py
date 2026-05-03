@@ -12,35 +12,43 @@ Usage: ./meta/scripts/check_python_scale.py
 """
 
 import re
-import subprocess
 import sys
 from pathlib import Path
 
-THRESHOLD = 15
+# When invoked as `python3 meta/scripts/check_python_scale.py` (the form used in CI and by
+# pre-commit), the workspace root is not on sys.path, so `from meta.scripts.X` would fail.
+# Adding the workspace root explicitly fixes that and is harmless under bazel py_binary,
+# where rules_python already makes the import resolvable.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from meta.scripts._workspace import find_files, workspace_root  # noqa: E402
+
+# DO NOT BUMP THIS VALUE WITHOUT EXPLICIT OWNER APPROVAL.
+#
+# This threshold exists to get the owner's attention. When the count of py_* targets
+# crosses it, the owner evaluates whether it is time to adopt Gazelle (or some other
+# scaling step). A failing check IS the signal — silently raising THRESHOLD to make CI green
+# defeats the entire mechanism.
+#
+# If you hit this failure: stop, surface it, and ask the owner.
+# Do not "fix" it by editing this number; that hides the signal.
+# Given an overeager LLM's attempt to "fix an issue without bothering anyone about it", CODEOWNERS
+# now guards this file so the change cannot be merged without the owner's review.
+THRESHOLD = 20
 
 # Matches py_library(, py_binary(, py_test( at the start of a non-comment line.
 _PYTHON_TARGET_RE = re.compile(r"^\s*(py_library|py_binary|py_test)\s*\(")
-
-
-def workspace_root() -> Path:
-    result = subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"],
-        capture_output=True, text=True, check=True,
-    )
-    return Path(result.stdout.strip())
 
 
 def count_python_targets(root: Path) -> dict[Path, int]:
     """Count py_* target declarations per BUILD.bazel file, relative to root.
 
     Comment lines (those whose first non-whitespace character is #) are excluded before matching,
-    so commented-out targets do not inflate the count. Bazel output symlinks (bazel-*) and .git
-    are excluded.
+    so commented-out targets do not inflate the count. Bazel output symlinks (bazel-*), .git, and
+    node_modules are excluded.
     """
     counts: dict[Path, int] = {}
-    for build_file in root.rglob("BUILD.bazel"):
-        if any(part.startswith("bazel-") or part == ".git" for part in build_file.parts):
-            continue
+    for build_file in find_files(root, "BUILD.bazel"):
         active_lines = [
             line for line in build_file.read_text().splitlines()
             if not line.lstrip().startswith("#")

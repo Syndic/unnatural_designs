@@ -1,0 +1,10 @@
+# CODEOWNERS — required reviewers for specific paths.
+#
+# With "Require review from Code Owners" enabled in branch protection, any PR that touches a
+# path listed below cannot merge without an approving review from the listed owner(s). This is
+# the structural lock for human-signal constants (e.g. THRESHOLD values) that should never be
+# adjusted casually.
+#
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+meta/scripts/check_python_scale.py @Syndic

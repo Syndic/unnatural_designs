@@ -15,9 +15,9 @@ When this check fails:
   - If the cgo is in a transitive dep: pick a pure-Go alternative if one exists, or
     explicitly accept the cost and rebuild the cross-compile infrastructure first.
 
-Module discovery delegates to check_go_work.registered_modules — go.work is the canonical
-list, and check_go_work independently verifies that every on-disk go.mod is listed there,
-so trusting the workspace file here is safe.
+Module discovery delegates to _workspace.registered_modules — go.work is the canonical list,
+and check_go_work independently verifies that every on-disk go.mod is listed there, so
+trusting the workspace file here is safe.
 
 Usage: ./meta/scripts/check_no_cgo.py
 """
@@ -35,38 +35,25 @@ from pathlib import Path
 # where rules_python already makes the import resolvable.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from meta.scripts.check_go_work import registered_modules  # noqa: E402
+from meta.scripts._workspace import (  # noqa: E402
+    find_files,
+    registered_modules,
+    workspace_root,
+)
 
 # Matches `import "C"` as a top-level statement (not inside a string or comment block).
 # cgo's preamble is a comment block above the import, but the `import "C"` line itself is
 # real code — it always matches this pattern when cgo is in use.
 _CGO_IMPORT_RE = re.compile(r'^\s*import\s+"C"\s*$', re.MULTILINE)
 
-# Directories we should not descend into.
-_SKIP_DIR_PREFIXES = ("bazel-",)
-_SKIP_DIR_NAMES = {".git", "node_modules"}
-
-
-def workspace_root() -> Path:
-    result = subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"],
-        capture_output=True, text=True, check=True,
-    )
-    return Path(result.stdout.strip())
-
 
 def find_cgo_in_sources(root: Path) -> list[Path]:
     """Return .go files containing `import "C"`, relative to root.
 
-    bazel-* output dirs and .git are excluded.
+    bazel-* output dirs, .git, and node_modules are excluded.
     """
     offenders: list[Path] = []
-    for go_file in root.rglob("*.go"):
-        if any(
-            part in _SKIP_DIR_NAMES or any(part.startswith(p) for p in _SKIP_DIR_PREFIXES)
-            for part in go_file.parts
-        ):
-            continue
+    for go_file in find_files(root, "*.go"):
         try:
             content = go_file.read_text()
         except (UnicodeDecodeError, OSError):

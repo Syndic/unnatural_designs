@@ -1,14 +1,29 @@
 load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 
 py_library(
+    name = "_workspace_lib",
+    srcs = ["_workspace.py"],
+)
+
+py_test(
+    name = "test__workspace",
+    size = "small",
+    srcs = ["test__workspace.py"],
+    main = "test__workspace.py",
+    deps = [":_workspace_lib"],
+)
+
+py_library(
     name = "check_go_work_lib",
     srcs = ["check_go_work.py"],
+    deps = [":_workspace_lib"],
 )
 
 py_binary(
     name = "check_go_work",
     srcs = ["check_go_work.py"],
     main = "check_go_work.py",
+    deps = [":_workspace_lib"],
 )
 
 py_test(
@@ -16,18 +31,23 @@ py_test(
     size = "small",
     srcs = ["test_check_go_work.py"],
     main = "test_check_go_work.py",
-    deps = [":check_go_work_lib"],
+    deps = [
+        ":_workspace_lib",
+        ":check_go_work_lib",
+    ],
 )
 
 py_library(
     name = "check_go_modules_lib",
     srcs = ["check_go_modules.py"],
+    deps = [":_workspace_lib"],
 )
 
 py_binary(
     name = "check_go_modules",
     srcs = ["check_go_modules.py"],
     main = "check_go_modules.py",
+    deps = [":_workspace_lib"],
 )
 
 py_test(
@@ -35,7 +55,10 @@ py_test(
     size = "small",
     srcs = ["test_check_go_modules.py"],
     main = "test_check_go_modules.py",
-    deps = [":check_go_modules_lib"],
+    deps = [
+        ":_workspace_lib",
+        ":check_go_modules_lib",
+    ],
 )
 
 py_library(
@@ -60,12 +83,14 @@ py_test(
 py_library(
     name = "check_python_scale_lib",
     srcs = ["check_python_scale.py"],
+    deps = [":_workspace_lib"],
 )
 
 py_binary(
     name = "check_python_scale",
     srcs = ["check_python_scale.py"],
     main = "check_python_scale.py",
+    deps = [":_workspace_lib"],
 )
 
 py_test(
@@ -79,14 +104,14 @@ py_test(
 py_library(
     name = "check_no_cgo_lib",
     srcs = ["check_no_cgo.py"],
-    deps = [":check_go_work_lib"],
+    deps = [":_workspace_lib"],
 )
 
 py_binary(
     name = "check_no_cgo",
     srcs = ["check_no_cgo.py"],
     main = "check_no_cgo.py",
-    deps = [":check_go_work_lib"],
+    deps = [":_workspace_lib"],
 )
 
 py_test(

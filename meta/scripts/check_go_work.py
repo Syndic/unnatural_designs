@@ -7,73 +7,20 @@ Verifies that go.work is consistent with the Go modules in this repo:
 Usage: ./meta/scripts/check_go_work.py
 """
 
-import subprocess
 import sys
 from pathlib import Path
 
+# When invoked as `python3 meta/scripts/check_go_work.py` (the form used in CI and by
+# pre-commit), the workspace root is not on sys.path, so `from meta.scripts.X` would fail.
+# Adding the workspace root explicitly fixes that and is harmless under bazel py_binary,
+# where rules_python already makes the import resolvable.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-def workspace_root() -> Path:
-    result = subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"],
-        capture_output=True, text=True, check=True
-    )
-    return Path(result.stdout.strip())
-
-
-def registered_modules(root: Path) -> set[Path]:
-    """Parse use directives from go.work, returning paths relative to root.
-
-    go.work supports two syntactic forms for use directives:
-
-      Unfactored:  use ./some/module
-      Factored:    use (
-                       ./some/module
-                       ./other/module
-                   )
-
-    Both forms are handled by tracking whether we are currently inside a use (...) block. This is
-    necessary to avoid false positives on factored replace directives, whose entries also begin with
-    './' when they reference local paths (e.g. replace ( ./foo => ./bar )).
-
-    Since this script runs at the monorepo root, all legitimate use paths are subdirectories and
-    therefore begin with './'. Paths beginning with '../' would reference modules outside the
-    repository entirely and are not expected here.
-
-    Other top-level directives (go, toolchain) and single-line replace directives do not begin with
-    './', so they are naturally ignored.
-    """
-    go_work = root / "go.work"
-    modules = set()
-    in_use_block = False
-
-    for line in go_work.read_text().splitlines():
-        stripped = line.strip()
-
-        if stripped == "use (":
-            in_use_block = True
-            continue
-
-        if in_use_block:
-            if stripped == ")":
-                in_use_block = False
-            elif stripped.startswith("./"):
-                modules.add(Path(stripped[2:]))
-            continue
-
-        # Single-line form: use ./some/module
-        if stripped.startswith("use ./"):
-            modules.add(Path(stripped[6:]))
-
-    return modules
-
-
-def found_modules(root: Path) -> set[Path]:
-    """Find all go.mod files, excluding Bazel output symlinks and .git."""
-    return {
-        p.parent.relative_to(root)
-        for p in root.rglob("go.mod")
-        if not any(part.startswith("bazel-") or part == ".git" for part in p.parts)
-    }
+from meta.scripts._workspace import (  # noqa: E402
+    found_modules,
+    registered_modules,
+    workspace_root,
+)
 
 
 def main() -> int:
