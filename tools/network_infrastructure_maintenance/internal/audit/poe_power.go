@@ -31,7 +31,7 @@ func POEPower(s netbox.Snapshot, rules POEPowerRules) CheckResult {
 			}
 			matchedPeer = true
 			if rules.RequirePSEModeOnPeer && choiceValue(peer.POEMode) != POEModePSE {
-				findings = append(findings, fmt.Sprintf("%s %s requires PoE but peer %s %s is not modeled as a PSE interface", it.Device.Name, it.Name, peer.Device.Name, peer.Name))
+				findings = append(findings, fmt.Sprintf("%s requires PoE but peer %s is not modeled as a PSE interface", ifaceLabel(it), ifaceLabel(peer)))
 				continue
 			}
 			supplyType := choiceValue(peer.POEType)
@@ -40,11 +40,11 @@ func POEPower(s netbox.Snapshot, rules POEPowerRules) CheckResult {
 				if reason == "" {
 					reason = "insufficient PoE type"
 				}
-				findings = append(findings, fmt.Sprintf("%s %s requires %s but is powered by %s %s (%s): %s", it.Device.Name, it.Name, blank(requiredType), peer.Device.Name, peer.Name, blank(supplyType), reason))
+				findings = append(findings, fmt.Sprintf("%s requires %s but is powered by %s (%s): %s", ifaceLabel(it), blank(requiredType), ifaceLabel(peer), blank(supplyType), reason))
 			}
 		}
 		if !matchedPeer {
-			findings = append(findings, fmt.Sprintf("%s %s requires PoE but its connected peer interface was not available in the snapshot", it.Device.Name, it.Name))
+			findings = append(findings, fmt.Sprintf("%s requires PoE but its connected peer interface was not available in the snapshot", ifaceLabel(it)))
 		}
 	}
 	sort.Strings(findings)

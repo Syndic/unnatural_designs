@@ -486,6 +486,18 @@ func describeAssignedObject(obj *netbox.AssignedObjectRef) string {
 	return obj.Name
 }
 
+func ifaceLabel(it netbox.Iface) string {
+	return it.Device.Name + " " + it.Name
+}
+
+func isPlanned(d netbox.Device) bool {
+	return d.Status.Value == DeviceStatusPlanned
+}
+
+func hasRole(d netbox.Device, name string) bool {
+	return d.Role.Name == name
+}
+
 func ensureComponentMap(m map[int]map[string]componentSpec, id int) map[string]componentSpec {
 	if _, ok := m[id]; !ok {
 		m[id] = map[string]componentSpec{}

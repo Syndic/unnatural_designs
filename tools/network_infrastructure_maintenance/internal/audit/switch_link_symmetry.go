@@ -25,11 +25,11 @@ func SwitchLinkSymmetry(s netbox.Snapshot) CheckResult {
 		}
 		da := s.DevicesByID[ia.Device.ID]
 		db := s.DevicesByID[ib.Device.ID]
-		if da.Role.Name != RoleSwitch || db.Role.Name != RoleSwitch {
+		if !hasRole(da, RoleSwitch) || !hasRole(db, RoleSwitch) {
 			continue
 		}
 		if !sameSwitchPortConfig(ia, ib) {
-			findings = append(findings, fmt.Sprintf("switch link cable #%d is asymmetric: %s %s vs %s %s", c.ID, da.Name, ia.Name, db.Name, ib.Name))
+			findings = append(findings, fmt.Sprintf("switch link cable #%d is asymmetric: %s vs %s", c.ID, ifaceLabel(ia), ifaceLabel(ib)))
 		}
 	}
 	sort.Strings(findings)
