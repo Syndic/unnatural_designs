@@ -31,7 +31,7 @@ func MACConsistency(s netbox.Snapshot) CheckResult {
 	}
 	for _, it := range s.Interfaces {
 		if len(it.MACAddresses) > 1 && it.PrimaryMACAddress == nil {
-			findings = append(findings, fmt.Sprintf("%s %s has %d MAC addresses but no primary MAC", it.Device.Name, it.Name, len(it.MACAddresses)))
+			findings = append(findings, fmt.Sprintf("%s has %d MAC addresses but no primary MAC", ifaceLabel(it), len(it.MACAddresses)))
 		}
 	}
 	sort.Strings(findings)

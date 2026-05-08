@@ -30,10 +30,10 @@ func DHCPReservations(s netbox.Snapshot) CheckResult {
 		}
 		_, ok, multi := resolveMAC(it)
 		if !ok {
-			findings = append(findings, fmt.Sprintf("%s is tagged dhcp-reserved but %s %s has no unambiguous MAC", ip.Address, it.Device.Name, it.Name))
+			findings = append(findings, fmt.Sprintf("%s is tagged dhcp-reserved but %s has no unambiguous MAC", ip.Address, ifaceLabel(it)))
 		}
 		if multi && it.PrimaryMACAddress == nil && it.MACAddress == "" {
-			findings = append(findings, fmt.Sprintf("%s is tagged dhcp-reserved but %s %s has multiple MACs and no primary MAC", ip.Address, it.Device.Name, it.Name))
+			findings = append(findings, fmt.Sprintf("%s is tagged dhcp-reserved but %s has multiple MACs and no primary MAC", ip.Address, ifaceLabel(it)))
 		}
 	}
 	sort.Strings(findings)

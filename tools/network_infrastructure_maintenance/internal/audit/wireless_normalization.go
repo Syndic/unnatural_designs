@@ -19,7 +19,7 @@ func WirelessNormalization(s netbox.Snapshot, rules WirelessNormalizationRules) 
 	var findings []string
 	for deviceID, ifaces := range s.InterfacesByDevice {
 		dev := s.DevicesByID[deviceID]
-		if dev.Role.Name == RoleAccessPoint || dev.Status.Value == DeviceStatusPlanned {
+		if hasRole(dev, RoleAccessPoint) || isPlanned(dev) {
 			continue
 		}
 		wiredComplete := false
@@ -56,7 +56,7 @@ func WirelessNormalization(s netbox.Snapshot, rules WirelessNormalizationRules) 
 				missing = append(missing, "primary_mac_address")
 			}
 			if len(missing) > 0 {
-				findings = append(findings, fmt.Sprintf("%s %s is missing %s", dev.Name, it.Name, strings.Join(missing, ", ")))
+				findings = append(findings, fmt.Sprintf("%s is missing %s", ifaceLabel(it), strings.Join(missing, ", ")))
 			}
 		}
 	}

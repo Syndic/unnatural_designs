@@ -27,7 +27,7 @@ func IPVLANConsistency(s netbox.Snapshot) CheckResult {
 			continue
 		}
 		if match.VLAN.ID != it.UntaggedVLAN.ID {
-			findings = append(findings, fmt.Sprintf("%s %s carries %s but access VLAN is %s and best prefix VLAN is %s", s.DevicesByID[it.Device.ID].Name, it.Name, ip.Address, it.UntaggedVLAN.Name, match.VLAN.Name))
+			findings = append(findings, fmt.Sprintf("%s carries %s but access VLAN is %s and best prefix VLAN is %s", ifaceLabel(it), ip.Address, it.UntaggedVLAN.Name, match.VLAN.Name))
 		}
 	}
 	sort.Strings(findings)

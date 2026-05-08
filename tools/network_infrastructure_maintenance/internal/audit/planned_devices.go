@@ -10,7 +10,7 @@ import (
 func PlannedDevices(s netbox.Snapshot) CheckResult {
 	var findings []string
 	for _, d := range s.Devices {
-		if d.Status.Value != DeviceStatusPlanned {
+		if !isPlanned(d) {
 			continue
 		}
 		for _, it := range s.InterfacesByDevice[d.ID] {

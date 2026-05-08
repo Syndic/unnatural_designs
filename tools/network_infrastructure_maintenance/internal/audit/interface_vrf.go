@@ -29,7 +29,7 @@ func InterfaceVRF(s netbox.Snapshot, rules InterfaceVRFRules) CheckResult {
 	var findings []string
 	for _, it := range s.Interfaces {
 		dev := s.DevicesByID[it.Device.ID]
-		if dev.Status.Value == DeviceStatusPlanned || !it.Enabled {
+		if isPlanned(dev) || !it.Enabled {
 			continue
 		}
 		if it.VRF != nil {
@@ -45,7 +45,7 @@ func InterfaceVRF(s netbox.Snapshot, rules InterfaceVRFRules) CheckResult {
 			it.UntaggedVLAN == nil {
 			continue
 		}
-		findings = append(findings, fmt.Sprintf("%s %s is missing VRF", dev.Name, it.Name))
+		findings = append(findings, fmt.Sprintf("%s is missing VRF", ifaceLabel(it)))
 	}
 	sort.Strings(findings)
 	return CheckResult{Findings: findings}
