@@ -7,7 +7,7 @@ import (
 	netbox "github.com/Syndic/unnatural_designs/tools/network_infrastructure_maintenance/internal/netbox"
 )
 
-func SwitchLinkSymmetry(s netbox.Snapshot) CheckResult {
+func SwitchLinkSymmetry(s *netbox.Snapshot) CheckResult {
 	var findings []string
 	for _, c := range s.Cables {
 		if len(c.ATerminations) != 1 || len(c.BTerminations) != 1 {

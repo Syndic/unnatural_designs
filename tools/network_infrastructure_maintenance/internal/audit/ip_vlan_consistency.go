@@ -7,7 +7,7 @@ import (
 	netbox "github.com/Syndic/unnatural_designs/tools/network_infrastructure_maintenance/internal/netbox"
 )
 
-func IPVLANConsistency(s netbox.Snapshot) CheckResult {
+func IPVLANConsistency(s *netbox.Snapshot) CheckResult {
 	prefixes := parsePrefixes(s.Prefixes)
 	var findings []string
 	for _, ip := range s.IPAddresses {

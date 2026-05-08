@@ -3,7 +3,6 @@ package audit
 import (
 	"fmt"
 	"sort"
-	"strings"
 
 	netbox "github.com/Syndic/unnatural_designs/tools/network_infrastructure_maintenance/internal/netbox"
 )
@@ -15,16 +14,14 @@ type RackPlacementRules struct {
 
 func (r RackPlacementRules) IsTagExempt(tags []netbox.TagRef) bool {
 	for _, tag := range tags {
-		for _, exempt := range r.ExemptDeviceTags {
-			if strings.TrimSpace(exempt) == tag.Slug {
-				return true
-			}
+		if trimmedContains(r.ExemptDeviceTags, tag.Slug) {
+			return true
 		}
 	}
 	return false
 }
 
-func RackPlacement(s netbox.Snapshot, rules RackPlacementRules) CheckResult {
+func RackPlacement(s *netbox.Snapshot, rules RackPlacementRules) CheckResult {
 	var findings []string
 	for _, d := range s.Devices {
 		if d.Rack == nil {

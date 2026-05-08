@@ -8,7 +8,7 @@ import (
 	netbox "github.com/Syndic/unnatural_designs/tools/network_infrastructure_maintenance/internal/netbox"
 )
 
-func Honeypots(s netbox.Snapshot) CheckResult {
+func Honeypots(s *netbox.Snapshot) CheckResult {
 	var honeypots []netbox.IPAddress
 	for _, ip := range s.IPAddresses {
 		if hasTag(ip.Tags, TagHoneypot) {

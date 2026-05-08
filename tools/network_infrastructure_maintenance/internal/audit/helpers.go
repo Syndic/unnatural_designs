@@ -261,9 +261,9 @@ func isWANInterface(
 	it netbox.Iface,
 	dev netbox.Device,
 	devices map[int]netbox.Device,
-	rules InterfaceVRFRules,
+	wanRoles map[string]bool,
 ) bool {
-	if rules.IsWANRole(dev.Role.Name) {
+	if wanRoles[dev.Role.Name] {
 		return true
 	}
 	for _, ep := range it.ConnectedEndpoints {
@@ -271,7 +271,7 @@ func isWANInterface(
 			continue
 		}
 		peer, ok := devices[ep.Device.ID]
-		if ok && rules.IsWANRole(peer.Role.Name) {
+		if ok && wanRoles[peer.Role.Name] {
 			return true
 		}
 	}
@@ -332,29 +332,41 @@ func taggedRanges(ranges []netbox.IPRange, slug string) []netbox.IPRange {
 	return out
 }
 
-func overlappingRanges(a, b []netbox.IPRange) []string {
-	var findings []string
-	for _, ra := range a {
-		astart, aok := bareAddr(ra.StartAddress)
-		aend, aendOK := bareAddr(ra.EndAddress)
-		if !aok || !aendOK {
+// parsedRange is an [IPRange] with its endpoints parsed once. Use [parseRanges] to
+// build a slice for repeated comparison; without this, every comparison call would
+// re-parse [IPRange.StartAddress] and [IPRange.EndAddress].
+type parsedRange struct {
+	raw        netbox.IPRange
+	vrfID      int
+	start, end netip.Addr
+}
+
+func parseRanges(ranges []netbox.IPRange) []parsedRange {
+	out := make([]parsedRange, 0, len(ranges))
+	for _, r := range ranges {
+		start, ok1 := bareAddr(r.StartAddress)
+		end, ok2 := bareAddr(r.EndAddress)
+		if !ok1 || !ok2 {
 			continue
 		}
+		out = append(out, parsedRange{raw: r, vrfID: vrfID(r.VRF), start: start, end: end})
+	}
+	return out
+}
+
+func overlappingRanges(a, b []parsedRange) []string {
+	var findings []string
+	for _, ra := range a {
 		for _, rb := range b {
-			if vrfID(ra.VRF) != vrfID(rb.VRF) {
+			if ra.vrfID != rb.vrfID || ra.start.BitLen() != rb.start.BitLen() {
 				continue
 			}
-			bstart, bok := bareAddr(rb.StartAddress)
-			bend, bendOK := bareAddr(rb.EndAddress)
-			if !bok || !bendOK || astart.BitLen() != bstart.BitLen() {
-				continue
-			}
-			if rangesOverlap(astart, aend, bstart, bend) {
+			if rangesOverlap(ra.start, ra.end, rb.start, rb.end) {
 				findings = append(
 					findings,
 					fmt.Sprintf(
 						"Range overlap between %s-%s and %s-%s",
-						ra.StartAddress, ra.EndAddress, rb.StartAddress, rb.EndAddress,
+						ra.raw.StartAddress, ra.raw.EndAddress, rb.raw.StartAddress, rb.raw.EndAddress,
 					),
 				)
 			}
@@ -368,21 +380,17 @@ func rangesOverlap(aStart, aEnd, bStart, bEnd netip.Addr) bool {
 	return aStart.Compare(bEnd) <= 0 && bStart.Compare(aEnd) <= 0
 }
 
-func ipInRanges(ip netbox.IPAddress, ranges []netbox.IPRange) bool {
+func ipInRanges(ip netbox.IPAddress, ranges []parsedRange) bool {
 	addr, ok := bareAddr(ip.Address)
 	if !ok {
 		return false
 	}
+	ipVRF := vrfID(ip.VRF)
 	for _, r := range ranges {
-		if vrfID(ip.VRF) != vrfID(r.VRF) {
+		if r.vrfID != ipVRF || r.start.BitLen() != addr.BitLen() {
 			continue
 		}
-		start, ok1 := bareAddr(r.StartAddress)
-		end, ok2 := bareAddr(r.EndAddress)
-		if !ok1 || !ok2 || start.BitLen() != addr.BitLen() {
-			continue
-		}
-		if start.Compare(addr) <= 0 && addr.Compare(end) <= 0 {
+		if r.start.Compare(addr) <= 0 && addr.Compare(r.end) <= 0 {
 			return true
 		}
 	}
@@ -498,11 +506,25 @@ func hasRole(d netbox.Device, name string) bool {
 	return d.Role.Name == name
 }
 
-func ensureComponentMap(m map[int]map[string]componentSpec, id int) map[string]componentSpec {
-	if _, ok := m[id]; !ok {
-		m[id] = map[string]componentSpec{}
+// trimmedContains reports whether target appears in list after each list entry is
+// trimmed of surrounding whitespace. Useful for matching values against config-supplied
+// string lists where users may have inadvertently included spaces.
+func trimmedContains(list []string, target string) bool {
+	for _, v := range list {
+		if strings.TrimSpace(v) == target {
+			return true
+		}
 	}
-	return m[id]
+	return false
+}
+
+func ensureComponentMap(m map[int]map[string]componentSpec, id int) map[string]componentSpec {
+	if v, ok := m[id]; ok {
+		return v
+	}
+	v := map[string]componentSpec{}
+	m[id] = v
+	return v
 }
 
 func cloneComponentMap(src map[string]componentSpec) map[string]componentSpec {

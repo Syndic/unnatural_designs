@@ -7,7 +7,7 @@ import (
 	netbox "github.com/Syndic/unnatural_designs/tools/network_infrastructure_maintenance/internal/netbox"
 )
 
-func PlannedDevices(s netbox.Snapshot) CheckResult {
+func PlannedDevices(s *netbox.Snapshot) CheckResult {
 	var findings []string
 	for _, d := range s.Devices {
 		if !isPlanned(d) {

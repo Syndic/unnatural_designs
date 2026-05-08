@@ -120,7 +120,7 @@ func main() {
 	}
 
 	reporter.ChecksStart(len(checks))
-	rep := runAudit(ctx, snap, config, checks, reporter)
+	rep := runAudit(ctx, &snap, config, checks, reporter)
 	rep.Timing.Total = time.Since(runStarted)
 	if err := reporter.Close(); err != nil {
 		fatalf("Failed to flush progress renderer: %v", err)

@@ -15,7 +15,7 @@ type WirelessNormalizationRules struct {
 	RequirePrimaryMAC                           bool `json:"require_primary_mac"`
 }
 
-func WirelessNormalization(s netbox.Snapshot, rules WirelessNormalizationRules) CheckResult {
+func WirelessNormalization(s *netbox.Snapshot, rules WirelessNormalizationRules) CheckResult {
 	var findings []string
 	for deviceID, ifaces := range s.InterfacesByDevice {
 		dev := s.DevicesByID[deviceID]

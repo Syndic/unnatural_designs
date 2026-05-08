@@ -7,9 +7,9 @@ import (
 	netbox "github.com/Syndic/unnatural_designs/tools/network_infrastructure_maintenance/internal/netbox"
 )
 
-func DHCPReservations(s netbox.Snapshot) CheckResult {
-	reservedRanges := taggedRanges(s.IPRanges, TagDHCPReserved)
-	poolRanges := taggedRanges(s.IPRanges, TagDHCPPool)
+func DHCPReservations(s *netbox.Snapshot) CheckResult {
+	reservedRanges := parseRanges(taggedRanges(s.IPRanges, TagDHCPReserved))
+	poolRanges := parseRanges(taggedRanges(s.IPRanges, TagDHCPPool))
 	var findings []string
 	findings = append(findings, overlappingRanges(reservedRanges, poolRanges)...)
 	for _, ip := range s.IPAddresses {
