@@ -71,6 +71,10 @@ jobs:
       - uses: golang/govulncheck-action@31f7c5463448f83528bd771c2d978d940080c9fd # v1.0.4
         with:
           work-dir: ${{ matrix.module }}
+          # Match the toolchain pinned in go.work so workspace-level `go X.Y.Z`
+          # directives don't trip GOTOOLCHAIN=local. Without this the action
+          # defaults to "stable", which lags behind patch bumps.
+          go-version-file: go.work
 
   govulncheck-all:
     name: govulncheck (all modules)
