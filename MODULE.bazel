@@ -20,6 +20,7 @@ bazel_dep(name = "platforms", version = "1.1.0")
 # actually targeting linux. See https://www.buildbuddy.io/blog/arm64-support/ for the arm64
 # rollout that motivated this.
 bazel_dep(name = "toolchains_buildbuddy", version = "0.0.4")
+
 buildbuddy = use_extension("@toolchains_buildbuddy//:extensions.bzl", "buildbuddy")
 
 # ── Go ────────────────────────────────────────────────────────────────────────────────────────────
@@ -27,7 +28,7 @@ bazel_dep(name = "rules_go", version = "0.60.0")
 bazel_dep(name = "gazelle", version = "0.50.0")
 
 go_sdk = use_extension("@rules_go//go:extensions.bzl", "go_sdk")
-go_sdk.download(version = "1.26.2")
+go_sdk.download(version = "1.26.3")
 
 # Discover external Go deps from the workspace's go.work + per-module go.mod files.
 go_deps = use_extension("@gazelle//:extensions.bzl", "go_deps")
