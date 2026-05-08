@@ -71,9 +71,14 @@ jobs:
       - uses: golang/govulncheck-action@31f7c5463448f83528bd771c2d978d940080c9fd # v1.0.4
         with:
           work-dir: ${{ matrix.module }}
-          # Match the toolchain pinned in go.work so workspace-level `go X.Y.Z`
-          # directives don't trip GOTOOLCHAIN=local. Without this the action
-          # defaults to "stable", which lags behind patch bumps.
+          # Pin Go to the workspace toolchain so workspace-level `go X.Y.Z`
+          # directives don't trip GOTOOLCHAIN=local. The action forwards both
+          # go-version-input and go-version-file to setup-go; setup-go gives
+          # go-version precedence when non-empty, so go-version-input must be
+          # cleared here for go-version-file to take effect. Otherwise it
+          # defaults to "stable", which lags behind patch bumps in the runner
+          # tool cache.
+          go-version-input: ''
           go-version-file: go.work
 
   govulncheck-all:
