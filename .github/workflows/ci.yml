@@ -151,10 +151,11 @@ jobs:
       # measurement, this job would become a matrix like build-and-test.
       #
       # TEND(lang-expand): `bazel coverage //...` picks up every language whose rules emit
-      # coverage (rules_go does automatically). When adopting a new language, confirm its
-      # ruleset is wired into Bazel's coverage collection — e.g. rules_python needs
-      # coverage deps on py_test; rules_java needs JaCoCo. If coverage output is silently
-      # missing for a language, that's the thing to check.
+      # coverage (rules_go does automatically; rules_python is wired via
+      # `configure_coverage_tool = True` on `python.toolchain` in MODULE.bazel). When adopting
+      # a new language, confirm its ruleset is wired into Bazel's coverage collection — e.g.
+      # rules_java needs JaCoCo. If coverage output is silently missing for a language,
+      # that's the thing to check.
       - run: bazel coverage --config=ci --config=linux_x86_64 //...
       - name: Locate merged lcov
         id: lcov
