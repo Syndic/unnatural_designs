@@ -306,6 +306,8 @@ type Snapshot struct {
 	InterfacesByDevice map[int][]Iface
 	IPsByInterface     map[int][]IPAddress
 	ModuleBaysByID     map[int]ModuleBay
+	ModulesByDevice    map[int][]Module
+	ModulesByBay       map[int][]Module
 }
 
 type SnapshotLoadStats struct {

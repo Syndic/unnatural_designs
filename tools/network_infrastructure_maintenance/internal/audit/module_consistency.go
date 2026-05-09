@@ -8,8 +8,7 @@ import (
 	netbox "github.com/Syndic/unnatural_designs/tools/network_infrastructure_maintenance/internal/netbox"
 )
 
-func ModuleConsistency(s netbox.Snapshot) CheckResult {
-	modsByBay := map[int][]netbox.Module{}
+func ModuleConsistency(s *netbox.Snapshot) CheckResult {
 	var findings []string
 	for _, mod := range s.Modules {
 		if mod.ModuleBay == nil {
@@ -24,9 +23,8 @@ func ModuleConsistency(s netbox.Snapshot) CheckResult {
 		if mb.Device.ID != mod.Device.ID {
 			findings = append(findings, fmt.Sprintf("%s module %d is installed in bay %s owned by device %s", mod.Device.Name, mod.ID, mb.Name, mb.Device.Name))
 		}
-		modsByBay[mod.ModuleBay.ID] = append(modsByBay[mod.ModuleBay.ID], mod)
 	}
-	for bayID, mods := range modsByBay {
+	for bayID, mods := range s.ModulesByBay {
 		if len(mods) > 1 {
 			ids := []string{}
 			for _, mod := range mods {
@@ -37,7 +35,7 @@ func ModuleConsistency(s netbox.Snapshot) CheckResult {
 		}
 	}
 	for _, mb := range s.ModuleBays {
-		mods := modsByBay[mb.ID]
+		mods := s.ModulesByBay[mb.ID]
 		if mb.InstalledModule == nil && len(mods) > 0 {
 			findings = append(findings, fmt.Sprintf("%s module bay %s has module list entries but no installed_module pointer", mb.Device.Name, mb.Name))
 			continue

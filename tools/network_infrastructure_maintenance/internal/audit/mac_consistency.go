@@ -8,7 +8,7 @@ import (
 	netbox "github.com/Syndic/unnatural_designs/tools/network_infrastructure_maintenance/internal/netbox"
 )
 
-func MACConsistency(s netbox.Snapshot) CheckResult {
+func MACConsistency(s *netbox.Snapshot) CheckResult {
 	var findings []string
 	byMAC := map[string][]netbox.MACAddressRecord{}
 	for _, mac := range s.MACAddresses {

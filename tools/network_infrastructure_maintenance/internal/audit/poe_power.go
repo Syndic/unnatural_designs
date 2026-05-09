@@ -13,7 +13,7 @@ type POEPowerRules struct {
 	UnknownTypePolicy        string `json:"unknown_type_policy"`
 }
 
-func POEPower(s netbox.Snapshot, rules POEPowerRules) CheckResult {
+func POEPower(s *netbox.Snapshot, rules POEPowerRules) CheckResult {
 	if !rules.CheckPoweredDeviceSupply {
 		return CheckResult{}
 	}

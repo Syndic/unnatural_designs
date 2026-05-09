@@ -7,12 +7,7 @@ import (
 	netbox "github.com/Syndic/unnatural_designs/tools/network_infrastructure_maintenance/internal/netbox"
 )
 
-func DeviceTypeDrift(s netbox.Snapshot) CheckResult {
-	modsByDevice := make(map[int][]netbox.Module)
-	for _, m := range s.Modules {
-		modsByDevice[m.Device.ID] = append(modsByDevice[m.Device.ID], m)
-	}
-
+func DeviceTypeDrift(s *netbox.Snapshot) CheckResult {
 	checks := []componentDriftCheck{
 		newInterfaceDriftCheck(s.InterfaceTemplates, s.Interfaces),
 		newTypedDriftCheck("Console ports", s.ConsolePortTemplates, s.ConsolePorts),
@@ -29,7 +24,7 @@ func DeviceTypeDrift(s netbox.Snapshot) CheckResult {
 	for _, d := range s.Devices {
 		var details []string
 		for _, check := range checks {
-			expected := check.expectedForDevice(d.DeviceType.ID, modsByDevice[d.ID])
+			expected := check.expectedForDevice(d.DeviceType.ID, s.ModulesByDevice[d.ID])
 			actual := check.actualByDevice[d.ID]
 			checkDetails := compareComponentMaps(check.label, expected, actual, check.diffSpec)
 			details = append(details, checkDetails...)

@@ -12,7 +12,7 @@ type PrivateIPVRFRules struct {
 	RequireOnPublicIPs  bool `json:"require_on_public_ips"`
 }
 
-func PrivateIPVRF(s netbox.Snapshot, rules PrivateIPVRFRules) CheckResult {
+func PrivateIPVRF(s *netbox.Snapshot, rules PrivateIPVRFRules) CheckResult {
 	var findings []string
 	for _, ip := range s.IPAddresses {
 		addr, ok := bareAddr(ip.Address)

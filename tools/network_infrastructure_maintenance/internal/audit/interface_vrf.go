@@ -13,18 +13,13 @@ type InterfaceVRFRules struct {
 	RequireOnInterfaces bool     `json:"require_on_interfaces"`
 }
 
-func (r InterfaceVRFRules) IsWANRole(role string) bool {
-	for _, wr := range r.WANDeviceRoles {
-		if strings.TrimSpace(wr) == role {
-			return true
-		}
-	}
-	return false
-}
-
-func InterfaceVRF(s netbox.Snapshot, rules InterfaceVRFRules) CheckResult {
+func InterfaceVRF(s *netbox.Snapshot, rules InterfaceVRFRules) CheckResult {
 	if !rules.RequireOnInterfaces {
 		return CheckResult{}
+	}
+	wanRoles := make(map[string]bool, len(rules.WANDeviceRoles))
+	for _, r := range rules.WANDeviceRoles {
+		wanRoles[strings.TrimSpace(r)] = true
 	}
 	var findings []string
 	for _, it := range s.Interfaces {
@@ -35,7 +30,7 @@ func InterfaceVRF(s netbox.Snapshot, rules InterfaceVRFRules) CheckResult {
 		if it.VRF != nil {
 			continue
 		}
-		if isWANInterface(it, dev, s.DevicesByID, rules) {
+		if isWANInterface(it, dev, s.DevicesByID, wanRoles) {
 			continue
 		}
 		if len(it.ConnectedEndpoints) == 0 &&

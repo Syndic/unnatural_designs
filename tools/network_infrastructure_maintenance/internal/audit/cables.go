@@ -8,7 +8,7 @@ import (
 	netbox "github.com/Syndic/unnatural_designs/tools/network_infrastructure_maintenance/internal/netbox"
 )
 
-func Cables(s netbox.Snapshot) CheckResult {
+func Cables(s *netbox.Snapshot) CheckResult {
 	var findings []string
 	for _, c := range s.Cables {
 		if c.Type == "" {

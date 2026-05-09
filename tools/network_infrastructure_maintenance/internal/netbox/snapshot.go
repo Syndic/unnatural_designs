@@ -220,6 +220,19 @@ func (s *Snapshot) buildIndexes() {
 	for _, mb := range s.ModuleBays {
 		s.ModuleBaysByID[mb.ID] = mb
 	}
+
+	s.ModulesByDevice = make(map[int][]Module)
+	s.ModulesByBay = make(map[int][]Module)
+	for _, m := range s.Modules {
+		s.ModulesByDevice[m.Device.ID] = append(s.ModulesByDevice[m.Device.ID], m)
+		// Only index modules whose bay actually exists in the snapshot. Modules referencing
+		// a missing bay are surfaced as findings by ModuleConsistency, not silently grouped.
+		if m.ModuleBay != nil {
+			if _, ok := s.ModuleBaysByID[m.ModuleBay.ID]; ok {
+				s.ModulesByBay[m.ModuleBay.ID] = append(s.ModulesByBay[m.ModuleBay.ID], m)
+			}
+		}
+	}
 }
 
 func fetchAll[T any](ctx context.Context, client *Client, path string, progress PageProgressFunc) ([]T, FetchTiming, error) {
