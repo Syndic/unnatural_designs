@@ -1,4 +1,10 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(bazel:*)",
+      "WebFetch(domain:readthedocs.io)"
+    ]
+  },
   "hooks": {
     "WorktreeCreate": [
       {

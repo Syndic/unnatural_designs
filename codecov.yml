@@ -24,7 +24,7 @@ component_management:
         target: auto
         threshold: 1%
   # TEND(lang-expand): add one entry per language adopted in the repo so Codecov emits a
-  # per-language breakdown. The Python entry is pre-seeded but inert until Python tests exist.
+  # per-language breakdown.
   individual_components:
     - component_id: go
       name: Go
