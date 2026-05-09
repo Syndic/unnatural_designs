@@ -23,6 +23,7 @@ go_test(
     srcs = [
         "plain_test.go",
         "reporter_test.go",
+        "rich_test.go",
     ],
     embed = [":progress"],
     deps = [
