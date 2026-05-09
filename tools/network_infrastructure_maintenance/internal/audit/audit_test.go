@@ -30,6 +30,16 @@ func indexSnapshot(s *netbox.Snapshot) {
 	for _, mb := range s.ModuleBays {
 		s.ModuleBaysByID[mb.ID] = mb
 	}
+	s.ModulesByDevice = map[int][]netbox.Module{}
+	s.ModulesByBay = map[int][]netbox.Module{}
+	for _, m := range s.Modules {
+		s.ModulesByDevice[m.Device.ID] = append(s.ModulesByDevice[m.Device.ID], m)
+		if m.ModuleBay != nil {
+			if _, ok := s.ModuleBaysByID[m.ModuleBay.ID]; ok {
+				s.ModulesByBay[m.ModuleBay.ID] = append(s.ModulesByBay[m.ModuleBay.ID], m)
+			}
+		}
+	}
 }
 
 func choice(v string) netbox.Choice           { return netbox.Choice{Value: v, Label: v} }
@@ -44,7 +54,7 @@ func TestCables(t *testing.T) {
 		{ID: 4, Type: "cat6", Status: choice("connected"), ATerminations: []netbox.Termination{{}}},
 		{ID: 5, Type: "cat6", Status: choice("connected")},
 	}}
-	got := Cables(s)
+	got := Cables(&s)
 	if len(got.Findings) != 4 {
 		t.Fatalf("expected 4 findings, got %d: %v", len(got.Findings), got.Findings)
 	}
@@ -60,7 +70,7 @@ func TestCablesClean(t *testing.T) {
 	s := netbox.Snapshot{Cables: []netbox.Cable{
 		{ID: 1, Type: "cat6", Status: choice("connected"), ATerminations: []netbox.Termination{{}}, BTerminations: []netbox.Termination{{}}},
 	}}
-	got := Cables(s)
+	got := Cables(&s)
 	if len(got.Findings) != 0 {
 		t.Fatalf("expected no findings, got %v", got.Findings)
 	}
@@ -71,7 +81,7 @@ func TestDeviceLocations(t *testing.T) {
 		{Name: "a", Location: &netbox.NamedRef{ID: 1, Name: "rack1"}},
 		{Name: "b"},
 	}}
-	got := DeviceLocations(s)
+	got := DeviceLocations(&s)
 	if len(got.Findings) != 1 || !strings.Contains(got.Findings[0], "b is missing location") {
 		t.Fatalf("findings: %v", got.Findings)
 	}
@@ -99,7 +109,7 @@ func TestDHCPReservations(t *testing.T) {
 		},
 	}
 	indexSnapshot(&s)
-	got := DHCPReservations(s)
+	got := DHCPReservations(&s)
 	joined := strings.Join(got.Findings, "\n")
 	for _, want := range []string{
 		"Range overlap",
@@ -124,7 +134,7 @@ func TestDeviceTypeDriftHappyPath(t *testing.T) {
 			{ID: 100, Name: "eth0", Device: namedRef(1, "sw1"), Type: choice("1000base-t"), Enabled: true},
 		},
 	}
-	got := DeviceTypeDrift(s)
+	got := DeviceTypeDrift(&s)
 	if len(got.Findings) != 0 || len(got.Extra) != 0 {
 		t.Fatalf("expected no drift, got findings=%v extra=%v", got.Findings, got.Extra)
 	}
@@ -143,7 +153,7 @@ func TestDeviceTypeDriftWithViolations(t *testing.T) {
 			{ID: 102, Name: "eth2", Device: namedRef(1, "sw1"), Type: choice("1000base-t"), Enabled: true},
 		},
 	}
-	got := DeviceTypeDrift(s)
+	got := DeviceTypeDrift(&s)
 	if len(got.Extra) != 1 {
 		t.Fatalf("expected 1 drift record, got %v", got.Extra)
 	}
@@ -174,7 +184,7 @@ func TestHoneypots(t *testing.T) {
 			{Prefix: "bad-prefix", VLAN: &netbox.VLANRef{ID: 3, Name: "vlan3"}},
 		},
 	}
-	got := Honeypots(s)
+	got := Honeypots(&s)
 	joined := strings.Join(got.Findings, "\n")
 	for _, want := range []string{
 		"vlan2",
@@ -190,7 +200,7 @@ func TestHoneypots(t *testing.T) {
 func TestInterfaceVRFDisabled(t *testing.T) {
 	s := netbox.Snapshot{Interfaces: []netbox.Iface{{Name: "eth0", Enabled: true, Mode: choicePtr("access")}}}
 	indexSnapshot(&s)
-	got := InterfaceVRF(s, InterfaceVRFRules{})
+	got := InterfaceVRF(&s, InterfaceVRFRules{})
 	if len(got.Findings) != 0 {
 		t.Fatalf("findings: %v", got.Findings)
 	}
@@ -219,7 +229,7 @@ func TestInterfaceVRF(t *testing.T) {
 		},
 	}
 	indexSnapshot(&s)
-	got := InterfaceVRF(s, InterfaceVRFRules{WANDeviceRoles: []string{"WAN-Edge"}, RequireOnInterfaces: true})
+	got := InterfaceVRF(&s, InterfaceVRFRules{WANDeviceRoles: []string{"WAN-Edge"}, RequireOnInterfaces: true})
 	if len(got.Findings) != 1 || !strings.Contains(got.Findings[0], "host eth0 is missing VRF") {
 		t.Fatalf("findings: %v", got.Findings)
 	}
@@ -240,7 +250,7 @@ func TestIPVLANConsistency(t *testing.T) {
 		},
 	}
 	indexSnapshot(&s)
-	got := IPVLANConsistency(s)
+	got := IPVLANConsistency(&s)
 	if len(got.Findings) != 1 || !strings.Contains(got.Findings[0], "best prefix VLAN is right") {
 		t.Fatalf("findings: %v", got.Findings)
 	}
@@ -258,7 +268,7 @@ func TestMACConsistency(t *testing.T) {
 			{Name: "eth0", Device: namedRef(1, "h1"), MACAddresses: []netbox.MACAddressRef{{MACAddress: "a"}, {MACAddress: "b"}}},
 		},
 	}
-	got := MACConsistency(s)
+	got := MACConsistency(&s)
 	joined := strings.Join(got.Findings, "\n")
 	if !strings.Contains(joined, "appears on multiple records") {
 		t.Errorf("missing dup finding: %s", joined)
@@ -284,7 +294,7 @@ func TestModuleConsistency(t *testing.T) {
 		},
 	}
 	indexSnapshot(&s)
-	got := ModuleConsistency(s)
+	got := ModuleConsistency(&s)
 	joined := strings.Join(got.Findings, "\n")
 	for _, want := range []string{
 		"has no module bay",
@@ -320,7 +330,7 @@ func TestParentPlacement(t *testing.T) {
 		},
 	}
 	indexSnapshot(&s)
-	got := ParentPlacement(s)
+	got := ParentPlacement(&s)
 	joined := strings.Join(got.Findings, "\n")
 	for _, want := range []string{
 		"site site2 differs",
@@ -349,7 +359,7 @@ func TestPatchPanelContinuity(t *testing.T) {
 			{Name: "fp2", Device: namedRef(1, "pp"), Cable: cable},                                             // bad
 		},
 	}
-	got := PatchPanelContinuity(s)
+	got := PatchPanelContinuity(&s)
 	if len(got.Findings) != 2 {
 		t.Fatalf("findings: %v", got.Findings)
 	}
@@ -371,7 +381,7 @@ func TestPlannedDevices(t *testing.T) {
 		},
 	}
 	indexSnapshot(&s)
-	got := PlannedDevices(s)
+	got := PlannedDevices(&s)
 	joined := strings.Join(got.Findings, "\n")
 	for _, want := range []string{
 		"has a connected interface eth0",
@@ -388,7 +398,7 @@ func TestPlannedDevices(t *testing.T) {
 }
 
 func TestPOEPowerDisabled(t *testing.T) {
-	got := POEPower(netbox.Snapshot{}, POEPowerRules{})
+	got := POEPower(&netbox.Snapshot{}, POEPowerRules{})
 	if len(got.Findings) != 0 {
 		t.Fatalf("expected no findings: %v", got.Findings)
 	}
@@ -411,7 +421,7 @@ func TestPOEPower(t *testing.T) {
 		},
 	}
 	indexSnapshot(&s)
-	got := POEPower(s, POEPowerRules{CheckPoweredDeviceSupply: true, RequirePSEModeOnPeer: true, UnknownTypePolicy: POEUnknownTypeFail})
+	got := POEPower(&s, POEPowerRules{CheckPoweredDeviceSupply: true, RequirePSEModeOnPeer: true, UnknownTypePolicy: POEUnknownTypeFail})
 	joined := strings.Join(got.Findings, "\n")
 	for _, want := range []string{
 		"weaker than Powered Device requirement",
@@ -436,7 +446,7 @@ func TestPrivateIPVRF(t *testing.T) {
 			{Address: "garbage"},                                  // unparseable -> skipped
 		},
 	}
-	got := PrivateIPVRF(s, PrivateIPVRFRules{RequireOnPrivateIPs: true, RequireOnPublicIPs: true})
+	got := PrivateIPVRF(&s, PrivateIPVRFRules{RequireOnPrivateIPs: true, RequireOnPublicIPs: true})
 	if len(got.Findings) != 2 {
 		t.Fatalf("findings: %v", got.Findings)
 	}
@@ -458,7 +468,7 @@ func TestRackPlacement(t *testing.T) {
 			{Name: "tagged", Rack: &netbox.NamedRef{Name: "r1"}, Tags: []netbox.TagRef{{Slug: "exempt"}}},
 		},
 	}
-	got := RackPlacement(s, RackPlacementRules{ExemptChildDevices: true, ExemptDeviceTags: []string{"exempt"}})
+	got := RackPlacement(&s, RackPlacementRules{ExemptChildDevices: true, ExemptDeviceTags: []string{"exempt"}})
 	if len(got.Findings) != 2 {
 		t.Fatalf("findings: %v", got.Findings)
 	}
@@ -476,7 +486,7 @@ func TestRequiredDeviceFields(t *testing.T) {
 		{Name: "ok", Site: &netbox.NamedRef{ID: 1}, Role: namedRef(1, "Switch"), Status: choice("active")},
 		{Name: "broken"},
 	}}
-	got := RequiredDeviceFields(s)
+	got := RequiredDeviceFields(&s)
 	if len(got.Findings) != 3 {
 		t.Fatalf("findings: %v", got.Findings)
 	}
@@ -507,7 +517,7 @@ func TestSwitchLinkSymmetry(t *testing.T) {
 		// non-iface objects, ignored.
 		{ID: 4, ATerminations: []netbox.Termination{{ObjectType: "dcim.console", ObjectID: 1}}, BTerminations: []netbox.Termination{{ObjectType: "dcim.console", ObjectID: 2}}},
 	}
-	got := SwitchLinkSymmetry(s)
+	got := SwitchLinkSymmetry(&s)
 	if len(got.Findings) != 1 || !strings.Contains(got.Findings[0], "asymmetric") || !strings.Contains(got.Findings[0], "cable #1") {
 		t.Fatalf("findings: %v", got.Findings)
 	}
@@ -540,7 +550,7 @@ func TestWirelessNormalization(t *testing.T) {
 		RequireUntaggedVLAN: true,
 		RequirePrimaryMAC:   true,
 	}
-	got := WirelessNormalization(s, rules)
+	got := WirelessNormalization(&s, rules)
 	if len(got.Findings) != 1 {
 		t.Fatalf("findings: %v", got.Findings)
 	}
