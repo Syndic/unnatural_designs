@@ -41,14 +41,21 @@ use_repo(go_deps, "com_github_vbauerster_mpb_v8")
 # ── Python ────────────────────────────────────────────────────────────────────────────────────────
 bazel_dep(name = "rules_python", version = "2.0.1")
 
-python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+# TRANSIENT: pinned to the post-2.0.1 commit that adds cp314 to the bundled coverage
+# wheel set (bazel-contrib/rules_python#3764). Without this, `configure_coverage_tool`
+# is a silent no-op on Python 3.14 and `bazel coverage` emits no lcov for py_test.
+# Remove this override and bump bazel_dep above as soon as the first rules_python
+# release containing #3764 is available — Renovate's bazel-module manager will surface
+# that release as a version-bump PR; that PR is the prompt to drop this override.
+git_override(
+    module_name = "rules_python",
+    remote = "https://github.com/bazel-contrib/rules_python.git",
+    commit = "9dc505b95063c0774945ecc86c4b8ce51151edfa",
+)
 
-# 3.13 (not 3.14) because rules_python 2.0.0 only ships bundled `coverage` wheels
-# for cp310–cp313 (see python/private/coverage_deps.bzl). Without a coverage_tool
-# wheel that matches the interpreter ABI, `configure_coverage_tool = True` is a
-# silent no-op and `bazel coverage` produces empty per-test lcov files.
+python = use_extension("@rules_python//python/extensions:python.bzl", "python")
 python.toolchain(
-    python_version = "3.13",
+    python_version = "3.14",
     # Wires the bundled `coverage` library into py_test runfiles when
     # `bazel coverage` runs, so Python tests emit lcov data alongside Go.
     configure_coverage_tool = True,
