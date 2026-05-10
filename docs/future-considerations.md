@@ -174,36 +174,6 @@ future-considerations."
 
 ---
 
-## Restore Python 3.14 Pin (Blocked on rules_python cp314 Coverage Wheel)
-
-The Python interpreter is pinned to 3.13 in `MODULE.bazel` solely so that
-`configure_coverage_tool = True` actually emits coverage data. rules_python 2.0.0's
-bundled `coverage` wheel set in `python/private/coverage_deps.bzl` covers cp310–cp313
-only — on cp314 the flag is a silent no-op and `bazel coverage` produces empty
-per-test lcov files for Python targets.
-
-The gap is not documented upstream. PR
-[bazel-contrib/rules_python#3592](https://github.com/bazel-contrib/rules_python/pull/3592)
-("fix(coverage): bump coverage.py to 7.10.7 for Python 3.14 support") was opened by an
-external contributor on 2026-02-13 and self-closed the same day with no maintainer
-engagement. No replacement PR or tracking issue exists; `coverage_deps.bzl` has had no
-substantive update since 2024-11.
-
-### Action
-
-1. Open an upstream PR against `bazel-contrib/rules_python` to add cp314 to the
-   bundled coverage wheels (regenerate via `bazel run
-   //tools/private/update_deps:update_coverage_deps -- 7.10.7`, ensure cp314 wheel
-   tags including freethreaded variants are picked up, retain cp39 compatibility).
-   #3592's branch (`slaptijack/cp314-coverage-tool`) is a useful reference but should
-   not be merged blind.
-2. Once the fix lands and a rules_python release containing it is available, bump the
-   `bazel_dep(name = "rules_python", ...)` version in `MODULE.bazel` and flip
-   `python_version` back to `"3.14"`. Remove the cp314-explanation comment.
-3. Re-verify Python coverage still appears in the merged lcov after the bump.
-
----
-
 ## Multi-Platform Fan-Out Build Target
 
 ### Problem
