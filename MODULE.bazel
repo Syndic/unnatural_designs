@@ -48,7 +48,7 @@ python = use_extension("@rules_python//python/extensions:python.bzl", "python")
 # wheel that matches the interpreter ABI, `configure_coverage_tool = True` is a
 # silent no-op and `bazel coverage` produces empty per-test lcov files.
 python.toolchain(
-    python_version = "3.13",
+    python_version = "3.14",
     # Wires the bundled `coverage` library into py_test runfiles when
     # `bazel coverage` runs, so Python tests emit lcov data alongside Go.
     configure_coverage_tool = True,
