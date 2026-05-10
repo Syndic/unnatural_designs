@@ -1,4 +1,4 @@
-load("@rules_go//go:def.bzl", "go_binary", "go_library")
+load("@rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
 
 go_library(
     name = "netbox_audit_lib",
@@ -24,4 +24,16 @@ go_binary(
     name = "netbox_audit",
     embed = [":netbox_audit_lib"],
     visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "netbox_audit_test",
+    srcs = ["main_test.go"],
+    embed = [":netbox_audit_lib"],
+    deps = [
+        "//tools/network_infrastructure_maintenance/internal/audit",
+        "//tools/network_infrastructure_maintenance/internal/netbox",
+        "//tools/network_infrastructure_maintenance/internal/shared",
+        "//tools/network_infrastructure_maintenance/internal/ui/progress",
+    ],
 )
