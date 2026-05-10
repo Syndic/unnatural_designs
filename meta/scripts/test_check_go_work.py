@@ -1,9 +1,12 @@
 """Tests for check_go_work.py."""
 
+import io
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
+from meta.scripts import check_go_work
 from meta.scripts._workspace import found_modules, registered_modules
 
 
@@ -118,6 +121,49 @@ class TestConsistency(unittest.TestCase):
                 registered_modules(root) - found_modules(root),
                 {Path("tools/nonexistent")},
             )
+
+
+class TestMain(unittest.TestCase):
+
+    def _run(self, *, found, registered):
+        with mock.patch.object(check_go_work, "workspace_root", return_value=Path("/fake")), \
+             mock.patch.object(check_go_work, "found_modules", return_value={Path(p) for p in found}), \
+             mock.patch.object(check_go_work, "registered_modules", return_value={Path(p) for p in registered}), \
+             mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+            rc = check_go_work.main()
+        return rc, stdout.getvalue()
+
+    def test_consistent(self):
+        rc, out = self._run(found=["tools/foo", "tools/bar"], registered=["tools/foo", "tools/bar"])
+        self.assertEqual(rc, 0)
+        self.assertIn("consistent", out)
+        self.assertNotIn("MISSING", out)
+        self.assertNotIn("STALE", out)
+
+    def test_missing_entries_reported(self):
+        rc, out = self._run(found=["tools/foo", "tools/bar"], registered=["tools/foo"])
+        self.assertEqual(rc, 1)
+        self.assertIn("MISSING from go.work: ./tools/bar", out)
+        self.assertNotIn("STALE", out)
+
+    def test_stale_entries_reported(self):
+        rc, out = self._run(found=["tools/foo"], registered=["tools/foo", "tools/bar"])
+        self.assertEqual(rc, 1)
+        self.assertIn("STALE in go.work: use ./tools/bar", out)
+        self.assertNotIn("MISSING", out)
+
+    def test_both_missing_and_stale_reported(self):
+        rc, out = self._run(found=["tools/foo", "tools/new"], registered=["tools/foo", "tools/old"])
+        self.assertEqual(rc, 2)
+        self.assertIn("MISSING from go.work: ./tools/new", out)
+        self.assertIn("STALE in go.work: use ./tools/old", out)
+
+    def test_findings_sorted(self):
+        rc, out = self._run(found=["tools/zebra", "tools/alpha"], registered=[])
+        self.assertEqual(rc, 2)
+        alpha = out.index("./tools/alpha")
+        zebra = out.index("./tools/zebra")
+        self.assertLess(alpha, zebra)
 
 
 if __name__ == "__main__":
