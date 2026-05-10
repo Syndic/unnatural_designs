@@ -104,6 +104,15 @@ Marks a configuration or setting that may be suboptimal and should be reviewed i
 grep -rn "TEND(optimization)" .
 ```
 
+#### `project-expand`
+
+The marked config enumerates the leaf projects in the monorepo. When a new project lands, grep
+for this task type and add the corresponding entry at each location.
+
+```sh
+grep -rn "TEND(project-expand)" .
+```
+
 ---
 
 ## Adding a new tag or task type
