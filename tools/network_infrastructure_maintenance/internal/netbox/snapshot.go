@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 )
@@ -170,10 +169,12 @@ func loadSnapshot(ctx context.Context, c *Client, obs LoadObserver) (Snapshot, e
 	completedTasks := 0
 	totalRequests := 0
 	var fetches []FetchTiming
-	var errs []string
+	var errs []error
 	for result := range results {
 		if result.err != nil {
-			errs = append(errs, fmt.Sprintf("%s: %v", result.name, result.err))
+			// Wrap with %w so callers can errors.Is/As against the underlying
+			// per-task error (e.g. context.Canceled from a cancelled fetch).
+			errs = append(errs, fmt.Errorf("%s: %w", result.name, result.err))
 			continue
 		}
 		completedTasks++
@@ -184,7 +185,7 @@ func loadSnapshot(ctx context.Context, c *Client, obs LoadObserver) (Snapshot, e
 		}
 	}
 	if len(errs) > 0 {
-		return Snapshot{}, errors.New(strings.Join(errs, "; "))
+		return Snapshot{}, errors.Join(errs...)
 	}
 	snap.LoadStats.RequestCount = totalRequests
 	snap.LoadStats.Fetches = fetches

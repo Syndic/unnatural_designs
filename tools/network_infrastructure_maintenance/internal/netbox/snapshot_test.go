@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -98,5 +99,48 @@ func TestSnapshotTaskProgressNilObserver(t *testing.T) {
 	client := &Client{BaseURL: srv.URL, Token: "x", HTTPClient: srv.Client()}
 	if _, err := LoadConsistentSnapshot(context.Background(), client, 1, 0, nil); err != nil {
 		t.Fatalf("LoadConsistentSnapshot with nil observer: %v", err)
+	}
+}
+
+// TestLoadSnapshotJoinsTaskErrors verifies that when multiple fetch tasks fail,
+// the returned error annotates each failure with its task name and exposes the
+// underlying HTTP error through the unwrap chain (errors.Join + %w).
+func TestLoadSnapshotJoinsTaskErrors(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Fail two task endpoints with HTTP 500; respond empty to everything else
+		// (including LatestChange's /api/core/object-changes/).
+		if strings.Contains(r.URL.Path, "/api/dcim/devices/") || strings.Contains(r.URL.Path, "/api/dcim/cables/") {
+			http.Error(w, "boom", http.StatusInternalServerError)
+			return
+		}
+		_, _ = w.Write([]byte(`{"count":0,"next":null,"results":[]}`))
+	}))
+	defer srv.Close()
+
+	client := &Client{BaseURL: srv.URL, Token: "x", HTTPClient: srv.Client()}
+	_, err := LoadConsistentSnapshot(context.Background(), client, 1, 0, nil)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	msg := err.Error()
+	for _, taskName := range []string{"devices:", "cables:"} {
+		if !strings.Contains(msg, taskName) {
+			t.Errorf("error %q does not mention failing task %q", msg, taskName)
+		}
+	}
+	// Per-task wrap uses %w, so the underlying HTTP 500 message bubbles up.
+	if !strings.Contains(msg, "HTTP 500") {
+		t.Errorf("error %q does not include underlying HTTP 500", msg)
+	}
+	// errors.Join produces a value implementing Unwrap() []error. This is the
+	// concrete behavioral difference vs. the old errors.New(strings.Join(...))
+	// form, which produced a flat *errors.errorString with no walkable chain.
+	type multiUnwrap interface{ Unwrap() []error }
+	mu, ok := err.(multiUnwrap)
+	if !ok {
+		t.Fatalf("error %T does not implement Unwrap() []error; chain is not walkable", err)
+	}
+	if got := len(mu.Unwrap()); got != 2 {
+		t.Errorf("Unwrap() returned %d errors, want 2", got)
 	}
 }
