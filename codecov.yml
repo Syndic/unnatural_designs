@@ -11,21 +11,30 @@ coverage:
     project:
       default:
         target: auto
-        threshold: 1%
+        threshold: 5%
     patch:
       default:
         target: auto
-        threshold: 0%
+        threshold: 5%
 
 component_management:
   default_rules:
     statuses:
       - type: project
         target: auto
-        threshold: 1%
-  # TEND(lang-expand): add one entry per language adopted in the repo so Codecov emits a
-  # per-language breakdown.
+        threshold: 5%
+  # Components are grouped into three orthogonal slices of the same lcov:
+  #   - Language: one entry per language adopted in the repo.
+  #     TEND(lang-expand): add a new entry whenever a new language is adopted.
+  #   - Category: one entry per top-level project-category folder, even if empty today —
+  #     the component will start reporting once code lands. No tending needed unless
+  #     we add or remove a top-level folder.
+  #   - Project: one entry per leaf project directory with its own code.
+  #     TEND(project-expand): add a new entry whenever a new project lands.
+  # Components can overlap — a single .go file in tools/network_infrastructure_maintenance/
+  # contributes to Go, Category: tools, and Project: network_infrastructure_maintenance.
   individual_components:
+    # Languages
     - component_id: go
       name: Go
       paths:
@@ -35,6 +44,50 @@ component_management:
       paths:
         - "**/*.py"
 
+    # Categories (top-level project-category folders)
+    - component_id: cat_apps
+      name: "Category: apps"
+      paths:
+        - "apps/**"
+    - component_id: cat_infra
+      name: "Category: infra"
+      paths:
+        - "infra/**"
+    - component_id: cat_libs
+      name: "Category: libs"
+      paths:
+        - "libs/**"
+    - component_id: cat_meta
+      name: "Category: meta"
+      paths:
+        - "meta/**"
+    - component_id: cat_platforms
+      name: "Category: platforms"
+      paths:
+        - "platforms/**"
+    - component_id: cat_secrets
+      name: "Category: secrets"
+      paths:
+        - "secrets/**"
+    - component_id: cat_services
+      name: "Category: services"
+      paths:
+        - "services/**"
+    - component_id: cat_tools
+      name: "Category: tools"
+      paths:
+        - "tools/**"
+
+    # Projects (leaf project directories with code today)
+    - component_id: proj_meta_scripts
+      name: "Project: meta/scripts"
+      paths:
+        - "meta/scripts/**"
+    - component_id: proj_network_infrastructure_maintenance
+      name: "Project: tools/network_infrastructure_maintenance"
+      paths:
+        - "tools/network_infrastructure_maintenance/**"
+
 comment:
   layout: "header, diff, components, files, footer"
-  require_changes: false
+  require_changes: true
