@@ -61,14 +61,6 @@ component_management:
       name: "Category: meta"
       paths:
         - "meta/**"
-    - component_id: cat_platforms
-      name: "Category: platforms"
-      paths:
-        - "platforms/**"
-    - component_id: cat_secrets
-      name: "Category: secrets"
-      paths:
-        - "secrets/**"
     - component_id: cat_services
       name: "Category: services"
       paths:
