@@ -28,6 +28,7 @@ go_binary(
 
 go_test(
     name = "netbox_audit_test",
+    size = "small",
     srcs = ["main_test.go"],
     embed = [":netbox_audit_lib"],
     deps = [
