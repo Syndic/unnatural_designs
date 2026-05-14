@@ -32,6 +32,7 @@ go_library(
 
 go_test(
     name = "audit_test",
+    size = "small",
     srcs = ["audit_test.go"],
     embed = [":audit"],
     deps = ["//tools/network_infrastructure_maintenance/internal/netbox"],
