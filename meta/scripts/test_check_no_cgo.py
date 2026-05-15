@@ -225,15 +225,13 @@ class TestCheck(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertIn("simulated `go list` failure", stderr.getvalue())
 
-    def test_go_missing_warns_but_does_not_fail(self):
-        # Documents current behaviour: when `go` is not on PATH, the transitive-dep check
-        # is skipped silently (warning to stderr, exit 0). If this turns out to be
-        # undesirable, this test is the canary that flips when we change the policy.
+    def test_go_missing_fails_loudly(self):
         rc, out, err = self._run(go_present=False)
-        self.assertEqual(rc, 0)
-        self.assertIn("warning", err)
+        self.assertEqual(rc, 1)
+        self.assertIn("error", err)
         self.assertIn("not on PATH", err)
-        self.assertIn("OK", out)
+        self.assertIn("Install Go", err)
+        self.assertNotIn("OK", out)
 
 
 class TestMain(unittest.TestCase):

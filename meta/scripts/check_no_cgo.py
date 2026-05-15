@@ -112,11 +112,15 @@ def check(root: Path) -> int:
 
     modules = sorted(registered_modules(root))
     if not shutil.which("go"):
+        # The check exists to enforce the pure-Go policy; if the transitive-dep
+        # half can't run, we have not validated it. Fail loudly rather than
+        # silently green-light an unvalidated build.
         print(
-            "warning: `go` is not on PATH; skipping transitive dependency check.\n"
-            "         Run with Go installed to fully validate.",
+            "error: `go` is not on PATH; the transitive dependency check cannot run.\n"
+            "       Install Go (matching the version in go.work) to validate the pure-Go policy.",
             file=sys.stderr,
         )
+        exit_code = 1
     else:
         for module_rel in modules:
             try:
