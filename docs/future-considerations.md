@@ -34,14 +34,13 @@ py\_\* target count exceeds the configured threshold, at which point this item s
 
 ---
 
-## Introducing cgo or Python C-Extensions
+## Introducing cgo
 
-The build infrastructure assumes **pure Go** (no cgo) and **pure Python** (no native
-C-extensions). This assumption is what lets any host build for any supported target with
-no extra setup: Go's own toolchain ships every `GOOS`/`GOARCH` pair, and pure-Python code
-is platform-agnostic at the source level. No LLVM toolchain, no sysroots, no Apple SDK
-dance. The cross-compile story (see README "Cross-compilation") works directly out of
-rules_go in pure mode, configured via `--@rules_go//go/config:pure` in `.bazelrc`.
+The build infrastructure assumes **pure Go** (no cgo). This assumption is what lets any
+host build for any supported Go target with no extra setup: Go's own toolchain ships
+every `GOOS`/`GOARCH` pair. No LLVM toolchain, no sysroots, no Apple SDK dance. The
+cross-compile story (see README "Cross-compilation") works directly out of rules_go in
+pure mode, configured via `--@rules_go//go/config:pure` in `.bazelrc`.
 
 The assumption is enforced by [`meta/scripts/check_no_cgo.py`](../meta/scripts/check_no_cgo.py),
 which runs as the `no-cgo-check` CI job. It rejects:
@@ -49,16 +48,15 @@ which runs as the `no-cgo-check` CI job. It rejects:
 - Any transitive Go dependency that compiles C, C++, cgo, SWIG, or ships pre-built
   `.syso` objects (detected via `go list -deps` with `CGO_ENABLED=1`).
 
-There is no equivalent automated check for Python C-extensions today because there are
-no pinned Python deps at all (no `pip` extension, no `requirements.txt`). When the first
-real Python target lands, the policy should grow a sibling check.
+Python is **not** held to an analogous purity policy — see [Python Purity Is Not
+Enforced](#python-purity-is-not-enforced) below for that side of the story.
 
 ### What Would Have to Change to Allow cgo
 
 If a future need is concrete enough to warrant breaking the policy — e.g. a service
 genuinely requires a C library with no pure-Go alternative (`librdkafka`, `libpcap`,
-`libssh2`), or a Python target needs `numpy`/`cryptography` — the cross-compile
-infrastructure would need to be rebuilt. The work is non-trivial:
+`libssh2`) — the Go cross-compile infrastructure would need to be rebuilt. The work is
+non-trivial:
 
 1. **Switch `.bazelrc` off pure mode** for the affected targets (or globally) by removing
    `--@rules_go//go/config:pure`, or scope it via per-target `pure = "off"` overrides.
@@ -79,10 +77,6 @@ infrastructure would need to be rebuilt. The work is non-trivial:
    to be redistributed off macOS, so producing darwin binaries with cgo dependencies is
    not legally workable from a Linux executor. The current "any host → any target" matrix
    collapses to "Mac → all three; Linux → linux pair only."
-6. **For Python C-extensions:** wire up rules_python's pip integration, lock dependencies
-   per platform (manylinux + macosx wheels), and accept that wheel availability for less
-   popular packages is uneven (especially under musllinux if we ever go that direction).
-
 PR #29 on `worktree-cross-toolchain` (closed without merging in favour of this simpler
 design) walked through the full LLVM + sysroot + executor-image setup end-to-end and is
 the best reference for what this work looks like in practice.
@@ -102,75 +96,54 @@ drift.
 
 ---
 
-## Pure-Python Enforcement (Known Gap)
+## Python Purity Is Not Enforced
 
-We protect against cgo via `meta/scripts/check_no_cgo.py`, but **we do not currently
-have an analogous check for impure Python** — Python dependencies that ship native code
-(C extensions, Cython, etc.). This is a deliberate gap, not an oversight.
+Unlike Go, Python is **not** held to a purity policy. Impure Python deps (wheels with
+C extensions — `numpy`, `cryptography`, `pydantic`'s rust core, etc.) are allowed. The
+trade-off is that the "any host → any target" property the Go side enjoys does **not**
+extend to Python: Python targets are built and tested on a host that matches the target
+platform, and CI's per-platform runners cover the supported set.
 
-### Why The Gap Exists
+### Why The Policies Diverge
 
-The cgo check is cheap and authoritative: `go list -deps` is a toolchain-native query
-that surfaces native code in any package, and it could run against an existing 198-package
-dep graph the moment it was written. The Python equivalent is messier:
+For Go, "any host builds any target" is cheap to maintain — `--@rules_go//go/config:pure`
+plus the cgo check is a few lines of config and a small script, and the Go toolchain
+already ships every `GOOS`/`GOARCH` pair. We lose nothing by enforcing it.
 
-- **Source-level scan is much weaker.** Python has no `import "C"` marker. The
-  user-visible idioms (`import ctypes`, Cython `.pyx`, `setup.py` `Extension(...)`) catch
-  the most blatant cases but miss the dominant failure mode: an innocent-looking
-  `import numpy` whose dependency is itself impure.
-- **Dependency-level scan needs an artifact we don't have.** The clean check is "every
-  resolved wheel in the lock file ends in `-py3-none-any.whl`," but there is no lock
-  file yet — `rules_python` is registered and the interpreter is pinned (3.13), but no
-  `pip` extension is configured and no Python deps are pinned anywhere.
-- **Building the check against zero deps means designing against a hypothetical
-  lock-file format with nothing to validate it on.**
+For Python the same property is much more expensive to maintain, and the benefit is
+smaller:
 
-### Failure Modes Without The Check
+- **Auto-detection is weak.** Python has no `import "C"` marker. Source-level scans
+  (`import ctypes`, `.pyx`, `Extension(...)`) catch the blatant cases but miss the
+  dominant failure mode: an innocent-looking `import numpy` whose transitive deps ship
+  C. The clean dependency-level check — "every resolved wheel ends in
+  `-py3-none-any.whl`" — needs a `rules_python` pip lock file we don't have, and only
+  catches issues *after* the lock is generated.
+- **The Python ecosystem expects native wheels.** Refusing them closes the door on
+  most numerics, crypto, and serialization libraries. The cost of staying pure
+  compounds with every dep added.
+- **CI matrix coverage is a workable substitute.** If a Python target works on a Linux
+  runner and a Mac runner, it works on the platforms we ship to. We don't need
+  "build darwin from a Linux host" to work in the abstract; we need "darwin works on
+  Macs" to work in practice.
 
-If someone introduces an impure Python dep tomorrow:
+### What This Means In Practice
 
-- **Most likely first failure: build-time, reasonably clear.** `rules_python` requires
-  per-platform lock entries to resolve native wheels. The first cross-compile to a
-  target without a lock yields something like *"no matching wheel found for platform
-  linux_arm64"* — names the dep, names the platform, points the contributor toward the
-  pure-vs-impure distinction.
-- **Less likely but more painful: silent platform mismatch.** If locks are configured
-  for every platform and the wheels happen to install everywhere, the build succeeds.
-  The cost shows up later as larger artifacts, slower CI, and target-specific runtime
-  failures only on platforms that go untested. This is the case the check would catch
-  that build errors would not.
-
-### Plan: Build The Check When The First Impure Dep Lands
-
-Test-driven design for build infrastructure: write the check that would have caught the
-actual problem, not the check we imagine in advance. The first impure Python dep should
-be both:
-
-1. A trigger to add the check that would have flagged it, sized to the actual lock-file
-   format `rules_python` produces by then.
-2. A deliberate decision — not slipped in unnoticed because no check existed.
-
-The natural trigger to revisit aligns with the existing
-**Gazelle Python Support** entry: once `python-scale-check` starts firing because real
-Python targets are arriving, we will also have the lock file the check needs.
-
-### Sketch of The Eventual Check
-
-When implemented, the check is roughly:
-
-```python
-# meta/scripts/check_pure_python.py
-# Walks the rules_python lock file and asserts every resolved wheel filename matches
-# the pure-Python pattern: *-py3-none-any.whl. Fails on any platform-specific wheel
-# (e.g. *-cp311-cp311-manylinux_2_17_x86_64.whl).
-```
-
-Wired into CI alongside `no-cgo-check`. When this lands, the README cross-compile
-section should grow a sibling note: "Adding a Python C-extension would require
-introducing per-platform native-wheel resolution — `rules_python`'s `pip.parse` with
-`requirements_lock_<platform>` locks for every supported target, plus the realistic
-risk of wheel-availability gaps on niche platforms (musllinux, linux_arm64). See
-future-considerations."
+- **The cross-compile claim is narrowed.** The "any host → any target" matrix in the
+  README applies to pure-Go targets. For Python targets, builds and tests happen on a
+  host that matches the target platform.
+- **No purity check is planned.** The previously-sketched `check_pure_python.py` is
+  dropped. If wheel-resolution issues surface later (silent platform mismatches,
+  artifact bloat, target-specific runtime failures), the response is a targeted check
+  sized to the actual problem — not a speculative one.
+- **When the first impure Python dep lands**, wire `rules_python`'s `pip.parse` with
+  per-platform `requirements_lock_<platform>` files for each target. Accept that wheel
+  availability for less-popular packages is uneven (manylinux is well-covered;
+  musllinux and linux_arm64 less so).
+- **Darwin Python targets become Mac-only when impure.** Apple's SDK can't ship off
+  macOS, so a Linux executor can't link darwin C extensions from source. If a darwin
+  Python target is impure and its `darwin_arm64` wheel isn't on PyPI, that target can
+  only be built on a Mac — the same constraint that would apply to cgo.
 
 ---
 
@@ -189,12 +162,14 @@ multi-arch container image via `rules_oci`, or a developer-tool distribution bun
 
 ### Constraint That Shapes the Design
 
-While the build infrastructure is pure-Go, all three targets are reachable from any host
-(see README "Cross-compilation"). So the fan-out target itself has no per-host
-restrictions. **However**, if cgo is ever introduced (see above), darwin becomes
-Mac-only and the design needs to gain a host-aware platform list. The design below
-anticipates that — the per-environment platform list pattern handles both cases without
-re-design.
+The Go side of the build is pure, so all three Go targets are reachable from any host
+(see README "Cross-compilation"). Python targets only share that property while their
+deps stay pure — an impure Python target needs a matching-host build (and darwin needs
+a Mac). So the fan-out target itself has no per-host restriction today for pure-Go
+release artifacts. **However**, if cgo is ever introduced, or if an impure Python target
+needs darwin coverage, darwin becomes Mac-only and the design needs to gain a host-aware
+platform list. The design below anticipates that — the per-environment platform list
+pattern handles both cases without re-design.
 
 ### The Recommended Design: Configurable Platform List via `string_list_flag`
 

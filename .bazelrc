@@ -52,8 +52,9 @@ coverage --experimental_fetch_all_coverage_outputs
 # every GOOS/GOARCH pair, so no C toolchain or sysroot is needed for cross-compile.
 #
 # This is a deliberate policy choice for the monorepo — see docs/future-considerations.md
-# ("Introducing cgo or Python C-Extensions") for the implications of changing it. CI enforces
-# the policy via meta/scripts/check_no_cgo.py.
+# ("Introducing cgo") for the implications of changing it. CI enforces the policy via
+# meta/scripts/check_no_cgo.py. (Python is not held to an analogous purity policy; see
+# "Python Purity Is Not Enforced" in the same doc.)
 build --@rules_go//go/config:pure
 
 

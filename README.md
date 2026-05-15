@@ -64,8 +64,8 @@ Target platform shortcuts are also available: `--config=linux_x86_64`, `--config
 
 ### Cross-compilation
 
-Any host can build for any supported target with no extra setup, because the build is
-**pure-Go by policy** (see [`docs/future-considerations.md`](docs/future-considerations.md#introducing-cgo-or-python-c-extensions)).
+Any host can build for any supported **Go** target with no extra setup, because the Go
+build is **pure-Go by policy** (see [`docs/future-considerations.md`](docs/future-considerations.md#introducing-cgo)).
 The Go toolchain ships every `GOOS`/`GOARCH` pair, so cross-compile needs no C toolchain,
 no LLVM, and no sysroot.
 
@@ -76,6 +76,11 @@ no LLVM, and no sysroot.
 
 Linux outputs are statically linked (no glibc dependency) and can be dropped directly
 into a `FROM scratch` container.
+
+Python is **not** held to the same purity policy — Python targets are built and tested
+on a host that matches the target platform, and CI's per-platform runners cover the
+supported set. See [`docs/future-considerations.md`](docs/future-considerations.md#python-purity-is-not-enforced)
+for the rationale.
 
 #### CI exercises every platform
 
@@ -106,10 +111,11 @@ list and would land alongside the first multi-arch release artifact.
 
 [`meta/scripts/check_no_cgo.py`](meta/scripts/check_no_cgo.py) runs as the `no-cgo-check`
 CI job and rejects both direct `import "C"` and any transitive dependency that compiles
-native code. Adding cgo or Python C-extensions would require rebuilding the cross-compile
-story on a hermetic C/C++ toolchain (and accepting that darwin becomes Mac-only because
-the Apple SDK can't ship off macOS) — see the linked future-considerations entry for the
-implications.
+native code. Adding cgo would require rebuilding the Go cross-compile story on a hermetic
+C/C++ toolchain (and accepting that darwin becomes Mac-only because the Apple SDK can't
+ship off macOS) — see the linked future-considerations entry for the implications. The
+analogous constraint for impure Python on darwin is covered under
+[Python Purity Is Not Enforced](docs/future-considerations.md#python-purity-is-not-enforced).
 
 Tests are run on whichever platforms CI exercises, on the working assumption that an
 environment-independent test which passes in one environment will pass in all of them.
