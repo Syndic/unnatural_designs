@@ -37,11 +37,9 @@ py\_\* target count exceeds the configured threshold, at which point this item s
 ## Introducing cgo or Python C-Extensions
 
 The build infrastructure assumes **pure Go** (no cgo) and **pure Python** (no native
-C-extensions). This assumption is what lets any host build for any supported target with
-no extra setup: Go's own toolchain ships every `GOOS`/`GOARCH` pair, and pure-Python code
-is platform-agnostic at the source level. No LLVM toolchain, no sysroots, no Apple SDK
-dance. The cross-compile story (see README "Cross-compilation") works directly out of
-rules_go in pure mode, configured via `--@rules_go//go/config:pure` in `.bazelrc`.
+C-extensions). The rationale is build simplicity and hermeticity: pure-Go means no LLVM
+toolchain, no sysroots, no Apple SDK handling, and Linux outputs are statically linked.
+`rules_go` runs in pure mode via `--@rules_go//go/config:pure` in `.bazelrc`.
 
 The assumption is enforced by [`meta/scripts/check_no_cgo.py`](../meta/scripts/check_no_cgo.py),
 which runs as the `no-cgo-check` CI job. It rejects:
@@ -57,8 +55,8 @@ real Python target lands, the policy should grow a sibling check.
 
 If a future need is concrete enough to warrant breaking the policy — e.g. a service
 genuinely requires a C library with no pure-Go alternative (`librdkafka`, `libpcap`,
-`libssh2`), or a Python target needs `numpy`/`cryptography` — the cross-compile
-infrastructure would need to be rebuilt. The work is non-trivial:
+`libssh2`), or a Python target needs `numpy`/`cryptography` — a hermetic C/C++
+toolchain story would need to be built. The work is non-trivial:
 
 1. **Switch `.bazelrc` off pure mode** for the affected targets (or globally) by removing
    `--@rules_go//go/config:pure`, or scope it via per-target `pure = "off"` overrides.
@@ -75,10 +73,9 @@ infrastructure would need to be rebuilt. The work is non-trivial:
    Be aware of the LLVM-prebuilt × ubuntu × libtinfo matrix: 18.1.8 only ships an
    ubuntu-18.04 prebuilt (libtinfo5), which won't load on ubuntu-22.04 (libtinfo6).
    17.0.6 has an ubuntu-22.04 prebuilt; that's the workable pin today.
-5. **Accept that darwin cross-compile becomes Mac-only.** Apple does not permit the SDK
-   to be redistributed off macOS, so producing darwin binaries with cgo dependencies is
-   not legally workable from a Linux executor. The current "any host → any target" matrix
-   collapses to "Mac → all three; Linux → linux pair only."
+5. **Accept that darwin builds become Mac-only.** Apple does not permit the SDK to be
+   redistributed off macOS, so producing darwin binaries with cgo dependencies is not
+   legally workable from a Linux executor — darwin targets must be built on a Mac.
 6. **For Python C-extensions:** wire up rules_python's pip integration, lock dependencies
    per platform (manylinux + macosx wheels), and accept that wheel availability for less
    popular packages is uneven (especially under musllinux if we ever go that direction).
@@ -130,10 +127,10 @@ dep graph the moment it was written. The Python equivalent is messier:
 If someone introduces an impure Python dep tomorrow:
 
 - **Most likely first failure: build-time, reasonably clear.** `rules_python` requires
-  per-platform lock entries to resolve native wheels. The first cross-compile to a
-  target without a lock yields something like *"no matching wheel found for platform
-  linux_arm64"* — names the dep, names the platform, points the contributor toward the
-  pure-vs-impure distinction.
+  per-platform lock entries to resolve native wheels. A build for a target without a
+  lock yields something like *"no matching wheel found for platform linux_arm64"* —
+  names the dep, names the platform, points the contributor toward the pure-vs-impure
+  distinction.
 - **Less likely but more painful: silent platform mismatch.** If locks are configured
   for every platform and the wheels happen to install everywhere, the build succeeds.
   The cost shows up later as larger artifacts, slower CI, and target-specific runtime
@@ -165,9 +162,9 @@ When implemented, the check is roughly:
 # (e.g. *-cp311-cp311-manylinux_2_17_x86_64.whl).
 ```
 
-Wired into CI alongside `no-cgo-check`. When this lands, the README cross-compile
-section should grow a sibling note: "Adding a Python C-extension would require
-introducing per-platform native-wheel resolution — `rules_python`'s `pip.parse` with
+Wired into CI alongside `no-cgo-check`. When this lands, the README pure-Go section
+should grow a sibling note: "Adding a Python C-extension would require introducing
+per-platform native-wheel resolution — `rules_python`'s `pip.parse` with
 `requirements_lock_<platform>` locks for every supported target, plus the realistic
 risk of wheel-availability gaps on niche platforms (musllinux, linux_arm64). See
 future-considerations."
@@ -189,12 +186,12 @@ multi-arch container image via `rules_oci`, or a developer-tool distribution bun
 
 ### Constraint That Shapes the Design
 
-While the build infrastructure is pure-Go, all three targets are reachable from any host
-(see README "Cross-compilation"). So the fan-out target itself has no per-host
-restrictions. **However**, if cgo is ever introduced (see above), darwin becomes
-Mac-only and the design needs to gain a host-aware platform list. The design below
-anticipates that — the per-environment platform list pattern handles both cases without
-re-design.
+Cross-host build reachability is **not** a guaranteed property of the repo — it is a
+side effect of the current pure-Go policy and may not survive future toolchain changes.
+The design therefore should not assume "any host → any target." Instead it gives each
+environment its own platform list, so a Mac dev box, a Linux CI executor, and any
+future host-restricted setup each declare exactly which targets they build. This also
+handles the cgo case (where darwin would become Mac-only) without re-design.
 
 ### The Recommended Design: Configurable Platform List via `string_list_flag`
 
@@ -214,7 +211,7 @@ string_list_flag(
     build_setting_default = [
         "//platforms:linux_x86_64",
         "//platforms:linux_arm64",
-        "//platforms:darwin_arm64",  # safe today because pure-Go cross works everywhere
+        "//platforms:darwin_arm64",  # works today under the pure-Go policy
     ],
     visibility = ["//visibility:public"],
 )
@@ -241,7 +238,7 @@ Building `:netbox_audit_release` produces one binary per platform listed in
 **The `.bazelrc` wiring.**
 
 ```
-# .bazelrc — committed default. All three targets, since pure-Go means all are reachable.
+# .bazelrc — committed default. All three targets (pure-Go policy makes all reachable today).
 build --//build/release:release_platforms=//platforms:linux_x86_64,//platforms:linux_arm64,//platforms:darwin_arm64
 
 # :remote_bb — linux executor, only build linux outputs (skip the round-trip cost for darwin).
@@ -289,7 +286,7 @@ Scope of the implementing PR:
 2. The `multi_platform_release` rule + macro (probably in `//build/release/`).
 3. The `.bazelrc` defaults (committed) and an updated `.bazelrc.user.example` (if we
    ever add one) showing per-environment overrides.
-4. README section under "Cross-compilation" explaining the flag and how to override it.
+4. README section under "Pure-Go policy" explaining the flag and how to override it.
 5. One real consumer (don't ship the machinery without a user).
 
 ### Prior Art to Reference
