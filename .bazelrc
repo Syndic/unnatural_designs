@@ -47,9 +47,10 @@ coverage --combined_report=lcov
 # Required so coverage files are returned on remote-cache hits (not just on misses).
 coverage --experimental_fetch_all_coverage_outputs
 
-# Force CGO_ENABLED=0 for every go_binary / go_library / go_test in the build. This is the
-# pivot point that makes "build any target from any host" simple: Go's own toolchain ships
-# every GOOS/GOARCH pair, so no C toolchain or sysroot is needed for cross-compile.
+# Force CGO_ENABLED=0 for every go_binary / go_library / go_test in the build. The rationale
+# is hermeticity and build simplicity: no LLVM toolchain, no sysroots, no Apple SDK handling,
+# and Linux outputs are statically linked (no glibc dependency) so they drop into FROM scratch
+# containers directly.
 #
 # This is a deliberate policy choice for the monorepo — see docs/future-considerations.md
 # ("Introducing cgo or Python C-Extensions") for the implications of changing it. CI enforces
@@ -132,10 +133,11 @@ build:local --bes_results_url=
 #     test:linux_x86_64 --config=remote_bb
 #     test:linux_arm64  --config=remote_bb
 #
-# Builds work locally without this (pure-Go cross-compile); only test *execution*
-# needs an arch-matched runtime. We don't enable this in the committed .bazelrc
-# because it'd silently couple "target linux" with "use BB" for everyone, including
-# devs on a native linux host who don't need or want remote execution.
+# Builds for a non-host target work locally under the current pure-Go policy (it's a
+# side effect of the policy, not a guaranteed property of the repo); only test
+# *execution* needs an arch-matched runtime. We don't enable this in the committed
+# .bazelrc because it'd silently couple "target linux" with "use BB" for everyone,
+# including devs on a native linux host who don't need or want remote execution.
 build:linux_x86_64 --platforms=//platforms:linux_x86_64
 build:linux_x86_64 --extra_execution_platforms=@toolchains_buildbuddy//platforms:linux_x86_64
 build:linux_x86_64 --extra_toolchains=@toolchains_buildbuddy//toolchains/cc:ubuntu_gcc_x86_64

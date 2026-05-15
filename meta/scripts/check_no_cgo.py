@@ -3,17 +3,16 @@
 Enforces the monorepo's pure-Go policy: no `import "C"` in our Go source, and no transitive
 Go dependency that compiles C, C++, cgo, SWIG, or ships pre-built .syso objects.
 
-The build infrastructure (.bazelrc sets `--@rules_go//go/config:pure`) assumes pure Go so
-that cross-compile to any GOOS/GOARCH works from any host without an LLVM toolchain or
-sysroot. Introducing cgo invalidates that assumption — see
-docs/future-considerations.md ("Introducing cgo or Python C-Extensions") for what would
-need to change.
+The build infrastructure (.bazelrc sets `--@rules_go//go/config:pure`) assumes pure Go for
+hermeticity and build simplicity: no LLVM toolchain, no sysroots, no Apple SDK handling.
+Introducing cgo invalidates that assumption — see docs/future-considerations.md
+("Introducing cgo or Python C-Extensions") for what would need to change.
 
 When this check fails:
   - If the cgo is in our code: remove it. If you genuinely need it, get explicit team
-    agreement and rebuild the cross-compile infrastructure first.
+    agreement to change the policy and stand up a hermetic C/C++ toolchain first.
   - If the cgo is in a transitive dep: pick a pure-Go alternative if one exists, or
-    explicitly accept the cost and rebuild the cross-compile infrastructure first.
+    explicitly accept the cost and stand up a hermetic C/C++ toolchain first.
 
 Module discovery delegates to _workspace.registered_modules — go.work is the canonical list,
 and check_go_work independently verifies that every on-disk go.mod is listed there, so
