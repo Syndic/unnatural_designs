@@ -68,9 +68,7 @@ The build is **pure-Go by policy**. [`meta/scripts/check_no_cgo.py`](meta/script
 runs as the `no-cgo-check` CI job and rejects both direct `import "C"` and any transitive
 dependency that compiles native code. The rationale is hermeticity and build simplicity:
 no LLVM toolchain, no sysroots, no Apple SDK handling, and Linux outputs are statically
-linked (no glibc dependency) so they drop into `FROM scratch` containers directly. See
-[`docs/future-considerations.md`](docs/future-considerations.md#introducing-cgo-or-python-c-extensions)
-for what would change if cgo were ever introduced.
+linked (no glibc dependency) so they drop into `FROM scratch` containers directly.
 
 CI builds and tests every PR against each supported platform (`linux_x86_64`,
 `linux_arm64`, `darwin_arm64`) — Linux on `ubuntu-latest` runners dispatching to
@@ -85,7 +83,7 @@ platform-shortcut config:
 bazel build //tools/... --config=linux_arm64
 ```
 
-Building for a non-host target works today because the toolchain is pure-Go, but this
+Building locally for a non-host target works today because the toolchain is pure-Go, but this
 is not a guaranteed property of the repo — it is a side effect of the current policy
 and may not survive future toolchain changes.
 
