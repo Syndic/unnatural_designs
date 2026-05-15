@@ -62,60 +62,30 @@ executor and always falls back to local execution.
 Target platform shortcuts are also available: `--config=linux_x86_64`, `--config=linux_arm64`,
 `--config=darwin_arm64`. See [`//platforms`](platforms/BUILD.bazel) for the platform definitions.
 
-### Cross-compilation
+### Pure-Go policy
 
-Any host can build for any supported target with no extra setup, because the build is
-**pure-Go by policy** (see [`docs/future-considerations.md`](docs/future-considerations.md#introducing-cgo-or-python-c-extensions)).
-The Go toolchain ships every `GOOS`/`GOARCH` pair, so cross-compile needs no C toolchain,
-no LLVM, and no sysroot.
+The build is **pure-Go by policy**. [`meta/scripts/check_no_cgo.py`](meta/scripts/check_no_cgo.py)
+runs as the `no-cgo-check` CI job and rejects both direct `import "C"` and any transitive
+dependency that compiles native code. The rationale is hermeticity and build simplicity:
+no LLVM toolchain, no sysroots, no Apple SDK handling, and Linux outputs are statically
+linked (no glibc dependency) so they drop into `FROM scratch` containers directly.
 
-| Host  | → linux_x86_64 | → linux_arm64 | → darwin_arm64 |
-| ----- | -------------- | ------------- | -------------- |
-| Mac   | ✓              | ✓             | ✓              |
-| Linux | ✓              | ✓             | ✓              |
+CI builds and tests every PR against each supported platform (`linux_x86_64`,
+`linux_arm64`, `darwin_arm64`) — Linux on `ubuntu-latest` runners dispatching to
+matching-arch BuildBuddy executors, darwin on `macos-latest` locally. Tests run
+natively on their target arch; there is no emulation layer (qemu, Rosetta) in the
+build. A change that breaks any platform fails CI before it can land.
 
-Linux outputs are statically linked (no glibc dependency) and can be dropped directly
-into a `FROM scratch` container.
-
-#### CI exercises every platform
-
-Every PR runs `bazel test //... --config=<platform>` for each supported target. Linux
-targets (both archs) run on `ubuntu-latest` runners that dispatch every action to
-BuildBuddy executors of the matching arch via `--config=remote_bb`; `darwin_arm64` runs
-on `macos-latest` and executes locally because BB has no macOS executors. A change that
-breaks the build or tests on any platform fails CI before it can land. There is no
-cross-platform emulation layer (qemu, Rosetta) anywhere in the build, and no plan to
-add one — every action still runs natively on its target arch.
-
-#### Local builds default to the host platform
-
-Bare `bazel build //...` and `bazel test //...` build for the host. To build (or test)
-for a different target, add the platform-shortcut config:
+Local builds default to the host platform. To build for a different target, use the
+platform-shortcut config:
 
 ```
 bazel build //tools/... --config=linux_arm64
 ```
 
-Tests that target a platform other than the host can be built locally but not executed —
-the binary won't run on the host's OS/arch. To verify your change builds across every
-supported platform from your dev box, run the three configs in turn (or wait for CI). A
-single command that fans out to every reachable target is on the future-considerations
-list and would land alongside the first multi-arch release artifact.
-
-#### Pure-Go is enforced
-
-[`meta/scripts/check_no_cgo.py`](meta/scripts/check_no_cgo.py) runs as the `no-cgo-check`
-CI job and rejects both direct `import "C"` and any transitive dependency that compiles
-native code. Adding cgo or Python C-extensions would require rebuilding the cross-compile
-story on a hermetic C/C++ toolchain (and accepting that darwin becomes Mac-only because
-the Apple SDK can't ship off macOS) — see the linked future-considerations entry for the
-implications.
-
-Tests are run on whichever platforms CI exercises, on the working assumption that an
-environment-independent test which passes in one environment will pass in all of them.
-If we ever see evidence to the contrary, we'll want to figure out how the behavior
-became tied to the environment and either make it independent again or ensure the
-relevant environments are covered.
+Building locally for a non-host target works today because the toolchain is pure-Go, but this
+is not a guaranteed property of the repo — it is a side effect of the current policy
+and may not survive future toolchain changes.
 
 ## CI
 
