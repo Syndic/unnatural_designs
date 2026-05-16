@@ -1,0 +1,39 @@
+name: Devcontainer
+
+# Build the devcontainer and smoke-test the toolchain it ships. Catches breakage from
+# Renovate-driven bumps to the Debian base, the `features` block (go/python/etc.), or
+# BAZELISK_VERSION before someone hits it locally.
+on:
+  push:
+    branches: [main]
+    paths:
+      - .devcontainer/**
+      - .github/workflows/devcontainer.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - .devcontainer/**
+      - .github/workflows/devcontainer.yml
+
+jobs:
+  build-and-smoke-test:
+    name: Build devcontainer and smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      # devcontainers/ci builds with the full feature set (so feature bumps are exercised,
+      # not just the Dockerfile) and runs the smoke command inside the resulting container.
+      # `push: never` keeps this self-contained — no registry or credentials needed.
+      - uses: devcontainers/ci@b63b30de439b47a52267f241112c5b453b673db5 # v0.3
+        with:
+          push: never
+          # `bazel --version` exercises the full Bazelisk chain: download from the URL
+          # baked into BAZELISK_VERSION, then bootstrap Bazel per .bazelversion. The
+          # toolchain feature smoke tests (`go version`, `python3 --version`) confirm
+          # the `features` block landed both interpreters on PATH.
+          runCmd: |
+            set -euo pipefail
+            bazel --version
+            go version
+            python3 --version
