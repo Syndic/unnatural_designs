@@ -1,7 +1,7 @@
 FROM mcr.microsoft.com/devcontainers/base:debian
 
 # renovate: datasource=github-releases depName=bazelbuild/bazelisk
-ARG BAZELISK_VERSION=v1.22.1
+ARG BAZELISK_VERSION=v1.29.0
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         build-essential \
