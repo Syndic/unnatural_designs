@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Ensure the cache volume is writable by the non-root user. Docker creates the parent
-# of a named-volume mount (here, $HOME/.cache, parent of the bazel mount) as root-owned,
-# which blocks later writes like `go install` populating $HOME/.cache/go-build — so the
-# chown has to cover .cache itself, not just .cache/bazel.
+# Make the named-volume mounts writable by the non-root user: Docker attaches them (and
+# the .cache parent of the bazel mount) root-owned, blocking writes like `go install`
+# populating $HOME/.cache/go-build — so the chown covers .cache itself. This only takes
+# effect on first mount; if remoteUser later changes, the volumes keep their old UID and
+# this fails silently (|| true). Recover: `docker volume rm ud-bazel-cache ud-go-cache`.
 sudo chown -R "$(id -u):$(id -g)" "$HOME/.cache" "$HOME/go" 2>/dev/null || true
 
 # Install golangci-lint. Version is pinned and tracked by Renovate (see renovate.json).
