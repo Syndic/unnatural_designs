@@ -14,6 +14,28 @@ Joshua Yanchar's personal projects monorepo.
 | `//services/` | Long-running processes: background daemons and server-side applications        |
 | `//tools/`    | Developer and operator-facing CLI tools: short-lived, task-focused executables |
 
+## Dev Environment
+
+The repo ships a [VS Code Dev Container](https://code.visualstudio.com/docs/devcontainers/containers)
+at [`.devcontainer/`](.devcontainer/) so every contributor gets the same toolchain without
+installing anything on the host.
+
+**Prerequisites**: [Docker Desktop](https://www.docker.com/products/docker-desktop/) or
+[OrbStack](https://orbstack.dev) running on the host, and the VS Code
+[Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers).
+
+**To open**: clone the repo, open the folder in VS Code, and run _Dev Containers: Reopen in
+Container_ from the Command Palette. First build takes a few minutes; subsequent opens are fast.
+
+**What's inside**: [bazelisk](https://github.com/bazelbuild/bazelisk) (driven by `.bazelversion`),
+Go 1.26.3, Python 3.14, [`gh`](https://cli.github.com), [pre-commit](https://pre-commit.com), and
+[`golangci-lint`](https://golangci-lint.run). Named volumes (`ud-bazel-cache`, `ud-go-cache`)
+preserve the Bazel and Go caches across container rebuilds.
+
+**Known limitations**: the Docker and Kubernetes VS Code extensions install but aren't wired to a
+daemon or `kubectl` inside the container; signing and BuildBuddy credentials still need host-side
+setup. See [`docs/future-considerations.md`](docs/future-considerations.md) for the open items.
+
 ## Build System
 
 This repo uses [Bazel](https://bazel.build) with [Bzlmod](https://bazel.build/extern/bzlmod) for
