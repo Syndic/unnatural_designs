@@ -1,0 +1,58 @@
+{
+  "name": "UnnaturalDesigns",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": true,
+      "configureZshAsDefaultShell": false,
+      "upgradePackages": false
+    },
+    "ghcr.io/devcontainers/features/go:1": {
+      "version": "1.26.3"
+    },
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.14",
+      "installTools": false
+    },
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/git:1": {}
+  },
+  "remoteUser": "vscode",
+  "containerEnv": {
+    "GOTOOLCHAIN": "local"
+  },
+  "mounts": [
+    "source=ud-bazel-cache,target=/home/vscode/.cache/bazel,type=volume",
+    "source=ud-go-cache,target=/home/vscode/go,type=volume"
+  ],
+  "postCreateCommand": ".devcontainer/post-create.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "bazelbuild.vscode-bazel",
+        "emeraldwalk.runonsave",
+        "esbenp.prettier-vscode",
+        "github.vscode-github-actions",
+        "golang.go",
+        "gruntfuggly.todo-tree",
+        "mechatroner.rainbow-csv",
+        "mermaidchart.vscode-mermaid-chart",
+        "meta.pyrefly",
+        "ms-azuretools.vscode-containers",
+        "ms-azuretools.vscode-docker",
+        "ms-kubernetes-tools.vscode-kubernetes-tools",
+        "ms-python.debugpy",
+        "ms-python.python",
+        "redhat.vscode-yaml",
+        "ryanluker.vscode-coverage-gutters"
+      ],
+      "settings": {
+        "go.toolsManagement.checkForUpdates": "off",
+        "go.useLanguageServer": true
+      }
+    }
+  }
+}
