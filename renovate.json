@@ -28,6 +28,13 @@
       "matchStrings": [ "^go (?<currentValue>\\d+\\.\\d+(?:\\.\\d+)?)" ],
       "datasourceTemplate": "golang-version",
       "depNameTemplate": "go"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [ "/(^|/)Dockerfile$/" ],
+      "matchStrings": [
+        "#\\s*renovate:\\s*datasource=(?<datasource>[a-z-]+?)\\s+depName=(?<depName>\\S+?)\\s*\\nARG\\s+\\w+=(?<currentValue>\\S+)"
+      ]
     }
   ],
   "packageRules": [
@@ -44,7 +51,7 @@
       "groupName": "GitHub Actions"
     },
     {
-      "matchManagers": [ "custom.regex" ],
+      "matchManagers": [ "custom.regex", "devcontainer" ],
       "matchDepNames": [ "go", "python" ],
       "groupName": "Language toolchain SDKs"
     }
