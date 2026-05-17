@@ -33,8 +33,35 @@ Go 1.26.3, Python 3.14, [`gh`](https://cli.github.com), [pre-commit](https://pre
 preserve the Bazel and Go caches across container rebuilds.
 
 **Known limitations**: the Docker and Kubernetes VS Code extensions install but aren't wired to a
-daemon or `kubectl` inside the container; signing and BuildBuddy credentials still need host-side
-setup. See [`docs/future-considerations.md`](docs/future-considerations.md) for the open items.
+daemon or `kubectl` inside the container; BuildBuddy credentials still need host-side setup. See
+[`docs/future-considerations.md`](docs/future-considerations.md) for the open items.
+
+### Commit signing
+
+Branch protection requires signed commits. The devcontainer uses **SSH signing** via the
+host's forwarded ssh-agent, so no key material is ever copied into the container.
+
+What the host needs:
+
+- An ssh-agent running with the SSH **signing** key loaded (`ssh-add -L` shows it).
+- VS Code's `remote.SSH.enableAgentForwarding` setting on (the default). VS Code forwards
+  `SSH_AUTH_SOCK` into Dev Containers automatically — see
+  [Sharing Git credentials with your container](https://code.visualstudio.com/remote/advancedcontainers/sharing-git-credentials).
+- The host `~/.gitconfig` should already have `gpg.format = ssh`, `commit.gpgsign = true`,
+  and a `user.signingkey` pointing at the public key (path or literal). VS Code copies
+  `.gitconfig` into the container on first open.
+
+What [`post-create.sh`](.devcontainer/post-create.sh) does on first start:
+
+- Reads the forwarded agent (`ssh-add -L`) and picks the key whose comment matches
+  `user.email`.
+- Rewrites `user.signingkey` inside the container to the literal-key form
+  (`key::ssh-ed25519 AAAA...`) so the host-absolute key path in the copied gitconfig
+  doesn't matter.
+- Writes `~/.ssh/allowed_signers` from the same key so `git log --show-signature` and
+  `git verify-commit` work inside the container in addition to signing.
+- If no key is forwarded, prints a loud warning rather than silently producing unsigned
+  commits that branch protection will reject at push time.
 
 ## Build System
 
