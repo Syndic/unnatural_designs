@@ -19,3 +19,6 @@ pip install --user --no-warn-script-location pre-commit
 
 # Warm Bazel: fetches the registered Go SDK, rules_go, gazelle, etc.
 bazel version
+
+# Verify buildifier is available. Version is pinned and tracked by Renovate (in Dockerfile).
+buildifier --version

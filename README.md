@@ -28,7 +28,8 @@ installing anything on the host.
 Container_ from the Command Palette. First build takes a few minutes; subsequent opens are fast.
 
 **What's inside**: [bazelisk](https://github.com/bazelbuild/bazelisk) (driven by `.bazelversion`),
-Go 1.26.3, Python 3.14, [`gh`](https://cli.github.com), [pre-commit](https://pre-commit.com), and
+[`buildifier`](https://github.com/bazelbuild/buildtools/tree/main/buildifier), Go 1.26.3, Python 3.14,
+[`gh`](https://cli.github.com), [pre-commit](https://pre-commit.com), and
 [`golangci-lint`](https://golangci-lint.run). Named volumes (`ud-bazel-cache`, `ud-go-cache`)
 preserve the Bazel and Go caches across container rebuilds.
 
