@@ -16,9 +16,10 @@ Joshua Yanchar's personal projects monorepo.
 
 ## Dev Environment
 
-The repo ships a [VS Code Dev Container](https://code.visualstudio.com/docs/devcontainers/containers)
-at [`.devcontainer/`](.devcontainer/) so every contributor gets the same toolchain without
-installing anything on the host.
+The repo ships a
+[VS Code Dev Container](https://code.visualstudio.com/docs/devcontainers/containers) at
+[`.devcontainer/`](.devcontainer/) so every contributor gets the same toolchain without installing
+anything on the host.
 
 **Prerequisites**: [Docker Desktop](https://www.docker.com/products/docker-desktop/) or
 [OrbStack](https://orbstack.dev) running on the host, and the VS Code
@@ -28,7 +29,7 @@ installing anything on the host.
 Container_ from the Command Palette. First build takes a few minutes; subsequent opens are fast.
 
 **What's inside**: [bazelisk](https://github.com/bazelbuild/bazelisk) (driven by `.bazelversion`),
-[`buildifier`](https://github.com/bazelbuild/buildtools/tree/main/buildifier), Go 1.26.3, Python 3.14,
+[`buildifier`](https://github.com/bazelbuild/buildtools/tree/main/buildifier), Go, Python,
 [`gh`](https://cli.github.com), [pre-commit](https://pre-commit.com), and
 [`golangci-lint`](https://golangci-lint.run). Named volumes (`ud-bazel-cache`, `ud-go-cache`)
 preserve the Bazel and Go caches across container rebuilds.
@@ -42,8 +43,8 @@ container verbatim and does not rewrite filesystem paths inside it. If your host
 points at a `.pub` file under `/Users/...` or `/home/...`, that path won't resolve inside the
 container and `git commit` will fail to sign. The agent itself is forwarded automatically, and
 `allowed_signers` is copied and its path rewritten — only `user.signingkey` is left untouched.
-[vscode-remote-release #7796](https://github.com/microsoft/vscode-remote-release/issues/7796)
-tracks this gap.
+[vscode-remote-release #7796](https://github.com/microsoft/vscode-remote-release/issues/7796) tracks
+this gap.
 
 Two host-side configurations work cleanly inside the container, in order of preference:
 
@@ -104,16 +105,16 @@ common --remote_header=x-buildbuddy-api-key=YOUR_KEY
 
 The remote cache is enabled by default on every Bazel invocation. Additional configs:
 
-| Config               | Use when                                                                                                 |
-| -------------------- | -------------------------------------------------------------------------------------------------------- |
-| _(default)_          | Normal local/IDE/pre-commit usage - remote cache reads and writes, local execution.                      |
-| `--config=remote_bb` | Offload builds to BuildBuddy's remote executors (linux_x86_64 and linux_arm64).                          |
-| `--config=ci`        | Used by GitHub Actions: remote executors (via `:remote_bb`) + BES reporting.                             |
-| `--config=local`     | Disable all remote features (offline, or debugging cache issues).                                        |
+| Config               | Use when                                                                            |
+| -------------------- | ----------------------------------------------------------------------------------- |
+| _(default)_          | Normal local/IDE/pre-commit usage - remote cache reads and writes, local execution. |
+| `--config=remote_bb` | Offload builds to BuildBuddy's remote executors (linux_x86_64 and linux_arm64).     |
+| `--config=ci`        | Used by GitHub Actions: remote executors (via `:remote_bb`) + BES reporting.        |
+| `--config=local`     | Disable all remote features (offline, or debugging cache issues).                   |
 
 Remote-executor configs are suffixed with the backend they target (`_bb` = BuildBuddy). Additional
-backends in the future would follow the same naming pattern. `darwin_arm64` has no remote
-executor and always falls back to local execution.
+backends in the future would follow the same naming pattern. `darwin_arm64` has no remote executor
+and always falls back to local execution.
 
 Target platform shortcuts are also available: `--config=linux_x86_64`, `--config=linux_arm64`,
 `--config=darwin_arm64`. See [`//platforms`](platforms/BUILD.bazel) for the platform definitions.
@@ -121,16 +122,16 @@ Target platform shortcuts are also available: `--config=linux_x86_64`, `--config
 ### Pure-Go policy
 
 The build is **pure-Go by policy**. [`meta/scripts/check_no_cgo.py`](meta/scripts/check_no_cgo.py)
-runs as the `no-cgo-check` CI job and rejects both direct `import "C"` and any transitive
-dependency that compiles native code. The rationale is hermeticity and build simplicity:
-no LLVM toolchain, no sysroots, no Apple SDK handling, and Linux outputs are statically
-linked (no glibc dependency) so they drop into `FROM scratch` containers directly.
+runs as the `no-cgo-check` CI job and rejects both direct `import "C"` and any transitive dependency
+that compiles native code. The rationale is hermeticity and build simplicity: no LLVM toolchain, no
+sysroots, no Apple SDK handling, and Linux outputs are statically linked (no glibc dependency) so
+they drop into `FROM scratch` containers directly.
 
-CI builds and tests every PR against each supported platform (`linux_x86_64`,
-`linux_arm64`, `darwin_arm64`) — Linux on `ubuntu-latest` runners dispatching to
-matching-arch BuildBuddy executors, darwin on `macos-latest` locally. Tests run
-natively on their target arch; there is no emulation layer (qemu, Rosetta) in the
-build. A change that breaks any platform fails CI before it can land.
+CI builds and tests every PR against each supported platform (`linux_x86_64`, `linux_arm64`,
+`darwin_arm64`) — Linux on `ubuntu-latest` runners dispatching to matching-arch BuildBuddy
+executors, darwin on `macos-latest` locally. Tests run natively on their target arch; there is no
+emulation layer (qemu, Rosetta) in the build. A change that breaks any platform fails CI before it
+can land.
 
 Local builds default to the host platform. To build for a different target, use the
 platform-shortcut config:
@@ -139,9 +140,9 @@ platform-shortcut config:
 bazel build //tools/... --config=linux_arm64
 ```
 
-Building locally for a non-host target works today because the toolchain is pure-Go, but this
-is not a guaranteed property of the repo — it is a side effect of the current policy
-and may not survive future toolchain changes.
+Building locally for a non-host target works today because the toolchain is pure-Go, but this is not
+a guaranteed property of the repo - it is a side effect of the current policy and may not survive
+future toolchain changes.
 
 ## CI
 
@@ -209,11 +210,11 @@ VS Code-derived editors (e.g. Google Antigravity). Recommended extensions
 | `check-go-work`      | `go.mod`, `go.work`                        |
 | `check-python-scale` | `BUILD.bazel` files                        |
 
-**Viewing coverage locally**: run `bazel coverage //...` from the repo root, then open the
-Command Palette and pick _Coverage Gutters: Display Coverage_ (or _Watch_ for live updates).
-The merged lcov lives at `bazel-out/_coverage/_coverage_report.dat`; the extension is
-pre-configured in [`.vscode/settings.json`](.vscode/settings.json) to find it there. CI uploads
-the same file to Codecov, so local gutters and the Codecov dashboard reflect the same data.
+**Viewing coverage locally**: run `bazel coverage //...` from the repo root, then open the Command
+Palette and pick _Coverage Gutters: Display Coverage_ (or _Watch_ for live updates). The merged lcov
+lives at `bazel-out/_coverage/_coverage_report.dat`; the extension is pre-configured in
+[`.vscode/settings.json`](.vscode/settings.json) to find it there. CI uploads the same file to
+Codecov, so local gutters and the Codecov dashboard reflect the same data.
 
 **Dependency updates** are managed automatically by [Renovate](https://docs.renovatebot.com), which
 groups updates into separate PRs: Bazel toolchains and rulesets, Go dependencies, GitHub Actions,
