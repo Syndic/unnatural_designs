@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Lifecycle note: postCreateCommand runs BEFORE the Dev Containers extension copies the host
+# ~/.gitconfig into the container. The copy happens between postCreate and postStart, so any
+# logic that reads git config — user.email, user.signingkey, gpg.* settings, etc. — will see
+# an empty config here and must live in a postStartCommand script instead.
+
 # Make the named-volume mounts writable by the non-root user. Docker attaches volumes
 # root-owned on first mount, and the .cache parent of the bazel mount inherits that, so
 # the chown covers .cache itself. postCreateCommand reruns on every rebuild, so this
@@ -19,3 +24,6 @@ pip install --user --no-warn-script-location pre-commit
 
 # Warm Bazel: fetches the registered Go SDK, rules_go, gazelle, etc.
 bazel version
+
+# Verify buildifier is available. Version is pinned and tracked by Renovate (in Dockerfile).
+buildifier --version
