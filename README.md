@@ -34,8 +34,41 @@ Container_ from the Command Palette. First build takes a few minutes; subsequent
 preserve the Bazel and Go caches across container rebuilds.
 
 **Known limitations**: the Docker and Kubernetes VS Code extensions install but aren't wired to a
-daemon or `kubectl` inside the container; signing and BuildBuddy credentials still need host-side
-setup. See [`docs/future-considerations.md`](docs/future-considerations.md) for the open items.
+daemon or `kubectl` inside the container; BuildBuddy credentials still need host-side setup. See
+[`docs/future-considerations.md`](docs/future-considerations.md) for the open items.
+
+**Commit signing**: VS Code's Dev Containers extension copies your host `~/.gitconfig` into the
+container verbatim and does not rewrite filesystem paths inside it. If your host `user.signingkey`
+points at a `.pub` file under `/Users/...` or `/home/...`, that path won't resolve inside the
+container and `git commit` will fail to sign. The agent itself is forwarded automatically, and
+`allowed_signers` is copied and its path rewritten — only `user.signingkey` is left untouched.
+[vscode-remote-release #7796](https://github.com/microsoft/vscode-remote-release/issues/7796)
+tracks this gap.
+
+Two host-side configurations work cleanly inside the container, in order of preference:
+
+1. **Dynamic key resolution via `gpg.ssh.defaultKeyCommand` (recommended).** Git asks the forwarded
+   ssh-agent for the signing key at sign time, so the same gitconfig works on the host and in any
+   devcontainer, and survives key rotation without edits. The one-liner below prefers a key whose
+   comment matches your `user.email` and falls back to the first key in the agent. The script must
+   be inlined in the gitconfig (rather than referenced as a file) because no single host path is
+   guaranteed to exist inside every devcontainer that copies your gitconfig.
+
+   ```bash
+   git config --global --unset user.signingkey
+   git config --global gpg.ssh.defaultKeyCommand "$(cat <<'CMD'
+   sh -c 'KEYS=$(ssh-add -L 2>/dev/null); [ -z "$KEYS" ] && exit 1; EMAIL=$(git config user.email); SEL=$(echo "$KEYS" | awk -v e="$EMAIL" "\$NF==e{print;exit}"); [ -z "$SEL" ] && SEL=$(echo "$KEYS" | head -n1); [ -z "$SEL" ] && exit 1; printf "key:: %s\n" "$SEL"'
+   CMD
+   )"
+   ```
+
+2. **Inline the public key literal in `user.signingkey`.** Replace the `.pub` path with the literal
+   key bytes. The copied gitconfig is then valid in the container without any indirection. Simpler
+   than option 1, but you must update this value if you rotate your signing key.
+
+   ```bash
+   git config --global user.signingkey "$(ssh-add -L | head -n1)"
+   ```
 
 ## Build System
 
