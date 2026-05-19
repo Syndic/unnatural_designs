@@ -106,11 +106,20 @@ grep -rn "TEND(optimization)" .
 
 #### `project-expand`
 
-The marked config enumerates the leaf projects in the monorepo. When a new project lands, grep
-for this task type and add the corresponding entry at each location.
+The marked config enumerates the leaf projects in the monorepo. When a new project lands, grep for
+this task type and add the corresponding entry at each location.
 
 ```sh
 grep -rn "TEND(project-expand)" .
+```
+
+#### `tooling`
+
+The marked config is appropriate for the current tooling versions, but is likely to change in a
+future version of the tooling, and should be considered as tools are upgraded.
+
+```sh
+grep -rn "TEND(tooling)" .
 ```
 
 ---

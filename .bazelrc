@@ -57,6 +57,15 @@ coverage --experimental_fetch_all_coverage_outputs
 # the policy via meta/scripts/check_no_cgo.py.
 build --@rules_go//go/config:pure
 
+# Make py_binary/py_test launchers hermetic: resolve the interpreter from the
+# rules_python toolchain in runfiles instead of shebang-ing `/usr/bin/env python3`.
+# Without this, every environment that runs Python actions (devcontainer, CI,
+# remote_bb executors) must carry a system python3 on PATH even though we've
+# already declared a hermetic 3.14 toolchain in MODULE.bazel — the build silently
+# depends on the host.
+# TEND(tooling): The `script` bootstrap is opt-in in rules_python 2.x and
+# is expected to become the default in a future release; drop this line then.
+common --@rules_python//python/config_settings:bootstrap_impl=script
 
 # --- --config=remote_bb: offload builds/tests to BuildBuddy's remote executors (no BES). ---
 # Naming convention: remote-executor configs are suffixed with the backend (`_bb` = BuildBuddy).
