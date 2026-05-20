@@ -63,7 +63,7 @@ bazel_dep(name = "rules_python", version = "2.0.1")
 git_override(
     module_name = "rules_python",
     remote = "https://github.com/bazel-contrib/rules_python.git",
-    commit = "9dc505b95063c0774945ecc86c4b8ce51151edfa",
+    commit = "c7efd793ef96cd738ca38c9df66e69b7cb5f2c91",
 )
 
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")
