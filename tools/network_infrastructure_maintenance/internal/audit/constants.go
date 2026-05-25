@@ -8,8 +8,6 @@ const (
 	TagHoneypot          = "honeypot"
 	TagDHCPReserved      = "dhcp-reserved"
 	TagDHCPPool          = "dhcp-pool"
-	POEUnknownTypeFail   = "fail"
-	POEUnknownTypeIgnore = "ignore"
 	POEModePD            = "pd"
 	POEModePSE           = "pse"
 	POETypeAF            = "type1-ieee802.3af"
