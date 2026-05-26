@@ -15,7 +15,7 @@ func ModuleConsistency(s *netbox.Snapshot) CheckResult {
 			findings = append(findings, fmt.Sprintf("%s module %d has no module bay", mod.Device.Name, mod.ID))
 			continue
 		}
-		mb, ok := s.ModuleBaysByID[mod.ModuleBay.ID]
+		mb, ok := s.ModuleBayByID(mod.ModuleBay.ID)
 		if !ok {
 			findings = append(findings, fmt.Sprintf("%s module %d references missing module bay %d", mod.Device.Name, mod.ID, mod.ModuleBay.ID))
 			continue
@@ -24,18 +24,15 @@ func ModuleConsistency(s *netbox.Snapshot) CheckResult {
 			findings = append(findings, fmt.Sprintf("%s module %d is installed in bay %s owned by device %s", mod.Device.Name, mod.ID, mb.Name, mb.Device.Name))
 		}
 	}
-	for bayID, mods := range s.ModulesByBay {
+	for _, mb := range s.ModuleBays {
+		mods := s.ModulesForBay(mb.ID)
 		if len(mods) > 1 {
 			ids := []string{}
 			for _, mod := range mods {
 				ids = append(ids, fmt.Sprintf("%d", mod.ID))
 			}
-			mb := s.ModuleBaysByID[bayID]
 			findings = append(findings, fmt.Sprintf("%s module bay %s has multiple installed modules (%s)", mb.Device.Name, mb.Name, strings.Join(ids, ", ")))
 		}
-	}
-	for _, mb := range s.ModuleBays {
-		mods := s.ModulesByBay[mb.ID]
 		if mb.InstalledModule == nil && len(mods) > 0 {
 			findings = append(findings, fmt.Sprintf("%s module bay %s has module list entries but no installed_module pointer", mb.Device.Name, mb.Name))
 			continue

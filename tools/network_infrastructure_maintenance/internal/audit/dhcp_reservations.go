@@ -20,7 +20,7 @@ func DHCPReservations(s *netbox.Snapshot) CheckResult {
 			findings = append(findings, fmt.Sprintf("%s is tagged dhcp-reserved but is not assigned to an interface", ip.Address))
 			continue
 		}
-		it, ok := s.InterfacesByID[ip.AssignedObjectID]
+		it, ok := s.InterfaceByID(ip.AssignedObjectID)
 		if !ok {
 			findings = append(findings, fmt.Sprintf("%s is tagged dhcp-reserved but assigned interface %d was not loaded", ip.Address, ip.AssignedObjectID))
 			continue

@@ -14,7 +14,7 @@ func IPVLANConsistency(s *netbox.Snapshot) CheckResult {
 		if ip.AssignedObjectType != netbox.ObjectTypeInterface {
 			continue
 		}
-		it, ok := s.InterfacesByID[ip.AssignedObjectID]
+		it, ok := s.InterfaceByID(ip.AssignedObjectID)
 		if !ok || it.Mode == nil || it.Mode.Value != VLANModeAccess || it.UntaggedVLAN == nil {
 			continue
 		}

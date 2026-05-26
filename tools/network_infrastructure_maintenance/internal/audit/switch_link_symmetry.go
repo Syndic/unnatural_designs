@@ -18,13 +18,13 @@ func SwitchLinkSymmetry(s *netbox.Snapshot) CheckResult {
 		if a.ObjectType != netbox.ObjectTypeInterface || b.ObjectType != netbox.ObjectTypeInterface {
 			continue
 		}
-		ia, oka := s.InterfacesByID[a.ObjectID]
-		ib, okb := s.InterfacesByID[b.ObjectID]
+		ia, oka := s.InterfaceByID(a.ObjectID)
+		ib, okb := s.InterfaceByID(b.ObjectID)
 		if !oka || !okb {
 			continue
 		}
-		da := s.DevicesByID[ia.Device.ID]
-		db := s.DevicesByID[ib.Device.ID]
+		da, _ := s.DeviceByID(ia.Device.ID)
+		db, _ := s.DeviceByID(ib.Device.ID)
 		if !hasRole(da, RoleSwitch) || !hasRole(db, RoleSwitch) {
 			continue
 		}

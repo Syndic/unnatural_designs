@@ -23,18 +23,18 @@ func InterfaceVRF(s *netbox.Snapshot, rules InterfaceVRFRules) CheckResult {
 	}
 	var findings []string
 	for _, it := range s.Interfaces {
-		dev := s.DevicesByID[it.Device.ID]
+		dev, _ := s.DeviceByID(it.Device.ID)
 		if isPlanned(dev) || !it.Enabled {
 			continue
 		}
 		if it.VRF != nil {
 			continue
 		}
-		if isWANInterface(it, dev, s.DevicesByID, wanRoles) {
+		if isWANInterface(it, dev, s, wanRoles) {
 			continue
 		}
 		if len(it.ConnectedEndpoints) == 0 &&
-			len(s.IPsByInterface[it.ID]) == 0 &&
+			len(s.IPsForInterface(it.ID)) == 0 &&
 			!interfaceHasMAC(it) &&
 			it.Mode == nil &&
 			it.UntaggedVLAN == nil {

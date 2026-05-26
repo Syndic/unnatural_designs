@@ -8,39 +8,11 @@ import (
 	netbox "github.com/Syndic/unnatural_designs/tools/network_infrastructure_maintenance/internal/netbox"
 )
 
-// indexSnapshot mirrors netbox.Snapshot.buildIndexes (which is unexported).
-func indexSnapshot(s *netbox.Snapshot) {
-	s.DevicesByID = map[int]netbox.Device{}
-	for _, d := range s.Devices {
-		s.DevicesByID[d.ID] = d
-	}
-	s.InterfacesByID = map[int]netbox.Iface{}
-	s.InterfacesByDevice = map[int][]netbox.Iface{}
-	for _, it := range s.Interfaces {
-		s.InterfacesByID[it.ID] = it
-		s.InterfacesByDevice[it.Device.ID] = append(s.InterfacesByDevice[it.Device.ID], it)
-	}
-	s.IPsByInterface = map[int][]netbox.IPAddress{}
-	for _, ip := range s.IPAddresses {
-		if ip.AssignedObjectType == netbox.ObjectTypeInterface {
-			s.IPsByInterface[ip.AssignedObjectID] = append(s.IPsByInterface[ip.AssignedObjectID], ip)
-		}
-	}
-	s.ModuleBaysByID = map[int]netbox.ModuleBay{}
-	for _, mb := range s.ModuleBays {
-		s.ModuleBaysByID[mb.ID] = mb
-	}
-	s.ModulesByDevice = map[int][]netbox.Module{}
-	s.ModulesByBay = map[int][]netbox.Module{}
-	for _, m := range s.Modules {
-		s.ModulesByDevice[m.Device.ID] = append(s.ModulesByDevice[m.Device.ID], m)
-		if m.ModuleBay != nil {
-			if _, ok := s.ModuleBaysByID[m.ModuleBay.ID]; ok {
-				s.ModulesByBay[m.ModuleBay.ID] = append(s.ModulesByBay[m.ModuleBay.ID], m)
-			}
-		}
-	}
-}
+// indexSnapshot is a thin wrapper kept for readability; it rebuilds the
+// unexported lookup maps on a snapshot constructed from literal slices in a
+// test. The package-private helper used to mirror Snapshot.buildIndexes here,
+// but the indexes are now unexported and rebuilt through Snapshot.BuildIndexes.
+func indexSnapshot(s *netbox.Snapshot) { s.BuildIndexes() }
 
 func choice(v string) netbox.Choice           { return netbox.Choice{Value: v, Label: v} }
 func choicePtr(v string) *netbox.Choice       { c := choice(v); return &c }
