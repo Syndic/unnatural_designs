@@ -22,9 +22,14 @@ func DeviceTypeDrift(s *netbox.Snapshot) CheckResult {
 
 	var drifts []DriftRecord
 	for _, d := range s.Devices {
+		modules := s.ModulesForDevice(d.ID)
+		// Compute the signature once and pass it to every check — each check's
+		// expectedMemo uses it as the cache key, so devices sharing a
+		// (deviceType, module set) reuse the same expected-component map.
+		sig := expectedComponentSignature(d.DeviceType.ID, modules)
 		var details []string
 		for _, check := range checks {
-			details = append(details, check.runForDevice(d, s.ModulesForDevice(d.ID))...)
+			details = append(details, check.runForDevice(d, modules, sig)...)
 		}
 		if len(details) > 0 {
 			drifts = append(drifts, DriftRecord{Device: d.Name, Model: d.DeviceType.Model, Details: details})

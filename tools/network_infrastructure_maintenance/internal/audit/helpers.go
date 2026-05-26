@@ -32,8 +32,12 @@ type namedSpec struct{}
 
 // driftCheck lets DeviceTypeDrift iterate over heterogeneous componentDriftCheck
 // instantiations in a single slice.
+//
+// sig comes from expectedComponentSignature and is shared across all checks for
+// the same device — each check uses it as the key in its private memo so the
+// expected map is built once per (deviceType, module set) per check.
 type driftCheck interface {
-	runForDevice(d netbox.Device, modules []netbox.Module) []string
+	runForDevice(d netbox.Device, modules []netbox.Module, sig string) []string
 }
 
 type componentDriftCheck[Spec any] struct {
@@ -43,6 +47,10 @@ type componentDriftCheck[Spec any] struct {
 	actualByDevice       map[int]map[string]Spec
 	// diffSpec may be nil; when nil, components are compared by presence only.
 	diffSpec func(expected, actual Spec) []string
+	// expectedMemo caches expectedForDevice results within a single
+	// DeviceTypeDrift invocation, keyed by expectedComponentSignature. Must be
+	// non-nil (initialized in each new*DriftCheck constructor).
+	expectedMemo map[string]map[string]Spec
 }
 
 func (c componentDriftCheck[Spec]) expectedForDevice(deviceTypeID int, modules []netbox.Module) map[string]Spec {
@@ -56,10 +64,27 @@ func (c componentDriftCheck[Spec]) expectedForDevice(deviceTypeID int, modules [
 	return out
 }
 
-func (c componentDriftCheck[Spec]) runForDevice(d netbox.Device, modules []netbox.Module) []string {
-	expected := c.expectedForDevice(d.DeviceType.ID, modules)
+func (c componentDriftCheck[Spec]) runForDevice(d netbox.Device, modules []netbox.Module, sig string) []string {
+	expected, ok := c.expectedMemo[sig]
+	if !ok {
+		expected = c.expectedForDevice(d.DeviceType.ID, modules)
+		c.expectedMemo[sig] = expected
+	}
 	actual := c.actualByDevice[d.ID]
 	return compareComponentMaps(c.label, expected, actual, c.diffSpec)
+}
+
+// expectedComponentSignature identifies devices that produce the same expected
+// component map for every componentDriftCheck. The map depends on device type
+// plus, per installed module, its module type and bay name (the bay name feeds
+// expandModuleTemplateName for "{module}" templates).
+func expectedComponentSignature(deviceTypeID int, modules []netbox.Module) string {
+	parts := make([]string, 0, len(modules))
+	for _, mod := range modules {
+		parts = append(parts, fmt.Sprintf("%d:%s", mod.ModuleType.ID, moduleBayName(mod)))
+	}
+	sort.Strings(parts)
+	return fmt.Sprintf("%d|%s", deviceTypeID, strings.Join(parts, ","))
 }
 
 func newInterfaceDriftCheck(templates []netbox.InterfaceTemplate, instances []netbox.Iface) componentDriftCheck[interfaceSpec] {
@@ -95,6 +120,7 @@ func newInterfaceDriftCheck(templates []netbox.InterfaceTemplate, instances []ne
 		expectedByDeviceType: byDT,
 		expectedByModuleType: byMT,
 		actualByDevice:       actual,
+		expectedMemo:         map[string]map[string]interfaceSpec{},
 		diffSpec: func(expected, actual interfaceSpec) []string {
 			var out []string
 			if expected.Type != actual.Type {
@@ -142,6 +168,7 @@ func newTypedDriftCheck(
 		expectedByDeviceType: byDT,
 		expectedByModuleType: byMT,
 		actualByDevice:       actual,
+		expectedMemo:         map[string]map[string]typedSpec{},
 		diffSpec: func(expected, actual typedSpec) []string {
 			if expected.Type == actual.Type {
 				return nil
@@ -175,6 +202,7 @@ func newNamedDriftCheck(
 		expectedByDeviceType: byDT,
 		expectedByModuleType: byMT,
 		actualByDevice:       actual,
+		expectedMemo:         map[string]map[string]namedSpec{},
 	}
 }
 
