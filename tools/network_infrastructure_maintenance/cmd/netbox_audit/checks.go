@@ -12,23 +12,48 @@ import (
 	"github.com/Syndic/unnatural_designs/tools/network_infrastructure_maintenance/internal/ui/progress"
 )
 
+// checkID is the stable identifier for a registered audit. It is the wire
+// format used in netbox_audit.config.json under checks.enabled / checks.disabled.
+type checkID string
+
+const (
+	checkRequiredDeviceFields  checkID = "required-device-fields"
+	checkDeviceLocations       checkID = "device-locations"
+	checkParentPlacement       checkID = "parent-placement"
+	checkRackPlacement         checkID = "rack-placement"
+	checkDeviceTypeDrift       checkID = "device-type-drift"
+	checkHoneypots             checkID = "honeypots"
+	checkWirelessNormalization checkID = "wireless-normalization"
+	checkPoEPower              checkID = "poe-power"
+	checkInterfaceVRF          checkID = "interface-vrf"
+	checkPrivateIPVRF          checkID = "private-ip-vrf"
+	checkIPVLAN                checkID = "ip-vlan"
+	checkCables                checkID = "cables"
+	checkPatchPanel            checkID = "patch-panel"
+	checkModules               checkID = "modules"
+	checkMACs                  checkID = "macs"
+	checkDHCPReservations      checkID = "dhcp-reservations"
+	checkPlannedDevices        checkID = "planned-devices"
+	checkSwitchLinkSymmetry    checkID = "switch-link-symmetry"
+)
+
 // Check is a single registered audit. The registry below uses [plainCheck] for
 // audits that need only the snapshot, and [ruledCheck] for audits that read a
 // typed rules struct from the audit config.
 type Check struct {
-	id   string
+	id   checkID
 	name string
 	run  func(context.Context, *netbox.Snapshot, auditConfig) audit.CheckResult
 }
 
-func (c Check) ID() string   { return c.id }
+func (c Check) ID() checkID  { return c.id }
 func (c Check) Name() string { return c.name }
 func (c Check) Run(ctx context.Context, snap *netbox.Snapshot, cfg auditConfig) audit.CheckResult {
 	return c.run(ctx, snap, cfg)
 }
 
 // plainCheck registers an audit that needs only the snapshot.
-func plainCheck(id, name string, fn func(*netbox.Snapshot) audit.CheckResult) Check {
+func plainCheck(id checkID, name string, fn func(*netbox.Snapshot) audit.CheckResult) Check {
 	return Check{
 		id:   id,
 		name: name,
@@ -40,7 +65,7 @@ func plainCheck(id, name string, fn func(*netbox.Snapshot) audit.CheckResult) Ch
 
 // ruledCheck registers an audit that needs a typed rules slice from the audit config.
 // getRules pulls the audit's specific rules struct out of the shared auditConfig.
-func ruledCheck[R any](id, name string, getRules func(auditConfig) R, fn func(*netbox.Snapshot, R) audit.CheckResult) Check {
+func ruledCheck[R any](id checkID, name string, getRules func(auditConfig) R, fn func(*netbox.Snapshot, R) audit.CheckResult) Check {
 	return Check{
 		id:   id,
 		name: name,
@@ -52,46 +77,46 @@ func ruledCheck[R any](id, name string, getRules func(auditConfig) R, fn func(*n
 
 func allChecks() []Check {
 	return []Check{
-		plainCheck("required-device-fields", "Required Device Fields", audit.RequiredDeviceFields),
-		plainCheck("device-locations", "Device Locations", audit.DeviceLocations),
-		plainCheck("parent-placement", "Parent Placement Consistency", audit.ParentPlacement),
-		ruledCheck("rack-placement", "Rack Placement",
+		plainCheck(checkRequiredDeviceFields, "Required Device Fields", audit.RequiredDeviceFields),
+		plainCheck(checkDeviceLocations, "Device Locations", audit.DeviceLocations),
+		plainCheck(checkParentPlacement, "Parent Placement Consistency", audit.ParentPlacement),
+		ruledCheck(checkRackPlacement, "Rack Placement",
 			func(c auditConfig) audit.RackPlacementRules { return c.Rules.RackPlacement },
 			audit.RackPlacement),
-		plainCheck("device-type-drift", "Device Type Drift", audit.DeviceTypeDrift),
-		plainCheck("honeypots", "Honeypot Coverage", audit.Honeypots),
-		ruledCheck("wireless-normalization", "Wireless Normalization",
+		plainCheck(checkDeviceTypeDrift, "Device Type Drift", audit.DeviceTypeDrift),
+		plainCheck(checkHoneypots, "Honeypot Coverage", audit.Honeypots),
+		ruledCheck(checkWirelessNormalization, "Wireless Normalization",
 			func(c auditConfig) audit.WirelessNormalizationRules { return c.Rules.WirelessNormalization },
 			audit.WirelessNormalization),
-		ruledCheck("poe-power", "PoE Power Sufficiency",
+		ruledCheck(checkPoEPower, "PoE Power Sufficiency",
 			func(c auditConfig) audit.POEPowerRules { return c.Rules.PoEPower },
 			audit.POEPower),
-		ruledCheck("interface-vrf", "Interface VRF Coverage",
+		ruledCheck(checkInterfaceVRF, "Interface VRF Coverage",
 			func(c auditConfig) audit.InterfaceVRFRules { return c.Rules.InterfaceVRF },
 			audit.InterfaceVRF),
-		ruledCheck("private-ip-vrf", "Private IP VRF Coverage",
+		ruledCheck(checkPrivateIPVRF, "Private IP VRF Coverage",
 			func(c auditConfig) audit.PrivateIPVRFRules { return c.Rules.PrivateIPVRF },
 			audit.PrivateIPVRF),
-		plainCheck("ip-vlan", "IP / VLAN Consistency", audit.IPVLANConsistency),
-		plainCheck("cables", "Cable Consistency", audit.Cables),
-		plainCheck("patch-panel", "Patch Panel Continuity", audit.PatchPanelContinuity),
-		plainCheck("modules", "Module Consistency", audit.ModuleConsistency),
-		plainCheck("macs", "MAC Consistency", audit.MACConsistency),
-		plainCheck("dhcp-reservations", "DHCP Reservations", audit.DHCPReservations),
-		plainCheck("planned-devices", "Planned Device Hygiene", audit.PlannedDevices),
-		plainCheck("switch-link-symmetry", "Switch Link Symmetry", audit.SwitchLinkSymmetry),
+		plainCheck(checkIPVLAN, "IP / VLAN Consistency", audit.IPVLANConsistency),
+		plainCheck(checkCables, "Cable Consistency", audit.Cables),
+		plainCheck(checkPatchPanel, "Patch Panel Continuity", audit.PatchPanelContinuity),
+		plainCheck(checkModules, "Module Consistency", audit.ModuleConsistency),
+		plainCheck(checkMACs, "MAC Consistency", audit.MACConsistency),
+		plainCheck(checkDHCPReservations, "DHCP Reservations", audit.DHCPReservations),
+		plainCheck(checkPlannedDevices, "Planned Device Hygiene", audit.PlannedDevices),
+		plainCheck(checkSwitchLinkSymmetry, "Switch Link Symmetry", audit.SwitchLinkSymmetry),
 	}
 }
 
 func selectChecks(registry []Check, cfg auditConfig) ([]Check, error) {
-	byID := make(map[string]Check, len(registry))
+	byID := make(map[checkID]Check, len(registry))
 	for _, check := range registry {
 		if _, exists := byID[check.ID()]; exists {
 			return nil, fmt.Errorf("duplicate check id %q", check.ID())
 		}
 		byID[check.ID()] = check
 	}
-	disabled := make(map[string]bool, len(cfg.Checks.Disabled))
+	disabled := make(map[checkID]bool, len(cfg.Checks.Disabled))
 	for _, id := range cfg.Checks.Disabled {
 		if _, ok := byID[id]; !ok {
 			return nil, fmt.Errorf("unknown check id %q", id)
