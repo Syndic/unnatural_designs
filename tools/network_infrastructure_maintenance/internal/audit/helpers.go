@@ -16,7 +16,7 @@ type parsedPrefix struct {
 	VRFID  int
 }
 
-type componentSpec struct {
+type interfaceSpec struct {
 	Type     string
 	MgmtOnly *bool
 	POEMode  string
@@ -24,15 +24,28 @@ type componentSpec struct {
 	Enabled  *bool
 }
 
-type componentDriftCheck struct {
-	label                string
-	expectedByDeviceType map[int]map[string]componentSpec
-	expectedByModuleType map[int]map[string]componentSpec
-	actualByDevice       map[int]map[string]componentSpec
-	diffSpec             func(expected, actual componentSpec) []string
+type typedSpec struct {
+	Type string
 }
 
-func (c componentDriftCheck) expectedForDevice(deviceTypeID int, modules []netbox.Module) map[string]componentSpec {
+type namedSpec struct{}
+
+// driftCheck lets DeviceTypeDrift iterate over heterogeneous componentDriftCheck
+// instantiations in a single slice.
+type driftCheck interface {
+	runForDevice(d netbox.Device, modules []netbox.Module) []string
+}
+
+type componentDriftCheck[Spec any] struct {
+	label                string
+	expectedByDeviceType map[int]map[string]Spec
+	expectedByModuleType map[int]map[string]Spec
+	actualByDevice       map[int]map[string]Spec
+	// diffSpec may be nil; when nil, components are compared by presence only.
+	diffSpec func(expected, actual Spec) []string
+}
+
+func (c componentDriftCheck[Spec]) expectedForDevice(deviceTypeID int, modules []netbox.Module) map[string]Spec {
 	out := cloneComponentMap(c.expectedByDeviceType[deviceTypeID])
 	for _, mod := range modules {
 		for name, spec := range c.expectedByModuleType[mod.ModuleType.ID] {
@@ -43,11 +56,17 @@ func (c componentDriftCheck) expectedForDevice(deviceTypeID int, modules []netbo
 	return out
 }
 
-func newInterfaceDriftCheck(templates []netbox.InterfaceTemplate, instances []netbox.Iface) componentDriftCheck {
-	byDT := map[int]map[string]componentSpec{}
-	byMT := map[int]map[string]componentSpec{}
+func (c componentDriftCheck[Spec]) runForDevice(d netbox.Device, modules []netbox.Module) []string {
+	expected := c.expectedForDevice(d.DeviceType.ID, modules)
+	actual := c.actualByDevice[d.ID]
+	return compareComponentMaps(c.label, expected, actual, c.diffSpec)
+}
+
+func newInterfaceDriftCheck(templates []netbox.InterfaceTemplate, instances []netbox.Iface) componentDriftCheck[interfaceSpec] {
+	byDT := map[int]map[string]interfaceSpec{}
+	byMT := map[int]map[string]interfaceSpec{}
 	for _, t := range templates {
-		spec := componentSpec{
+		spec := interfaceSpec{
 			Type:     t.Type.Value,
 			MgmtOnly: boolPtr(t.MgmtOnly),
 			POEMode:  choiceValue(t.POEMode),
@@ -61,9 +80,9 @@ func newInterfaceDriftCheck(templates []netbox.InterfaceTemplate, instances []ne
 			ensureComponentMap(byMT, t.ModuleType.ID)[t.Name] = spec
 		}
 	}
-	actual := map[int]map[string]componentSpec{}
+	actual := map[int]map[string]interfaceSpec{}
 	for _, it := range instances {
-		ensureComponentMap(actual, it.Device.ID)[it.Name] = componentSpec{
+		ensureComponentMap(actual, it.Device.ID)[it.Name] = interfaceSpec{
 			Type:     it.Type.Value,
 			MgmtOnly: boolPtr(it.MgmtOnly),
 			POEMode:  choiceValue(it.POEMode),
@@ -71,12 +90,12 @@ func newInterfaceDriftCheck(templates []netbox.InterfaceTemplate, instances []ne
 			Enabled:  boolPtr(it.Enabled),
 		}
 	}
-	return componentDriftCheck{
+	return componentDriftCheck[interfaceSpec]{
 		label:                "Interfaces",
 		expectedByDeviceType: byDT,
 		expectedByModuleType: byMT,
 		actualByDevice:       actual,
-		diffSpec: func(expected, actual componentSpec) []string {
+		diffSpec: func(expected, actual interfaceSpec) []string {
 			var out []string
 			if expected.Type != actual.Type {
 				out = append(out, fmt.Sprintf("type: %s -> %s", actual.Type, expected.Type))
@@ -102,11 +121,11 @@ func newTypedDriftCheck(
 	label string,
 	templates []netbox.TypedComponentTemplate,
 	instances []netbox.TypedComponent,
-) componentDriftCheck {
-	byDT := map[int]map[string]componentSpec{}
-	byMT := map[int]map[string]componentSpec{}
+) componentDriftCheck[typedSpec] {
+	byDT := map[int]map[string]typedSpec{}
+	byMT := map[int]map[string]typedSpec{}
 	for _, t := range templates {
-		spec := componentSpec{Type: t.Type.Value}
+		spec := typedSpec{Type: t.Type.Value}
 		if t.DeviceType != nil {
 			ensureComponentMap(byDT, t.DeviceType.ID)[t.Name] = spec
 		}
@@ -114,16 +133,16 @@ func newTypedDriftCheck(
 			ensureComponentMap(byMT, t.ModuleType.ID)[t.Name] = spec
 		}
 	}
-	actual := map[int]map[string]componentSpec{}
+	actual := map[int]map[string]typedSpec{}
 	for _, it := range instances {
-		ensureComponentMap(actual, it.Device.ID)[it.Name] = componentSpec{Type: it.Type.Value}
+		ensureComponentMap(actual, it.Device.ID)[it.Name] = typedSpec{Type: it.Type.Value}
 	}
-	return componentDriftCheck{
+	return componentDriftCheck[typedSpec]{
 		label:                label,
 		expectedByDeviceType: byDT,
 		expectedByModuleType: byMT,
 		actualByDevice:       actual,
-		diffSpec: func(expected, actual componentSpec) []string {
+		diffSpec: func(expected, actual typedSpec) []string {
 			if expected.Type == actual.Type {
 				return nil
 			}
@@ -136,40 +155,39 @@ func newNamedDriftCheck(
 	label string,
 	templates []netbox.NamedComponentTemplate,
 	instances []netbox.NamedComponent,
-) componentDriftCheck {
-	byDT := map[int]map[string]componentSpec{}
-	byMT := map[int]map[string]componentSpec{}
+) componentDriftCheck[namedSpec] {
+	byDT := map[int]map[string]namedSpec{}
+	byMT := map[int]map[string]namedSpec{}
 	for _, t := range templates {
 		if t.DeviceType != nil {
-			ensureComponentMap(byDT, t.DeviceType.ID)[t.Name] = componentSpec{}
+			ensureComponentMap(byDT, t.DeviceType.ID)[t.Name] = namedSpec{}
 		}
 		if t.ModuleType != nil {
-			ensureComponentMap(byMT, t.ModuleType.ID)[t.Name] = componentSpec{}
+			ensureComponentMap(byMT, t.ModuleType.ID)[t.Name] = namedSpec{}
 		}
 	}
-	actual := map[int]map[string]componentSpec{}
+	actual := map[int]map[string]namedSpec{}
 	for _, it := range instances {
-		ensureComponentMap(actual, it.Device.ID)[it.Name] = componentSpec{}
+		ensureComponentMap(actual, it.Device.ID)[it.Name] = namedSpec{}
 	}
-	return componentDriftCheck{
+	return componentDriftCheck[namedSpec]{
 		label:                label,
 		expectedByDeviceType: byDT,
 		expectedByModuleType: byMT,
 		actualByDevice:       actual,
-		diffSpec:             func(componentSpec, componentSpec) []string { return nil },
 	}
 }
 
-func compareComponentMaps(
+func compareComponentMaps[Spec any](
 	label string,
-	expected, actual map[string]componentSpec,
-	diff func(expected, actual componentSpec) []string,
+	expected, actual map[string]Spec,
+	diff func(expected, actual Spec) []string,
 ) []string {
 	if expected == nil {
-		expected = map[string]componentSpec{}
+		expected = map[string]Spec{}
 	}
 	if actual == nil {
-		actual = map[string]componentSpec{}
+		actual = map[string]Spec{}
 	}
 	var details []string
 	missing := diffNames(expected, actual)
@@ -179,6 +197,9 @@ func compareComponentMaps(
 	}
 	if len(extra) > 0 {
 		details = append(details, fmt.Sprintf("%s extra: %s", label, strings.Join(formatNames(extra), ", ")))
+	}
+	if diff == nil {
+		return details
 	}
 	var mismatches []string
 	for name, exp := range expected {
@@ -518,24 +539,24 @@ func trimmedContains(list []string, target string) bool {
 	return false
 }
 
-func ensureComponentMap(m map[int]map[string]componentSpec, id int) map[string]componentSpec {
+func ensureComponentMap[Spec any](m map[int]map[string]Spec, id int) map[string]Spec {
 	if v, ok := m[id]; ok {
 		return v
 	}
-	v := map[string]componentSpec{}
+	v := map[string]Spec{}
 	m[id] = v
 	return v
 }
 
-func cloneComponentMap(src map[string]componentSpec) map[string]componentSpec {
-	out := map[string]componentSpec{}
+func cloneComponentMap[Spec any](src map[string]Spec) map[string]Spec {
+	out := map[string]Spec{}
 	for name, spec := range src {
 		out[name] = spec
 	}
 	return out
 }
 
-func diffNames(a, b map[string]componentSpec) []string {
+func diffNames[Spec any](a, b map[string]Spec) []string {
 	var names []string
 	for name := range a {
 		if _, ok := b[name]; !ok {
