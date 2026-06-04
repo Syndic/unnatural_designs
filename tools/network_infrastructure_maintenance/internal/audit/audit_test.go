@@ -569,7 +569,7 @@ func TestPOESupplySufficient(t *testing.T) {
 		name     string
 		supply   string
 		required string
-		policy   string
+		policy   POEUnknownTypePolicy
 		ok       bool
 	}{
 		{"both AT", POETypeAT, POETypeAT, POEUnknownTypeFail, true},

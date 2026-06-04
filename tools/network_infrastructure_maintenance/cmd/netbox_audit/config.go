@@ -80,13 +80,13 @@ func loadAuditConfig(path string, required bool) (auditConfig, error) {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return auditConfig{}, err
 	}
-	switch strings.ToLower(strings.TrimSpace(cfg.Rules.PoEPower.UnknownTypePolicy)) {
+	switch audit.POEUnknownTypePolicy(strings.ToLower(strings.TrimSpace(string(cfg.Rules.PoEPower.UnknownTypePolicy)))) {
 	case "", audit.POEUnknownTypeFail:
 		cfg.Rules.PoEPower.UnknownTypePolicy = audit.POEUnknownTypeFail
 	case audit.POEUnknownTypeIgnore:
 		cfg.Rules.PoEPower.UnknownTypePolicy = audit.POEUnknownTypeIgnore
 	default:
-		return auditConfig{}, fmt.Errorf("unsupported poe-power.unknown_type_policy %q", cfg.Rules.PoEPower.UnknownTypePolicy)
+		return auditConfig{}, fmt.Errorf("unsupported poe-power.unknown_type_policy %q", string(cfg.Rules.PoEPower.UnknownTypePolicy))
 	}
 	return cfg, nil
 }

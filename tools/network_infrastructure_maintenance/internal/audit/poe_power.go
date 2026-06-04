@@ -7,10 +7,17 @@ import (
 	netbox "github.com/Syndic/unnatural_designs/tools/network_infrastructure_maintenance/internal/netbox"
 )
 
+type POEUnknownTypePolicy string
+
+const (
+	POEUnknownTypeFail   POEUnknownTypePolicy = "fail"
+	POEUnknownTypeIgnore POEUnknownTypePolicy = "ignore"
+)
+
 type POEPowerRules struct {
-	CheckPoweredDeviceSupply bool   `json:"check_powered_device_supply"`
-	RequirePSEModeOnPeer     bool   `json:"require_pse_mode_on_peer"`
-	UnknownTypePolicy        string `json:"unknown_type_policy"`
+	CheckPoweredDeviceSupply bool                 `json:"check_powered_device_supply"`
+	RequirePSEModeOnPeer     bool                 `json:"require_pse_mode_on_peer"`
+	UnknownTypePolicy        POEUnknownTypePolicy `json:"unknown_type_policy"`
 }
 
 func POEPower(s *netbox.Snapshot, rules POEPowerRules) CheckResult {
