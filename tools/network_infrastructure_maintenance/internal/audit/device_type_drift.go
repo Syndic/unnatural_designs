@@ -8,7 +8,7 @@ import (
 )
 
 func DeviceTypeDrift(s *netbox.Snapshot) CheckResult {
-	checks := []componentDriftCheck{
+	checks := []driftCheck{
 		newInterfaceDriftCheck(s.InterfaceTemplates, s.Interfaces),
 		newTypedDriftCheck("Console ports", s.ConsolePortTemplates, s.ConsolePorts),
 		newTypedDriftCheck("Console server ports", s.ConsoleServerPortTemplates, s.ConsoleServerPorts),
@@ -24,10 +24,7 @@ func DeviceTypeDrift(s *netbox.Snapshot) CheckResult {
 	for _, d := range s.Devices {
 		var details []string
 		for _, check := range checks {
-			expected := check.expectedForDevice(d.DeviceType.ID, s.ModulesByDevice[d.ID])
-			actual := check.actualByDevice[d.ID]
-			checkDetails := compareComponentMaps(check.label, expected, actual, check.diffSpec)
-			details = append(details, checkDetails...)
+			details = append(details, check.runForDevice(d, s.ModulesByDevice[d.ID])...)
 		}
 		if len(details) > 0 {
 			drifts = append(drifts, DriftRecord{Device: d.Name, Model: d.DeviceType.Model, Details: details})
