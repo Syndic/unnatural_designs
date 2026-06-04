@@ -39,9 +39,9 @@ go_sdk = use_extension("@rules_go//go:extensions.bzl", "go_sdk")
 #
 # Renovate's regex matcher in renovate.json picks up each occurrence; bumps will
 # arrive as one grouped PR ("Language toolchain SDKs") keeping all three in sync.
-go_sdk.download(version = "1.26.3", goos = "linux", goarch = "amd64")
-go_sdk.download(version = "1.26.3", goos = "linux", goarch = "arm64")
-go_sdk.download(version = "1.26.3", goos = "darwin", goarch = "arm64")
+go_sdk.download(version = "1.26.4", goos = "linux", goarch = "amd64")
+go_sdk.download(version = "1.26.4", goos = "linux", goarch = "arm64")
+go_sdk.download(version = "1.26.4", goos = "darwin", goarch = "arm64")
 
 # Discover external Go deps from the workspace's go.work + per-module go.mod files.
 go_deps = use_extension("@gazelle//:extensions.bzl", "go_deps")
