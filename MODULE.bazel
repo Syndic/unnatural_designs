@@ -24,8 +24,8 @@ bazel_dep(name = "toolchains_buildbuddy", version = "0.0.4")
 buildbuddy = use_extension("@toolchains_buildbuddy//:extensions.bzl", "buildbuddy")
 
 # ── Go ────────────────────────────────────────────────────────────────────────────────────────────
-bazel_dep(name = "rules_go", version = "0.60.0")
-bazel_dep(name = "gazelle", version = "0.51.0")
+bazel_dep(name = "rules_go", version = "0.61.0")
+bazel_dep(name = "gazelle", version = "0.51.1")
 
 go_sdk = use_extension("@rules_go//go:extensions.bzl", "go_sdk")
 
@@ -63,7 +63,7 @@ bazel_dep(name = "rules_python", version = "2.0.1")
 git_override(
     module_name = "rules_python",
     remote = "https://github.com/bazel-contrib/rules_python.git",
-    commit = "c7efd793ef96cd738ca38c9df66e69b7cb5f2c91",
+    commit = "25ad57c85f0094889520486cd9a5738278fd0541",
 )
 
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")
