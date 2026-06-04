@@ -300,10 +300,8 @@ type Snapshot struct {
 	Cables                     []Cable
 	MACAddresses               []MACAddressRecord
 
-	// Pre-computed indexes — built once via BuildIndexes after fetch, used by
-	// all parallel checks. Kept unexported so callers go through the accessor
-	// methods (DeviceByID, InterfacesForDevice, ...); the slices above are the
-	// single canonical iteration form.
+	// Lookup indexes — unexported so callers route through the accessor
+	// methods below; the slices above are the canonical iteration form.
 	devicesByID        map[int]Device
 	interfacesByID     map[int]Iface
 	interfacesByDevice map[int][]Iface
@@ -346,7 +344,8 @@ func (s *Snapshot) ModuleBayByID(id int) (ModuleBay, bool) {
 	return mb, ok
 }
 
-// ModulesForDevice returns the modules installed on the given device.
+// ModulesForDevice returns the modules installed on the given device, in
+// snapshot order. Returns nil for unknown device IDs.
 func (s *Snapshot) ModulesForDevice(deviceID int) []Module {
 	return s.modulesByDevice[deviceID]
 }

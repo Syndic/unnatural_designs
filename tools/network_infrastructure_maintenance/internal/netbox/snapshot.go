@@ -193,11 +193,9 @@ func loadSnapshot(ctx context.Context, c *Client, obs LoadObserver) (Snapshot, e
 	return snap, nil
 }
 
-// BuildIndexes pre-computes lookup maps that are used by multiple audit
-// checks. Called once after a snapshot is fully populated (by loadSnapshot,
-// and by tests that construct a Snapshot directly from literal slices).
-// Exposed so external test packages can rebuild the indexes after mutating
-// the slice fields.
+// BuildIndexes populates the lookup maps from the slice fields. Called once
+// by loadSnapshot after a fetch completes; exported so tests that construct
+// a Snapshot from literal slices can populate the indexes too.
 func (s *Snapshot) BuildIndexes() {
 	s.devicesByID = make(map[int]Device, len(s.Devices))
 	for _, d := range s.Devices {
