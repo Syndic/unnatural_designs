@@ -31,8 +31,8 @@ type auditRules struct {
 }
 
 type checksConfig struct {
-	Enabled  []string `json:"enabled"`
-	Disabled []string `json:"disabled"`
+	Enabled  []checkID `json:"enabled"`
+	Disabled []checkID `json:"disabled"`
 }
 
 func defaultAuditConfig() auditConfig {

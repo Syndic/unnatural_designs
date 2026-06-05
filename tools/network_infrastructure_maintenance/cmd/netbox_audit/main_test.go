@@ -116,10 +116,10 @@ func TestEnvOrDefault(t *testing.T) {
 	}
 }
 
-func makeChecks(ids ...string) []Check {
+func makeChecks(ids ...checkID) []Check {
 	out := make([]Check, 0, len(ids))
 	for _, id := range ids {
-		out = append(out, plainCheck(id, id, func(*netbox.Snapshot) audit.CheckResult {
+		out = append(out, plainCheck(id, string(id), func(*netbox.Snapshot) audit.CheckResult {
 			return audit.CheckResult{}
 		}))
 	}
@@ -139,7 +139,7 @@ func TestSelectChecks_Default(t *testing.T) {
 
 func TestSelectChecks_Disabled(t *testing.T) {
 	registry := makeChecks("a", "b", "c")
-	cfg := auditConfig{Checks: checksConfig{Disabled: []string{"b"}}}
+	cfg := auditConfig{Checks: checksConfig{Disabled: []checkID{"b"}}}
 	got, err := selectChecks(registry, cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -156,7 +156,7 @@ func TestSelectChecks_Disabled(t *testing.T) {
 
 func TestSelectChecks_EnabledExplicit(t *testing.T) {
 	registry := makeChecks("a", "b", "c")
-	cfg := auditConfig{Checks: checksConfig{Enabled: []string{"c", "a"}}}
+	cfg := auditConfig{Checks: checksConfig{Enabled: []checkID{"c", "a"}}}
 	got, err := selectChecks(registry, cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -168,7 +168,7 @@ func TestSelectChecks_EnabledExplicit(t *testing.T) {
 
 func TestSelectChecks_EnabledMinusDisabled(t *testing.T) {
 	registry := makeChecks("a", "b", "c")
-	cfg := auditConfig{Checks: checksConfig{Enabled: []string{"a", "b"}, Disabled: []string{"a"}}}
+	cfg := auditConfig{Checks: checksConfig{Enabled: []checkID{"a", "b"}, Disabled: []checkID{"a"}}}
 	got, err := selectChecks(registry, cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -180,7 +180,7 @@ func TestSelectChecks_EnabledMinusDisabled(t *testing.T) {
 
 func TestSelectChecks_UnknownEnabled(t *testing.T) {
 	registry := makeChecks("a")
-	cfg := auditConfig{Checks: checksConfig{Enabled: []string{"missing"}}}
+	cfg := auditConfig{Checks: checksConfig{Enabled: []checkID{"missing"}}}
 	if _, err := selectChecks(registry, cfg); err == nil {
 		t.Fatal("expected error for unknown enabled id")
 	}
@@ -188,7 +188,7 @@ func TestSelectChecks_UnknownEnabled(t *testing.T) {
 
 func TestSelectChecks_UnknownDisabled(t *testing.T) {
 	registry := makeChecks("a")
-	cfg := auditConfig{Checks: checksConfig{Disabled: []string{"missing"}}}
+	cfg := auditConfig{Checks: checksConfig{Disabled: []checkID{"missing"}}}
 	if _, err := selectChecks(registry, cfg); err == nil {
 		t.Fatal("expected error for unknown disabled id")
 	}
@@ -209,7 +209,7 @@ func TestAllChecks_NonEmptyAndUniqueIDs(t *testing.T) {
 	if len(registry) == 0 {
 		t.Fatal("allChecks returned empty registry")
 	}
-	seen := make(map[string]bool)
+	seen := make(map[checkID]bool)
 	for _, c := range registry {
 		if c.ID() == "" {
 			t.Errorf("check has empty ID: %+v", c)

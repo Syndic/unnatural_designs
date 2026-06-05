@@ -108,7 +108,7 @@ func main() {
 	reporter.Startupf("Starting NetBox audit against %s using %s", client.BaseURL, configLabel)
 	checkIDs := make([]string, 0, len(checks))
 	for _, c := range checks {
-		checkIDs = append(checkIDs, c.ID())
+		checkIDs = append(checkIDs, string(c.ID()))
 	}
 	reporter.AnnounceChecks(checkIDs)
 

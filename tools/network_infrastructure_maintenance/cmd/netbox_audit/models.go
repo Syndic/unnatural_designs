@@ -13,7 +13,7 @@ type snapshotMeta struct {
 }
 
 type checkTiming struct {
-	ID       string
+	ID       checkID
 	Name     string
 	Duration time.Duration
 	Findings int
