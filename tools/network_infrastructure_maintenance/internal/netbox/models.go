@@ -300,14 +300,61 @@ type Snapshot struct {
 	Cables                     []Cable
 	MACAddresses               []MACAddressRecord
 
-	// Pre-computed indexes — built once after fetch, used by all parallel checks.
-	DevicesByID        map[int]Device
-	InterfacesByID     map[int]Iface
-	InterfacesByDevice map[int][]Iface
-	IPsByInterface     map[int][]IPAddress
-	ModuleBaysByID     map[int]ModuleBay
-	ModulesByDevice    map[int][]Module
-	ModulesByBay       map[int][]Module
+	// Lookup indexes — unexported so callers route through the accessor
+	// methods below; the slices above are the canonical iteration form.
+	devicesByID        map[int]Device
+	interfacesByID     map[int]Iface
+	interfacesByDevice map[int][]Iface
+	ipsByInterface     map[int][]IPAddress
+	moduleBaysByID     map[int]ModuleBay
+	modulesByDevice    map[int][]Module
+	modulesByBay       map[int][]Module
+}
+
+// DeviceByID returns the device with the given ID and whether it was present
+// in the snapshot.
+func (s *Snapshot) DeviceByID(id int) (Device, bool) {
+	d, ok := s.devicesByID[id]
+	return d, ok
+}
+
+// InterfaceByID returns the interface with the given ID and whether it was
+// present in the snapshot.
+func (s *Snapshot) InterfaceByID(id int) (Iface, bool) {
+	it, ok := s.interfacesByID[id]
+	return it, ok
+}
+
+// InterfacesForDevice returns the interfaces belonging to the given device, in
+// snapshot order. Returns nil for unknown device IDs.
+func (s *Snapshot) InterfacesForDevice(deviceID int) []Iface {
+	return s.interfacesByDevice[deviceID]
+}
+
+// IPsForInterface returns the IP addresses assigned to the given interface, in
+// snapshot order. Returns nil for unknown interface IDs.
+func (s *Snapshot) IPsForInterface(ifaceID int) []IPAddress {
+	return s.ipsByInterface[ifaceID]
+}
+
+// ModuleBayByID returns the module bay with the given ID and whether it was
+// present in the snapshot.
+func (s *Snapshot) ModuleBayByID(id int) (ModuleBay, bool) {
+	mb, ok := s.moduleBaysByID[id]
+	return mb, ok
+}
+
+// ModulesForDevice returns the modules installed on the given device, in
+// snapshot order. Returns nil for unknown device IDs.
+func (s *Snapshot) ModulesForDevice(deviceID int) []Module {
+	return s.modulesByDevice[deviceID]
+}
+
+// ModulesForBay returns the modules installed in the given module bay. Only
+// modules whose bay is present in the snapshot are indexed; modules referencing
+// a missing bay are surfaced separately by audits, not silently grouped here.
+func (s *Snapshot) ModulesForBay(bayID int) []Module {
+	return s.modulesByBay[bayID]
 }
 
 type SnapshotLoadStats struct {

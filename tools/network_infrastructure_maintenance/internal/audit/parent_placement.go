@@ -13,7 +13,7 @@ func ParentPlacement(s *netbox.Snapshot) CheckResult {
 		if d.ParentDevice == nil {
 			continue
 		}
-		parent, ok := s.DevicesByID[d.ParentDevice.ID]
+		parent, ok := s.DeviceByID(d.ParentDevice.ID)
 		if !ok {
 			findings = append(findings, fmt.Sprintf("%s references missing parent device id=%d", d.Name, d.ParentDevice.ID))
 			continue

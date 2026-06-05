@@ -24,7 +24,7 @@ func DeviceTypeDrift(s *netbox.Snapshot) CheckResult {
 	for _, d := range s.Devices {
 		var details []string
 		for _, check := range checks {
-			details = append(details, check.runForDevice(d, s.ModulesByDevice[d.ID])...)
+			details = append(details, check.runForDevice(d, s.ModulesForDevice(d.ID))...)
 		}
 		if len(details) > 0 {
 			drifts = append(drifts, DriftRecord{Device: d.Name, Model: d.DeviceType.Model, Details: details})

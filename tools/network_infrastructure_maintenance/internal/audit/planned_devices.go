@@ -13,11 +13,11 @@ func PlannedDevices(s *netbox.Snapshot) CheckResult {
 		if !isPlanned(d) {
 			continue
 		}
-		for _, it := range s.InterfacesByDevice[d.ID] {
+		for _, it := range s.InterfacesForDevice(d.ID) {
 			if len(it.ConnectedEndpoints) > 0 {
 				findings = append(findings, fmt.Sprintf("planned device %s has a connected interface %s", d.Name, it.Name))
 			}
-			if len(s.IPsByInterface[it.ID]) > 0 {
+			if len(s.IPsForInterface(it.ID)) > 0 {
 				findings = append(findings, fmt.Sprintf("planned device %s has IPs assigned to interface %s", d.Name, it.Name))
 			}
 			if interfaceHasMAC(it) {

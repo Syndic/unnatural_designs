@@ -8,40 +8,6 @@ import (
 	netbox "github.com/Syndic/unnatural_designs/tools/network_infrastructure_maintenance/internal/netbox"
 )
 
-// indexSnapshot mirrors netbox.Snapshot.buildIndexes (which is unexported).
-func indexSnapshot(s *netbox.Snapshot) {
-	s.DevicesByID = map[int]netbox.Device{}
-	for _, d := range s.Devices {
-		s.DevicesByID[d.ID] = d
-	}
-	s.InterfacesByID = map[int]netbox.Iface{}
-	s.InterfacesByDevice = map[int][]netbox.Iface{}
-	for _, it := range s.Interfaces {
-		s.InterfacesByID[it.ID] = it
-		s.InterfacesByDevice[it.Device.ID] = append(s.InterfacesByDevice[it.Device.ID], it)
-	}
-	s.IPsByInterface = map[int][]netbox.IPAddress{}
-	for _, ip := range s.IPAddresses {
-		if ip.AssignedObjectType == netbox.ObjectTypeInterface {
-			s.IPsByInterface[ip.AssignedObjectID] = append(s.IPsByInterface[ip.AssignedObjectID], ip)
-		}
-	}
-	s.ModuleBaysByID = map[int]netbox.ModuleBay{}
-	for _, mb := range s.ModuleBays {
-		s.ModuleBaysByID[mb.ID] = mb
-	}
-	s.ModulesByDevice = map[int][]netbox.Module{}
-	s.ModulesByBay = map[int][]netbox.Module{}
-	for _, m := range s.Modules {
-		s.ModulesByDevice[m.Device.ID] = append(s.ModulesByDevice[m.Device.ID], m)
-		if m.ModuleBay != nil {
-			if _, ok := s.ModuleBaysByID[m.ModuleBay.ID]; ok {
-				s.ModulesByBay[m.ModuleBay.ID] = append(s.ModulesByBay[m.ModuleBay.ID], m)
-			}
-		}
-	}
-}
-
 func choice(v string) netbox.Choice           { return netbox.Choice{Value: v, Label: v} }
 func choicePtr(v string) *netbox.Choice       { c := choice(v); return &c }
 func namedRef(id int, name string) netbox.NamedRef { return netbox.NamedRef{ID: id, Name: name} }
@@ -108,7 +74,7 @@ func TestDHCPReservations(t *testing.T) {
 			{ID: 4, Address: "10.0.0.99/24", AssignedObjectType: netbox.ObjectTypeInterface, AssignedObjectID: 101, Tags: []netbox.TagRef{{Slug: TagDHCPReserved}}},
 		},
 	}
-	indexSnapshot(&s)
+	s.BuildIndexes()
 	got := DHCPReservations(&s)
 	joined := strings.Join(got.Findings, "\n")
 	for _, want := range []string{
@@ -199,7 +165,7 @@ func TestHoneypots(t *testing.T) {
 
 func TestInterfaceVRFDisabled(t *testing.T) {
 	s := netbox.Snapshot{Interfaces: []netbox.Iface{{Name: "eth0", Enabled: true, Mode: choicePtr("access")}}}
-	indexSnapshot(&s)
+	s.BuildIndexes()
 	got := InterfaceVRF(&s, InterfaceVRFRules{})
 	if len(got.Findings) != 0 {
 		t.Fatalf("findings: %v", got.Findings)
@@ -228,7 +194,7 @@ func TestInterfaceVRF(t *testing.T) {
 			{ID: 15, Name: "eth3", Device: namedRef(1, "host"), Enabled: true},
 		},
 	}
-	indexSnapshot(&s)
+	s.BuildIndexes()
 	got := InterfaceVRF(&s, InterfaceVRFRules{WANDeviceRoles: []string{"WAN-Edge"}, RequireOnInterfaces: true})
 	if len(got.Findings) != 1 || !strings.Contains(got.Findings[0], "host eth0 is missing VRF") {
 		t.Fatalf("findings: %v", got.Findings)
@@ -249,7 +215,7 @@ func TestIPVLANConsistency(t *testing.T) {
 			{Prefix: "10.0.0.0/24", VLAN: &netbox.VLANRef{ID: 1, Name: "right"}},
 		},
 	}
-	indexSnapshot(&s)
+	s.BuildIndexes()
 	got := IPVLANConsistency(&s)
 	if len(got.Findings) != 1 || !strings.Contains(got.Findings[0], "best prefix VLAN is right") {
 		t.Fatalf("findings: %v", got.Findings)
@@ -293,7 +259,7 @@ func TestModuleConsistency(t *testing.T) {
 			{ID: 104, Device: namedRef(2, "sw2"), ModuleBay: &netbox.ModuleBayRef{ID: 2}},     // creates duplicate w/ 103
 		},
 	}
-	indexSnapshot(&s)
+	s.BuildIndexes()
 	got := ModuleConsistency(&s)
 	joined := strings.Join(got.Findings, "\n")
 	for _, want := range []string{
@@ -329,7 +295,7 @@ func TestParentPlacement(t *testing.T) {
 			{ID: 8, Name: "child-extra-rack", ParentDevice: &netbox.NamedRef{ID: 7}, Site: site1, Rack: rack1, Location: loc1},
 		},
 	}
-	indexSnapshot(&s)
+	s.BuildIndexes()
 	got := ParentPlacement(&s)
 	joined := strings.Join(got.Findings, "\n")
 	for _, want := range []string{
@@ -380,7 +346,7 @@ func TestPlannedDevices(t *testing.T) {
 			{Address: "10.0.0.1/24", AssignedObjectType: netbox.ObjectTypeInterface, AssignedObjectID: 11},
 		},
 	}
-	indexSnapshot(&s)
+	s.BuildIndexes()
 	got := PlannedDevices(&s)
 	joined := strings.Join(got.Findings, "\n")
 	for _, want := range []string{
@@ -420,7 +386,7 @@ func TestPOEPower(t *testing.T) {
 			{ID: 7, Name: "pd4", Device: namedRef(7, "pd4"), Enabled: true, POEMode: choicePtr(POEModePD), POEType: choicePtr(POETypeAT), ConnectedEndpoints: []netbox.ConnectedEndpoint{{ID: 9999}}},
 		},
 	}
-	indexSnapshot(&s)
+	s.BuildIndexes()
 	got := POEPower(&s, POEPowerRules{CheckPoweredDeviceSupply: true, RequirePSEModeOnPeer: true, UnknownTypePolicy: POEUnknownTypeFail})
 	joined := strings.Join(got.Findings, "\n")
 	for _, want := range []string{
@@ -508,7 +474,7 @@ func TestSwitchLinkSymmetry(t *testing.T) {
 			{ID: 15, Name: "eth2", Device: namedRef(1, "sw1"), Mode: choicePtr("access"), UntaggedVLAN: &netbox.VLANRef{ID: 9}},
 		},
 	}
-	indexSnapshot(&s)
+	s.BuildIndexes()
 	s.Cables = []netbox.Cable{
 		{ID: 1, ATerminations: []netbox.Termination{{ObjectType: netbox.ObjectTypeInterface, ObjectID: 10}}, BTerminations: []netbox.Termination{{ObjectType: netbox.ObjectTypeInterface, ObjectID: 11}}},
 		{ID: 2, ATerminations: []netbox.Termination{{ObjectType: netbox.ObjectTypeInterface, ObjectID: 12}}, BTerminations: []netbox.Termination{{ObjectType: netbox.ObjectTypeInterface, ObjectID: 13}}},
@@ -543,7 +509,7 @@ func TestWirelessNormalization(t *testing.T) {
 			{ID: 14, Name: "wlan0", Device: namedRef(4, "host-with-wired"), Type: choice(WirelessTypePrefix + "ac"), Enabled: true},
 		},
 	}
-	indexSnapshot(&s)
+	s.BuildIndexes()
 	rules := WirelessNormalizationRules{
 		SuppressIfConnectedWiredInterfaceIsComplete: true,
 		RequireMode:         true,

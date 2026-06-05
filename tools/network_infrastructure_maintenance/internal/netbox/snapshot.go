@@ -189,48 +189,47 @@ func loadSnapshot(ctx context.Context, c *Client, obs LoadObserver) (Snapshot, e
 	}
 	snap.LoadStats.RequestCount = totalRequests
 	snap.LoadStats.Fetches = fetches
-	snap.buildIndexes()
+	snap.BuildIndexes()
 	return snap, nil
 }
 
-// buildIndexes pre-computes lookup maps that are used by multiple audit
-// checks. Building them here — once, after all data is fetched — means the
-// parallel checks can share read-only maps instead of each independently
-// iterating the same slices.
-func (s *Snapshot) buildIndexes() {
-	s.DevicesByID = make(map[int]Device, len(s.Devices))
+// BuildIndexes populates the lookup maps from the slice fields. Called once
+// by loadSnapshot after a fetch completes; exported so tests that construct
+// a Snapshot from literal slices can populate the indexes too.
+func (s *Snapshot) BuildIndexes() {
+	s.devicesByID = make(map[int]Device, len(s.Devices))
 	for _, d := range s.Devices {
-		s.DevicesByID[d.ID] = d
+		s.devicesByID[d.ID] = d
 	}
 
-	s.InterfacesByID = make(map[int]Iface, len(s.Interfaces))
-	s.InterfacesByDevice = make(map[int][]Iface)
+	s.interfacesByID = make(map[int]Iface, len(s.Interfaces))
+	s.interfacesByDevice = make(map[int][]Iface)
 	for _, it := range s.Interfaces {
-		s.InterfacesByID[it.ID] = it
-		s.InterfacesByDevice[it.Device.ID] = append(s.InterfacesByDevice[it.Device.ID], it)
+		s.interfacesByID[it.ID] = it
+		s.interfacesByDevice[it.Device.ID] = append(s.interfacesByDevice[it.Device.ID], it)
 	}
 
-	s.IPsByInterface = make(map[int][]IPAddress)
+	s.ipsByInterface = make(map[int][]IPAddress)
 	for _, ip := range s.IPAddresses {
 		if ip.AssignedObjectType == ObjectTypeInterface {
-			s.IPsByInterface[ip.AssignedObjectID] = append(s.IPsByInterface[ip.AssignedObjectID], ip)
+			s.ipsByInterface[ip.AssignedObjectID] = append(s.ipsByInterface[ip.AssignedObjectID], ip)
 		}
 	}
 
-	s.ModuleBaysByID = make(map[int]ModuleBay, len(s.ModuleBays))
+	s.moduleBaysByID = make(map[int]ModuleBay, len(s.ModuleBays))
 	for _, mb := range s.ModuleBays {
-		s.ModuleBaysByID[mb.ID] = mb
+		s.moduleBaysByID[mb.ID] = mb
 	}
 
-	s.ModulesByDevice = make(map[int][]Module)
-	s.ModulesByBay = make(map[int][]Module)
+	s.modulesByDevice = make(map[int][]Module)
+	s.modulesByBay = make(map[int][]Module)
 	for _, m := range s.Modules {
-		s.ModulesByDevice[m.Device.ID] = append(s.ModulesByDevice[m.Device.ID], m)
+		s.modulesByDevice[m.Device.ID] = append(s.modulesByDevice[m.Device.ID], m)
 		// Only index modules whose bay actually exists in the snapshot. Modules referencing
 		// a missing bay are surfaced as findings by ModuleConsistency, not silently grouped.
 		if m.ModuleBay != nil {
-			if _, ok := s.ModuleBaysByID[m.ModuleBay.ID]; ok {
-				s.ModulesByBay[m.ModuleBay.ID] = append(s.ModulesByBay[m.ModuleBay.ID], m)
+			if _, ok := s.moduleBaysByID[m.ModuleBay.ID]; ok {
+				s.modulesByBay[m.ModuleBay.ID] = append(s.modulesByBay[m.ModuleBay.ID], m)
 			}
 		}
 	}

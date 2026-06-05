@@ -32,7 +32,7 @@ func POEPower(s *netbox.Snapshot, rules POEPowerRules) CheckResult {
 		requiredType := choiceValue(it.POEType)
 		matchedPeer := false
 		for _, ep := range it.ConnectedEndpoints {
-			peer, ok := s.InterfacesByID[ep.ID]
+			peer, ok := s.InterfaceByID(ep.ID)
 			if !ok {
 				continue
 			}

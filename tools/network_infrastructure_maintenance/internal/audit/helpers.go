@@ -281,7 +281,7 @@ func poeTypeRank(v string) (int, bool) {
 func isWANInterface(
 	it netbox.Iface,
 	dev netbox.Device,
-	devices map[int]netbox.Device,
+	s *netbox.Snapshot,
 	wanRoles map[string]bool,
 ) bool {
 	if wanRoles[dev.Role.Name] {
@@ -291,7 +291,7 @@ func isWANInterface(
 		if ep.Device == nil {
 			continue
 		}
-		peer, ok := devices[ep.Device.ID]
+		peer, ok := s.DeviceByID(ep.Device.ID)
 		if ok && wanRoles[peer.Role.Name] {
 			return true
 		}

@@ -17,11 +17,11 @@ type WirelessNormalizationRules struct {
 
 func WirelessNormalization(s *netbox.Snapshot, rules WirelessNormalizationRules) CheckResult {
 	var findings []string
-	for deviceID, ifaces := range s.InterfacesByDevice {
-		dev := s.DevicesByID[deviceID]
+	for _, dev := range s.Devices {
 		if hasRole(dev, RoleAccessPoint) || isPlanned(dev) {
 			continue
 		}
+		ifaces := s.InterfacesForDevice(dev.ID)
 		wiredComplete := false
 		for _, it := range ifaces {
 			if isWirelessType(it.Type.Value) {
@@ -30,7 +30,7 @@ func WirelessNormalization(s *netbox.Snapshot, rules WirelessNormalizationRules)
 			if !it.Enabled {
 				continue
 			}
-			if wiredInterfaceComplete(it, s.IPsByInterface[it.ID]) {
+			if wiredInterfaceComplete(it, s.IPsForInterface(it.ID)) {
 				wiredComplete = true
 				break
 			}
