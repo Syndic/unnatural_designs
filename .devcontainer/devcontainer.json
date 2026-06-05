@@ -24,10 +24,27 @@
   "containerEnv": {
     "GOTOOLCHAIN": "local"
   },
+  // Make git fully resolve inside the container for ANY checkout layout — a full
+  // clone, the main worktree, or a linked worktree living anywhere on disk —
+  // when launched via the `devcontainer` CLI (which, unlike VS Code's Dev
+  // Containers extension, does not special-case worktrees). See ".devcontainer
+  // worktree + timezone plumbing" in .claude/CLAUDE.md for the full mechanism;
+  // initialize.sh and the Dockerfile carry the per-step commentary.
+  "initializeCommand": ".devcontainer/initialize.sh",
   "mounts": [
     "source=ud-bazel-cache,target=/home/vscode/.cache/bazel,type=volume",
-    "source=ud-go-cache,target=/home/vscode/go,type=volume"
+    "source=ud-go-cache,target=/home/vscode/go,type=volume",
+    // Bind the symlink (a static, workspace-relative SOURCE) to the static
+    // container path the Dockerfile points the host-absolute path at. Docker
+    // follows the symlink host-side, so this resolves to wherever the real git
+    // common dir lives without the config naming that dynamic path.
+    "source=${localWorkspaceFolder}/.devcontainer/.host-git-common,target=/host-git-common,type=bind"
   ],
+  // Mount the workspace at its real host path (not the default /workspaces/<name>)
+  // so the worktree's own files — and the .git file's back-pointer — line up
+  // verbatim with the host-absolute paths git follows.
+  "workspaceFolder": "${localWorkspaceFolder}",
+  "workspaceMount": "source=${localWorkspaceFolder},target=${localWorkspaceFolder},type=bind",
   "postCreateCommand": ".devcontainer/post-create.sh",
   "customizations": {
     "vscode": {
