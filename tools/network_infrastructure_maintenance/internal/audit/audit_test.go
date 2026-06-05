@@ -106,6 +106,57 @@ func TestDeviceTypeDriftHappyPath(t *testing.T) {
 	}
 }
 
+func TestDeviceTypeDriftModuleBayDistinctSignatures(t *testing.T) {
+	// Two devices share device type 10 and module type 20, but the module is
+	// installed in differently-named bays. The "{module}" template expansion
+	// must yield distinct expected interface names per device so the memo
+	// keyed by (deviceType, modules) does not collide.
+	s := netbox.Snapshot{
+		Devices: []netbox.Device{
+			{ID: 1, Name: "sw1", DeviceType: netbox.DeviceTypeRef{ID: 10, Model: "model"}},
+			{ID: 2, Name: "sw2", DeviceType: netbox.DeviceTypeRef{ID: 10, Model: "model"}},
+		},
+		Modules: []netbox.Module{
+			{ID: 11, Device: namedRef(1, "sw1"), ModuleBay: &netbox.ModuleBayRef{ID: 101, Name: "Slot 1"}, ModuleType: netbox.ModuleTypeRef{ID: 20}},
+			{ID: 12, Device: namedRef(2, "sw2"), ModuleBay: &netbox.ModuleBayRef{ID: 102, Name: "Slot 2"}, ModuleType: netbox.ModuleTypeRef{ID: 20}},
+		},
+		InterfaceTemplates: []netbox.InterfaceTemplate{
+			{Name: "Port {module}", ModuleType: &netbox.IDRef{ID: 20}, Type: choice("1000base-t"), Enabled: true},
+		},
+		Interfaces: []netbox.Iface{
+			{ID: 100, Name: "Port 1", Device: namedRef(1, "sw1"), Type: choice("1000base-t"), Enabled: true},
+			{ID: 101, Name: "Port 2", Device: namedRef(2, "sw2"), Type: choice("1000base-t"), Enabled: true},
+		},
+	}
+	s.BuildIndexes()
+	got := DeviceTypeDrift(&s)
+	if len(got.Findings) != 0 || len(got.Extra) != 0 {
+		t.Fatalf("expected no drift, got findings=%v extra=%v", got.Findings, got.Extra)
+	}
+}
+
+func TestDeviceTypeDriftSharedSignatureReusedMap(t *testing.T) {
+	// Two devices with identical (deviceType, module set) signatures should
+	// reuse the memoized expected map without cross-contaminating results.
+	s := netbox.Snapshot{
+		Devices: []netbox.Device{
+			{ID: 1, Name: "sw1", DeviceType: netbox.DeviceTypeRef{ID: 10, Model: "model"}},
+			{ID: 2, Name: "sw2", DeviceType: netbox.DeviceTypeRef{ID: 10, Model: "model"}},
+		},
+		InterfaceTemplates: []netbox.InterfaceTemplate{
+			{Name: "eth0", DeviceType: &netbox.IDRef{ID: 10}, Type: choice("1000base-t"), Enabled: true},
+		},
+		Interfaces: []netbox.Iface{
+			{ID: 100, Name: "eth0", Device: namedRef(1, "sw1"), Type: choice("1000base-t"), Enabled: true},
+			// sw2 is missing eth0 entirely; drift must still be reported on it.
+		},
+	}
+	got := DeviceTypeDrift(&s)
+	if len(got.Extra) != 1 || got.Extra[0].Device != "sw2" {
+		t.Fatalf("expected single drift for sw2, got %#v", got.Extra)
+	}
+}
+
 func TestDeviceTypeDriftWithViolations(t *testing.T) {
 	s := netbox.Snapshot{
 		Devices: []netbox.Device{{ID: 1, Name: "sw1", DeviceType: netbox.DeviceTypeRef{ID: 10, Model: "model"}}},
