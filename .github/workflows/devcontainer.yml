@@ -12,6 +12,11 @@ on:
   pull_request:
     branches: [main]
 
+# Least-privilege default for GITHUB_TOKEN. The build uses `push: never` so no
+# registry write is needed.
+permissions:
+  contents: read
+
 jobs:
   build-and-smoke-test:
     name: Build devcontainer and smoke test
