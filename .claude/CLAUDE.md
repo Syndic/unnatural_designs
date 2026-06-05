@@ -15,3 +15,32 @@ Before declaring any task complete:
 
 3. **Future considerations** — if a doc item in `docs/future-considerations.md` described something
    that has now been done, update or remove that item.
+
+## .devcontainer worktree + timezone plumbing
+
+The devcontainer is brought up by Claude agents via the `devcontainer` CLI (humans use VS Code's
+Dev Containers extension). The CLI does NOT special-case git worktrees the way the extension does:
+a worktree's `.git` is a file pointing at `<main-repo>/.git/worktrees/<name>`, a host-absolute path
+the CLI does not mount, so in-container `git` would fail in any worktree.
+
+The fix makes the git common dir reachable in-container at **the same absolute path it has on the
+host**, so the `.git` file resolves natively (no `GIT_*` overrides) for any checkout layout — full
+clone, main worktree, or a linked worktree anywhere on disk. The mechanism has three pieces; the
+per-step rationale lives at each site, not here:
+
+- `.devcontainer/initialize.sh` (wired as `initializeCommand`) — host-side, runs on every `up`.
+  Drops `.devcontainer/.host-git-common` (symlink → real git common dir) and
+  `.devcontainer/.git-plumbing/host-git-common-path` (absolute path of the same). Both are
+  gitignored. Also writes `host-timezone` (host's IANA zone).
+- `.devcontainer/devcontainer.json` — binds the symlink to a static `/host-git-common`; sets
+  `workspaceFolder`/`workspaceMount` to `${localWorkspaceFolder}` so the workspace lives at its
+  real host path in the container.
+- `.devcontainer/Dockerfile` — reads `host-git-common-path` from the build context and recreates
+  that exact host-absolute path inside the image as a symlink to `/host-git-common`; reads
+  `host-timezone` and points `/etc/localtime` at it.
+
+`.git-plumbing/` is a tracked directory anchored by its README so the Dockerfile's `COPY` always
+has a source — buildx errors on a `COPY` whose glob matches zero files, and CI's `devcontainer
+build` doesn't run `initializeCommand`, so the runtime files are absent there. The shell
+`[ -s ... ]` guards in the Dockerfile make that case a clean no-op (CI keeps default UTC and skips
+the git path symlink).

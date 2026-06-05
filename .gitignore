@@ -55,6 +55,15 @@ target/
 *.swo
 *~
 
+# ── Devcontainer host-plumbing (see .devcontainer/.git-plumbing/README.md) ────────────────────────
+# Runtime artifacts written by .devcontainer/initialize.sh on every `devcontainer
+# up`. The .git-plumbing/ directory itself IS tracked (anchored by its README)
+# so the Dockerfile's COPY of the directory always has a source; only the
+# runtime-written files inside are ignored.
+/.devcontainer/.host-git-common
+/.devcontainer/.git-plumbing/host-git-common-path
+/.devcontainer/.git-plumbing/host-timezone
+
 # ── Claude Code ───────────────────────────────────────────────────────────────────────────────────
 # settings.local.json holds per-developer overrides — never shared
 # worktrees/ is ephemeral scratch space used during development
