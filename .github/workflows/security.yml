@@ -9,6 +9,9 @@ on:
     # Weekly scan every Monday at 02:00 UTC
     - cron: "0 2 * * 1"
 
+permissions:
+  contents: read
+
 jobs:
   # ── Monorepo Structure Maintenance ────────────────────────────────────────────
   # Checks that per-language tooling is fully wired up before per-module jobs run. Currently covers
