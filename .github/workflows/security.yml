@@ -9,9 +9,6 @@ on:
     # Weekly scan every Monday at 02:00 UTC
     - cron: "0 2 * * 1"
 
-# Least-privilege default for GITHUB_TOKEN. Jobs that need more (semgrep,
-# govulncheck, trivy → security-events: write for SARIF upload) opt in with
-# per-job `permissions:` blocks below.
 permissions:
   contents: read
 

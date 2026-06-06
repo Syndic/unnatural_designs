@@ -6,8 +6,6 @@ on:
   pull_request:
     branches: [main]
 
-# Least-privilege default for GITHUB_TOKEN. Jobs that need more (none currently)
-# would opt in with a per-job `permissions:` block.
 permissions:
   contents: read
 
