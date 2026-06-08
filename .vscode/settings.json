@@ -8,7 +8,7 @@
   "coverage-gutters.coverageFileNames": ["_coverage_report.dat", "lcov.info"],
   "coverage-gutters.coverageBaseDir": "bazel-out",
 
-  "// Repo-health checks on save": "These scripts used to run in pre-commit. Moved out of pre-commit so they don't gate commits, and now run via VS Code tasks (see tasks.json) instead of emeraldwalk.runonsave. The matchers in tasks.json turn each `path:line: message` failure into a Problems-panel entry with a squiggle at the offending line, which the earlier output-channel printing did not. Install gruntfuggly.triggertaskonsave (recommended in extensions.json) to wire saves to tasks.",
+  "// Repo-health checks on save": "These scripts run via the VS Code tasks defined in tasks.json, triggered by gruntfuggly.triggertaskonsave (recommended in extensions.json) when the matching files are saved. The matchers in tasks.json turn each `path:line: message` failure into a Problems-panel entry with a squiggle at the offending line.",
   "triggerTaskOnSave.tasks": {
     "check: go modules": [
       "**/go.mod",
