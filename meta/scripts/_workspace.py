@@ -42,8 +42,8 @@ def found_modules(root: Path) -> set[Path]:
     return {p.parent.relative_to(root) for p in find_files(root, "go.mod")}
 
 
-def registered_modules(root: Path) -> set[Path]:
-    """Parse use directives from go.work, returning paths relative to root.
+def registered_modules(root: Path) -> dict[Path, int]:
+    """Parse use directives from go.work, returning {module_path: 1-based line in go.work}.
 
     go.work supports two syntactic forms for use directives:
 
@@ -63,12 +63,16 @@ def registered_modules(root: Path) -> set[Path]:
 
     Other top-level directives (go, toolchain) and single-line replace directives do not begin with
     './', so they are naturally ignored.
+
+    Line numbers are retained so callers (e.g. check_go_work.py) can emit diagnostics that
+    editors with a problem matcher will resolve into squiggles at the offending line. Callers
+    that only need the set of paths can iterate the dict directly (or wrap in `set(...)`).
     """
     go_work = root / "go.work"
-    modules = set()
+    modules: dict[Path, int] = {}
     in_use_block = False
 
-    for line in go_work.read_text().splitlines():
+    for lineno, line in enumerate(go_work.read_text().splitlines(), start=1):
         stripped = line.strip()
 
         if stripped == "use (":
@@ -79,11 +83,11 @@ def registered_modules(root: Path) -> set[Path]:
             if stripped == ")":
                 in_use_block = False
             elif stripped.startswith("./"):
-                modules.add(Path(stripped[2:]))
+                modules[Path(stripped[2:])] = lineno
             continue
 
         # Single-line form: use ./some/module
         if stripped.startswith("use ./"):
-            modules.add(Path(stripped[6:]))
+            modules[Path(stripped[6:])] = lineno
 
     return modules

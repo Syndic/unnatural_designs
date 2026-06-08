@@ -162,7 +162,7 @@ class TestCheck(unittest.TestCase):
         return [
             mock.patch.object(check_no_cgo, "find_cgo_in_sources", return_value=[Path(p) for p in sources]),
             mock.patch.object(check_no_cgo, "find_cgo_in_deps", side_effect=fake_find_cgo_in_deps),
-            mock.patch.object(check_no_cgo, "registered_modules", return_value={Path(m) for m in modules}),
+            mock.patch.object(check_no_cgo, "registered_modules", return_value={Path(m): 1 for m in modules}),
             mock.patch.object(check_no_cgo.shutil, "which", return_value="/usr/bin/go" if go_present else None),
         ]
 
@@ -217,7 +217,7 @@ class TestCheck(unittest.TestCase):
             raise RuntimeError("simulated `go list` failure")
         with mock.patch.object(check_no_cgo, "find_cgo_in_sources", return_value=[]), \
              mock.patch.object(check_no_cgo, "find_cgo_in_deps", side_effect=explode), \
-             mock.patch.object(check_no_cgo, "registered_modules", return_value={Path("tools/foo")}), \
+             mock.patch.object(check_no_cgo, "registered_modules", return_value={Path("tools/foo"): 1}), \
              mock.patch.object(check_no_cgo.shutil, "which", return_value="/usr/bin/go"), \
              mock.patch("sys.stdout", new_callable=io.StringIO), \
              mock.patch("sys.stderr", new_callable=io.StringIO) as stderr:

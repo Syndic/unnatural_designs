@@ -1,0 +1,60 @@
+{
+  "version": "2.0.0",
+
+  "// Repo-health checks": "These scripts used to run in pre-commit and were briefly run silently via emeraldwalk.runonsave. Defined as tasks with problem matchers so failures surface as squiggles + Problems-panel entries instead of disappearing into an output channel. Triggered on save by gruntfuggly.triggertaskonsave (see settings.json).",
+
+  "// Diagnostic format contract": "Each script emits `path:line: message` per failure (see check_go_modules.py / check_go_work.py for how anchor lines are chosen). The matcher pattern below parses that into VS Code diagnostics. The matcher's `owner` namespaces the diagnostics so a re-run with no findings clears the previous run's squiggles.",
+
+  "tasks": [
+    {
+      "label": "check: go modules",
+      "type": "shell",
+      "command": "python3",
+      "args": ["${workspaceFolder}/meta/scripts/check_go_modules.py"],
+      "presentation": {
+        "reveal": "silent",
+        "panel": "dedicated",
+        "showReuseMessage": false,
+        "clear": true,
+        "revealProblems": "onProblem"
+      },
+      "problemMatcher": {
+        "owner": "check-go-modules",
+        "source": "check_go_modules",
+        "fileLocation": ["relative", "${workspaceFolder}"],
+        "severity": "error",
+        "pattern": {
+          "regexp": "^(\\S+):(\\d+):\\s+(.+)$",
+          "file": 1,
+          "line": 2,
+          "message": 3
+        }
+      }
+    },
+    {
+      "label": "check: go work",
+      "type": "shell",
+      "command": "python3",
+      "args": ["${workspaceFolder}/meta/scripts/check_go_work.py"],
+      "presentation": {
+        "reveal": "silent",
+        "panel": "dedicated",
+        "showReuseMessage": false,
+        "clear": true,
+        "revealProblems": "onProblem"
+      },
+      "problemMatcher": {
+        "owner": "check-go-work",
+        "source": "check_go_work",
+        "fileLocation": ["relative", "${workspaceFolder}"],
+        "severity": "error",
+        "pattern": {
+          "regexp": "^(\\S+):(\\d+):\\s+(.+)$",
+          "file": 1,
+          "line": 2,
+          "message": 3
+        }
+      }
+    }
+  ]
+}
