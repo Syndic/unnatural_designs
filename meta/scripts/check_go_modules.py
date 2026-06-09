@@ -22,40 +22,47 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from meta.scripts._workspace import found_modules, workspace_root  # noqa: E402
 
 
-def workflow_module_lists(workflow_file: Path) -> list[tuple[str, frozenset[Path]]]:
-    """Parse a GitHub Actions workflow file and return all matrix.module lists.
+def workflow_module_lists(
+    workflow_file: Path,
+) -> list[tuple[str, int, dict[Path, int]]]:
+    """Parse a GitHub Actions workflow file and return all matrix.module lists with line numbers.
 
-    Returns one (job_name, module_set) pair per matrix.module block found.
+    Returns one (job_name, module_key_line, {module_path: line_number}) tuple per matrix.module
+    block found. module_key_line is the 1-based line of the `module:` key (the anchor used by
+    callers for "missing entry" diagnostics, which have no specific offending line). Each entry
+    in the dict maps a module path to the 1-based line of its `- path` list item.
+
     job_name is the YAML job key, captured on a best-effort basis by tracking keys at indent 2
-    inside the jobs: block; falls back to '<unknown>'.
-
-    Parsing is line-oriented and indent-aware, with no third-party dependencies.
-    The GitHub Actions YAML structure is regular enough to make this reliable:
+    inside the jobs: block; falls back to '<unknown>'. Parsing is line-oriented and indent-aware,
+    with no third-party dependencies. The GitHub Actions YAML structure is regular enough to
+    make this reliable:
 
         jobs:
           <job-key>:           # indent 2  — recorded as job_name
             strategy:
               matrix:          # marks start of matrix block
-                module:        # marks start of module list
-                  - some/path  # collected as a module entry
+                module:        # marks start of module list — line recorded as module_key_line
+                  - some/path  # collected as a {Path: line_number} entry
 
-    The parser uses two guard checks that fire before each line is processed, handling dedent out
-    of the module list and out of the matrix block. This avoids re-processing lines across state
-    transitions.
+    The parser uses two guard checks that fire before each line is processed, handling dedent
+    out of the module list and out of the matrix block. This avoids re-processing lines across
+    state transitions. Line numbers are retained so callers can emit `file:line: message`
+    diagnostics that VS Code's problem matcher surfaces as squiggles.
     """
     text = workflow_file.read_text()
-    result: list[tuple[str, frozenset[Path]]] = []
+    result: list[tuple[str, int, dict[Path, int]]] = []
 
     state = "scanning"   # scanning | in_matrix | in_module
     matrix_indent = -1
     module_indent = -1
-    current: list[Path] | None = None
+    module_key_line = -1
+    current: dict[Path, int] | None = None
 
     # Job name tracking: record the YAML key at indent 2 inside jobs:.
     in_jobs = False
     current_job = "<unknown>"
 
-    for raw in text.splitlines():
+    for lineno, raw in enumerate(text.splitlines(), start=1):
         stripped = raw.strip()
         if not stripped or stripped.startswith("#"):
             continue
@@ -76,9 +83,10 @@ def workflow_module_lists(workflow_file: Path) -> list[tuple[str, frozenset[Path
         # inside the matrix block.
         if state == "in_module" and indent <= module_indent:
             if current is not None:
-                result.append((current_job, frozenset(current)))
+                result.append((current_job, module_key_line, current))
             current = None
             module_indent = -1
+            module_key_line = -1
             state = "in_matrix" if indent > matrix_indent else "scanning"
             if state == "scanning":
                 matrix_indent = -1
@@ -98,15 +106,16 @@ def workflow_module_lists(workflow_file: Path) -> list[tuple[str, frozenset[Path
             if stripped == "module:":
                 state = "in_module"
                 module_indent = indent
-                current = []
+                module_key_line = lineno
+                current = {}
 
         elif state == "in_module":
             if stripped.startswith("- "):
-                current.append(Path(stripped[2:].strip()))
+                current[Path(stripped[2:].strip())] = lineno
 
     # End of file while still inside a module list.
     if state == "in_module" and current is not None:
-        result.append((current_job, frozenset(current)))
+        result.append((current_job, module_key_line, current))
 
     return result
 
@@ -124,15 +133,18 @@ def check_workflow_matrices(root: Path, modules: set[Path]) -> int:
         return 0
 
     errors = 0
+    # Diagnostics use the `path:line: message` shape parsed by the problem matcher in
+    # .vscode/tasks.json. Missing entries anchor on the `module:` key line (no specific
+    # offending line exists); stale entries anchor on the entry's own line.
     for wf_file in sorted(workflows_dir.glob("*.yml")):
         rel = str(wf_file.relative_to(root))
-        for job_name, matrix in workflow_module_lists(wf_file):
-            label = f"{rel} [{job_name}]"
-            for mod in sorted(modules - matrix):
-                print(f"MISSING from {label}: ./{mod} has a go.mod but no matrix entry")
+        for job_name, module_key_line, matrix_entries in workflow_module_lists(wf_file):
+            matrix_set = set(matrix_entries)
+            for mod in sorted(modules - matrix_set):
+                print(f"{rel}:{module_key_line}: [{job_name}] missing matrix entry for ./{mod}")
                 errors += 1
-            for mod in sorted(matrix - modules):
-                print(f"STALE in {label}: ./{mod} has a matrix entry but no go.mod")
+            for mod in sorted(matrix_set - modules):
+                print(f"{rel}:{matrix_entries[mod]}: [{job_name}] stale matrix entry ./{mod} (no go.mod)")
                 errors += 1
 
     return errors
@@ -159,7 +171,9 @@ def check_golangci_configs(root: Path, modules: set[Path]) -> int:
                 break
             candidate = candidate.parent
         if not found:
-            print(f"MISSING .golangci.yml for: ./{mod} (no config in module dir or any parent up to repo root)")
+            # Anchor on the module's go.mod — there is no specific line "at fault" for a
+            # missing config file, but go.mod is the file whose existence makes the check run.
+            print(f"{mod}/go.mod:1: no .golangci.yml reachable from ./{mod} (module dir or any parent up to repo root)")
             errors += 1
     return errors
 

@@ -115,7 +115,7 @@ class TestFoundModules(unittest.TestCase):
 
 class TestWorkflowModuleLists(unittest.TestCase):
 
-    def _parse(self, content: str) -> list[tuple[str, frozenset[Path]]]:
+    def _parse(self, content: str) -> list[tuple[str, int, dict[Path, int]]]:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "workflow.yml"
             path.write_text(content)
@@ -163,9 +163,11 @@ jobs:
 """
         result = self._parse(content)
         self.assertEqual(len(result), 1)
-        job, modules = result[0]
+        job, module_key_line, modules = result[0]
         self.assertEqual(job, "scan")
-        self.assertEqual(modules, frozenset([Path("tools/foo")]))
+        # Line numbers are part of the parser's contract — they drive squiggle placement.
+        self.assertEqual(module_key_line, 5)
+        self.assertEqual(modules, {Path("tools/foo"): 6})
 
     def test_single_job_multiple_modules(self):
         content = """\
@@ -181,8 +183,8 @@ jobs:
 """
         result = self._parse(content)
         self.assertEqual(len(result), 1)
-        _, modules = result[0]
-        self.assertEqual(modules, frozenset([Path("tools/foo"), Path("libs/bar")]))
+        _, _, modules = result[0]
+        self.assertEqual(set(modules), {Path("tools/foo"), Path("libs/bar")})
 
     def test_two_jobs_both_with_module_matrices(self):
         content = """\
@@ -204,7 +206,7 @@ jobs:
 """
         result = self._parse(content)
         self.assertEqual(len(result), 2)
-        jobs = {job for job, _ in result}
+        jobs = {job for job, _, _ in result}
         self.assertEqual(jobs, {"govulncheck", "golangci-lint"})
 
     def test_two_jobs_only_one_has_module_matrix(self):
@@ -226,7 +228,7 @@ jobs:
 """
         result = self._parse(content)
         self.assertEqual(len(result), 1)
-        job, _ = result[0]
+        job, _, _ = result[0]
         self.assertEqual(job, "lint")
 
     def test_job_name_with_hyphens(self):
@@ -242,7 +244,7 @@ jobs:
 """
         result = self._parse(content)
         self.assertEqual(len(result), 1)
-        job, _ = result[0]
+        job, _, _ = result[0]
         self.assertEqual(job, "golangci-lint")
 
     def test_comment_lines_skipped(self):
@@ -259,8 +261,8 @@ jobs:
 """
         result = self._parse(content)
         self.assertEqual(len(result), 1)
-        _, modules = result[0]
-        self.assertEqual(modules, frozenset([Path("tools/foo")]))
+        _, _, modules = result[0]
+        self.assertEqual(set(modules), {Path("tools/foo")})
 
     def test_comment_job_block_does_not_confuse_job_name(self):
         """Comment lines at indent 2 must not be mistaken for job names."""
@@ -277,7 +279,7 @@ jobs:
 """
         result = self._parse(content)
         self.assertEqual(len(result), 1)
-        job, _ = result[0]
+        job, _, _ = result[0]
         self.assertEqual(job, "real-job")
 
     def test_job_with_no_matrix_does_not_affect_next_job(self):
@@ -298,9 +300,9 @@ jobs:
 """
         result = self._parse(content)
         self.assertEqual(len(result), 1)
-        job, modules = result[0]
+        job, _, modules = result[0]
         self.assertEqual(job, "govulncheck")
-        self.assertEqual(modules, frozenset([Path("tools/foo")]))
+        self.assertEqual(set(modules), {Path("tools/foo")})
 
     def test_empty_workflow(self):
         self.assertEqual(self._parse(""), [])
@@ -364,12 +366,12 @@ jobs:
         result = self._parse(content)
         # semgrep and trivy have no module matrix; govulncheck and golangci-lint do
         self.assertEqual(len(result), 2)
-        by_job = {job: mods for job, mods in result}
+        by_job = {job: set(mods) for job, _, mods in result}
         self.assertIn("govulncheck", by_job)
         self.assertIn("golangci-lint", by_job)
         self.assertNotIn("semgrep", by_job)
         self.assertNotIn("trivy", by_job)
-        expected = frozenset([Path("tools/network_infrastructure_maintenance")])
+        expected = {Path("tools/network_infrastructure_maintenance")}
         self.assertEqual(by_job["govulncheck"], expected)
         self.assertEqual(by_job["golangci-lint"], expected)
 

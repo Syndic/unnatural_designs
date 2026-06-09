@@ -1,11 +1,11 @@
 {
   "recommendations": [
     "bazelbuild.vscode-bazel",
-    "emeraldwalk.runonsave",
     "esbenp.prettier-vscode",
     "github.vscode-github-actions",
     "golang.go",
     "gruntfuggly.todo-tree",
+    "gruntfuggly.triggertaskonsave",
     "mechatroner.rainbow-csv",
     "mermaidchart.vscode-mermaid-chart",
     "ms-azuretools.vscode-containers",
