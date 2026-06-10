@@ -6,5 +6,6 @@
 # adjusted casually.
 #
 # See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
-
-meta/scripts/check_python_scale.py @Syndic @UnnaturalDesigns
+#
+# Default owners for anything in this repo, should a new entry ever be needed:
+#     @Syndic @UnnaturalDesigns

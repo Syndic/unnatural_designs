@@ -23,17 +23,6 @@ behaviour that can be tightened.
 
 ---
 
-## Gazelle Python Support
-
-Gazelle has a Python plugin bundled with `rules_python` that can auto-generate `py_library`,
-`py_binary`, and `py_test` targets — equivalent to what it does for Go. It was not configured
-because the Python footprint is currently small.
-
-This is actively tracked: the `python-scale-check` CI job and pre-commit hook will fail when the
-py\_\* target count exceeds the configured threshold, at which point this item should be actioned.
-
----
-
 ## Introducing cgo
 
 The build infrastructure assumes **pure Go** (no cgo). The rationale is build simplicity and
