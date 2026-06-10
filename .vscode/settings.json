@@ -8,17 +8,18 @@
   "coverage-gutters.coverageFileNames": ["_coverage_report.dat", "lcov.info"],
   "coverage-gutters.coverageBaseDir": "bazel-out",
 
-  "// Repo-health checks on save": "These scripts used to run in pre-commit. Moved here so they don't gate commits - they print to an output channel and do not block saving. Install the `emeraldwalk.runonsave` extension (recommended in extensions.json) for this to activate.",
-  "emeraldwalk.runonsave": {
-    "commands": [
-      {
-        "match": "(go\\.mod|\\.github/workflows/.*\\.yml|\\.golangci\\.yml)$",
-        "cmd": "python3 ${workspaceFolder}/meta/scripts/check_go_modules.py"
-      },
-      {
-        "match": "go\\.(mod|work)$",
-        "cmd": "python3 ${workspaceFolder}/meta/scripts/check_go_work.py"
-      }
+  "// Repo-health checks on save": "These scripts run via the VS Code tasks defined in tasks.json, triggered by gruntfuggly.triggertaskonsave (recommended in extensions.json) when the matching files are saved. The matchers in tasks.json turn each `path:line: message` failure into a Problems-panel entry with a squiggle at the offending line.",
+  "triggerTaskOnSave.tasks": {
+    "check: go modules": [
+      "**/go.mod",
+      ".github/workflows/*.yml",
+      "**/.golangci.yml"
+    ],
+    "check: go work": [
+      "**/go.mod",
+      "go.work"
     ]
-  }
+  },
+  "triggerTaskOnSave.showStatusBarToggle": true,
+  "triggerTaskOnSave.restart": true
 }

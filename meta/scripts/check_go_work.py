@@ -25,17 +25,23 @@ from meta.scripts._workspace import (  # noqa: E402
 
 def main() -> int:
     root = workspace_root()
-    registered = registered_modules(root)
+    registered_locs = registered_modules(root)
+    registered = set(registered_locs)
     found = found_modules(root)
 
     errors = 0
 
+    # Diagnostics are formatted as `path:line: message` so a VS Code task with a problem
+    # matcher (.vscode/tasks.json) can turn each line into a squiggle at the offending site.
+    # Missing-entry diagnostics anchor on the module's go.mod (the file whose existence is
+    # the trigger); stale-entry diagnostics anchor on the offending line in go.work.
     for mod in sorted(found - registered):
-        print(f"MISSING from go.work: ./{mod} has a go.mod but no use entry")
+        print(f"{mod}/go.mod:1: missing from go.work: ./{mod} has a go.mod but no use entry")
         errors += 1
 
     for mod in sorted(registered - found):
-        print(f"STALE in go.work: use ./{mod} has no go.mod")
+        line = registered_locs[mod]
+        print(f"go.work:{line}: stale entry: use ./{mod} has no go.mod")
         errors += 1
 
     if errors == 0:

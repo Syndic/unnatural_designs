@@ -28,13 +28,14 @@ class TestRegisteredModules(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             write_go_work(root, "go 1.26.1\n")
-            self.assertEqual(registered_modules(root), set())
+            self.assertEqual(registered_modules(root), {})
 
     def test_single_line_use(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             write_go_work(root, "go 1.26.1\nuse ./tools/foo\n")
-            self.assertEqual(registered_modules(root), {Path("tools/foo")})
+            # Line numbers are part of the contract — they drive squiggle placement.
+            self.assertEqual(registered_modules(root), {Path("tools/foo"): 2})
 
     def test_block_use(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -42,7 +43,7 @@ class TestRegisteredModules(unittest.TestCase):
             write_go_work(root, "go 1.26.1\nuse (\n    ./tools/foo\n    ./tools/bar\n)\n")
             self.assertEqual(
                 registered_modules(root),
-                {Path("tools/foo"), Path("tools/bar")},
+                {Path("tools/foo"): 3, Path("tools/bar"): 4},
             )
 
     def test_block_replace_no_false_positive(self):
@@ -50,19 +51,19 @@ class TestRegisteredModules(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             write_go_work(root, "go 1.26.1\nreplace (\n    ./foo => ./bar\n)\n")
-            self.assertEqual(registered_modules(root), set())
+            self.assertEqual(registered_modules(root), {})
 
     def test_go_directive_ignored(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             write_go_work(root, "go 1.26.1\n")
-            self.assertEqual(registered_modules(root), set())
+            self.assertEqual(registered_modules(root), {})
 
     def test_toolchain_directive_ignored(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             write_go_work(root, "go 1.26.1\ntoolchain go1.26.1\n")
-            self.assertEqual(registered_modules(root), set())
+            self.assertEqual(registered_modules(root), {})
 
 
 class TestFoundModules(unittest.TestCase):
@@ -98,7 +99,7 @@ class TestConsistency(unittest.TestCase):
             root = Path(tmp)
             write_go_work(root, "go 1.26.1\nuse ./tools/foo\n")
             write_go_mod(root, "tools/foo")
-            registered = registered_modules(root)
+            registered = set(registered_modules(root))
             found = found_modules(root)
             self.assertEqual(found - registered, set())
             self.assertEqual(registered - found, set())
@@ -109,7 +110,7 @@ class TestConsistency(unittest.TestCase):
             write_go_work(root, "go 1.26.1\n")
             write_go_mod(root, "tools/foo")
             self.assertEqual(
-                found_modules(root) - registered_modules(root),
+                found_modules(root) - set(registered_modules(root)),
                 {Path("tools/foo")},
             )
 
@@ -118,7 +119,7 @@ class TestConsistency(unittest.TestCase):
             root = Path(tmp)
             write_go_work(root, "go 1.26.1\nuse ./tools/nonexistent\n")
             self.assertEqual(
-                registered_modules(root) - found_modules(root),
+                set(registered_modules(root)) - found_modules(root),
                 {Path("tools/nonexistent")},
             )
 
@@ -126,9 +127,14 @@ class TestConsistency(unittest.TestCase):
 class TestMain(unittest.TestCase):
 
     def _run(self, *, found, registered):
+        """registered may be a list of paths (each defaulting to line 1) or {path: line} dict."""
+        if isinstance(registered, dict):
+            reg_locs = {Path(p): n for p, n in registered.items()}
+        else:
+            reg_locs = {Path(p): 1 for p in registered}
         with mock.patch.object(check_go_work, "workspace_root", return_value=Path("/fake")), \
              mock.patch.object(check_go_work, "found_modules", return_value={Path(p) for p in found}), \
-             mock.patch.object(check_go_work, "registered_modules", return_value={Path(p) for p in registered}), \
+             mock.patch.object(check_go_work, "registered_modules", return_value=reg_locs), \
              mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
             rc = check_go_work.main()
         return rc, stdout.getvalue()
@@ -137,26 +143,29 @@ class TestMain(unittest.TestCase):
         rc, out = self._run(found=["tools/foo", "tools/bar"], registered=["tools/foo", "tools/bar"])
         self.assertEqual(rc, 0)
         self.assertIn("consistent", out)
-        self.assertNotIn("MISSING", out)
-        self.assertNotIn("STALE", out)
+        self.assertNotIn("missing", out)
+        self.assertNotIn("stale", out)
 
     def test_missing_entries_reported(self):
         rc, out = self._run(found=["tools/foo", "tools/bar"], registered=["tools/foo"])
         self.assertEqual(rc, 1)
-        self.assertIn("MISSING from go.work: ./tools/bar", out)
-        self.assertNotIn("STALE", out)
+        self.assertIn("tools/bar/go.mod:1: missing from go.work: ./tools/bar", out)
+        self.assertNotIn("stale entry", out)
 
     def test_stale_entries_reported(self):
-        rc, out = self._run(found=["tools/foo"], registered=["tools/foo", "tools/bar"])
+        rc, out = self._run(found=["tools/foo"], registered={"tools/foo": 3, "tools/bar": 7})
         self.assertEqual(rc, 1)
-        self.assertIn("STALE in go.work: use ./tools/bar", out)
-        self.assertNotIn("MISSING", out)
+        self.assertIn("go.work:7: stale entry: use ./tools/bar", out)
+        self.assertNotIn("missing from go.work", out)
 
     def test_both_missing_and_stale_reported(self):
-        rc, out = self._run(found=["tools/foo", "tools/new"], registered=["tools/foo", "tools/old"])
+        rc, out = self._run(
+            found=["tools/foo", "tools/new"],
+            registered={"tools/foo": 2, "tools/old": 5},
+        )
         self.assertEqual(rc, 2)
-        self.assertIn("MISSING from go.work: ./tools/new", out)
-        self.assertIn("STALE in go.work: use ./tools/old", out)
+        self.assertIn("tools/new/go.mod:1: missing from go.work: ./tools/new", out)
+        self.assertIn("go.work:5: stale entry: use ./tools/old", out)
 
     def test_findings_sorted(self):
         rc, out = self._run(found=["tools/zebra", "tools/alpha"], registered=[])
