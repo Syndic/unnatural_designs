@@ -18,10 +18,6 @@
       {
         "match": "go\\.(mod|work)$",
         "cmd": "python3 ${workspaceFolder}/meta/scripts/check_go_work.py"
-      },
-      {
-        "match": "BUILD\\.bazel$",
-        "cmd": "python3 ${workspaceFolder}/meta/scripts/check_python_scale.py"
       }
     ]
   }

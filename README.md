@@ -155,7 +155,6 @@ Two GitHub Actions workflows run on every push and pull request to `main`.
 | Gazelle check                | Always - verifies BUILD files match source                                                         |
 | Go module completeness check | Always - verifies every Go module is in the workflow matrices and has linter config                |
 | go.work check                | Always - verifies all Go modules are registered in `go.work`                                       |
-| Python scale check           | Always - fails if `py_*` target count exceeds threshold (see `meta/scripts/check_python_scale.py`) |
 | Secrets check                | Always - verifies the `secrets/` directory contains no committed files                             |
 | No-cgo policy check          | Always - rejects `import "C"` and transitive deps that compile C/C++/cgo/SWIG                      |
 | golangci-lint                | After module check passes - runs per Go module                                                     |
@@ -208,7 +207,6 @@ VS Code-derived editors (e.g. Google Antigravity). Recommended extensions
 | `golangci-lint`      | `*.go` files                               |
 | `check-go-modules`   | `go.mod`, workflow `.yml`, `.golangci.yml` |
 | `check-go-work`      | `go.mod`, `go.work`                        |
-| `check-python-scale` | `BUILD.bazel` files                        |
 
 **Viewing coverage locally**: run `bazel coverage //...` from the repo root, then open the Command
 Palette and pick _Coverage Gutters: Display Coverage_ (or _Watch_ for live updates). The merged lcov

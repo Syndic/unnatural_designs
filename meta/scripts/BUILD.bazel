@@ -81,27 +81,6 @@ py_test(
 )
 
 py_library(
-    name = "check_python_scale_lib",
-    srcs = ["check_python_scale.py"],
-    deps = [":_workspace_lib"],
-)
-
-py_binary(
-    name = "check_python_scale",
-    srcs = ["check_python_scale.py"],
-    main = "check_python_scale.py",
-    deps = [":_workspace_lib"],
-)
-
-py_test(
-    name = "test_check_python_scale",
-    size = "small",
-    srcs = ["test_check_python_scale.py"],
-    main = "test_check_python_scale.py",
-    deps = [":check_python_scale_lib"],
-)
-
-py_library(
     name = "check_no_cgo_lib",
     srcs = ["check_no_cgo.py"],
     deps = [":_workspace_lib"],
