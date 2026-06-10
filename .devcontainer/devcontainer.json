@@ -50,6 +50,7 @@
     "vscode": {
       "extensions": [
         "bazelbuild.vscode-bazel",
+        "cnshenj.vscode-task-manager",
         "emeraldwalk.runonsave",
         "esbenp.prettier-vscode",
         "github.vscode-github-actions",
