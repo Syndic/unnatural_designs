@@ -5,6 +5,8 @@
 
   "// Diagnostic format contract": "Each script emits `path:line: message` per failure (see check_go_modules.py / check_go_work.py for how anchor lines are chosen). The matcher pattern below parses that into VS Code diagnostics. The matcher's `owner` namespaces the diagnostics so a re-run with no findings clears the previous run's squiggles.",
 
+  "// Bazel build/test": "Marked as default for their respective groups so Cmd+Shift+B / Run Test Task pick them up. Surfaced in the Task Manager sidebar via taskManager.favorites (settings.json).",
+
   "tasks": [
     {
       "label": "check: go modules",
@@ -55,6 +57,36 @@
           "message": 3
         }
       }
+    },
+    {
+      "label": "Bazel Build all",
+      "detail": "bazel build //...",
+      "type": "process",
+      "command": "bazel",
+      "args": ["build", "//..."],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Bazel Test all",
+      "detail": "bazel test //...",
+      "type": "process",
+      "command": "bazel",
+      "args": ["test", "//..."],
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "presentation": {
+        "clear": true
+      },
+      "problemMatcher": []
     }
   ]
 }

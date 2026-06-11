@@ -21,5 +21,11 @@
     ]
   },
   "triggerTaskOnSave.showStatusBarToggle": true,
-  "triggerTaskOnSave.restart": true
+  "triggerTaskOnSave.restart": true,
+
+  "// Task Manager favorites": "Pins the Bazel build/test tasks to the cnshenj.vscode-task-manager sidebar (recommended in the devcontainer; see devcontainer.json). Names must match the `label` fields in tasks.json. The `UnnaturalDesigns/Workspace/` prefix is Task Manager's own scoping convention.",
+  "taskManager.favorites": [
+    "UnnaturalDesigns/Workspace/Bazel Build all",
+    "UnnaturalDesigns/Workspace/Bazel Test all"
+  ]
 }

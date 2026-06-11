@@ -16,6 +16,18 @@ Before declaring any task complete:
 3. **Future considerations** — if a doc item in `docs/future-considerations.md` described something
    that has now been done, update or remove that item.
 
+## Comment style — keep it tight, trim what's oversized
+
+Default to short, single-sentence inline comments that name the non-obvious WHY at the line they
+describe. Don't write rationale-prose blocks inline; the home for architectural or cross-cutting
+rationale is this CLAUDE.md (see the devcontainer plumbing section below as the model — overview
+here, terse pointers at the sites).
+
+When you touch a file whose existing comments feel oversized for the rent they pay, tightening them
+as part of the change is welcome and doesn't need a separate task. Leave the load-bearing facts;
+cut the prose around them. If you're unsure whether a comment is load-bearing, surface the proposed
+cut before applying it.
+
 ## .devcontainer worktree + timezone plumbing
 
 The devcontainer is brought up by Claude agents via the `devcontainer` CLI (humans use VS Code's
