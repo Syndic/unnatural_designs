@@ -17,6 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from meta.scripts._workspace import (  # noqa: E402
+    col_range,
     found_modules,
     registered_modules,
     workspace_root,
@@ -31,17 +32,18 @@ def main() -> int:
 
     errors = 0
 
-    # Diagnostics are formatted as `path:line: message` so a VS Code task with a problem
-    # matcher (.vscode/tasks.json) can turn each line into a squiggle at the offending site.
-    # Missing-entry diagnostics anchor on the module's go.mod (the file whose existence is
-    # the trigger); stale-entry diagnostics anchor on the offending line in go.work.
+    # `file:line:start-end: message` for the problem matcher in .vscode/tasks.json.
+    # Stale entries highlight `./<mod>` in go.work; missing entries anchor on the module's
+    # go.mod (no specific offending token) with a one-char highlight.
     for mod in sorted(found - registered):
-        print(f"{mod}/go.mod:1: missing from go.work: ./{mod} has a go.mod but no use entry")
+        print(f"{mod}/go.mod:1:1-2: missing from go.work: ./{mod} has a go.mod but no use entry")
         errors += 1
 
+    go_work = root / "go.work"
     for mod in sorted(registered - found):
         line = registered_locs[mod]
-        print(f"go.work:{line}: stale entry: use ./{mod} has no go.mod")
+        start, end = col_range(go_work, line, f"./{mod}")
+        print(f"go.work:{line}:{start}-{end}: stale entry: use ./{mod} has no go.mod")
         errors += 1
 
     if errors == 0:

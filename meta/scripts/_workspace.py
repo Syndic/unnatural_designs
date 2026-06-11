@@ -42,6 +42,23 @@ def found_modules(root: Path) -> set[Path]:
     return {p.parent.relative_to(root) for p in find_files(root, "go.mod")}
 
 
+def col_range(file: Path, lineno: int, needle: str) -> tuple[int, int]:
+    """1-based (startCol, endCol-exclusive) of `needle`'s first occurrence on `file`'s `lineno`.
+
+    Lets check scripts emit `file:line:start-end:` diagnostics so the problem matcher
+    squiggles the offending token, not just column 1. Falls back to (1, 2) — a one-char
+    highlight — if the line or needle isn't where we expect, so a stale parse can't crash
+    the diagnostic emit.
+    """
+    try:
+        line = file.read_text().splitlines()[lineno - 1]
+        start = line.index(needle) + 1
+        return start, start + len(needle)
+    except (OSError, IndexError, ValueError):
+        # bad path / past-EOF lineno / needle-not-on-line all collapse to the same fallback.
+        return 1, 2
+
+
 def registered_modules(root: Path) -> dict[Path, int]:
     """Parse use directives from go.work, returning {module_path: 1-based line in go.work}.
 
