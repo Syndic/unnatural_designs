@@ -19,7 +19,7 @@ from pathlib import Path
 # where rules_python already makes the import resolvable.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from meta.scripts._workspace import found_modules, workspace_root  # noqa: E402
+from meta.scripts._workspace import col_range, found_modules, workspace_root  # noqa: E402
 
 
 def workflow_module_lists(
@@ -133,18 +133,20 @@ def check_workflow_matrices(root: Path, modules: set[Path]) -> int:
         return 0
 
     errors = 0
-    # Diagnostics use the `path:line: message` shape parsed by the problem matcher in
-    # .vscode/tasks.json. Missing entries anchor on the `module:` key line (no specific
-    # offending line exists); stale entries anchor on the entry's own line.
+    # `file:line:start-end: message` for the problem matcher in .vscode/tasks.json.
+    # Stale entries point at the path token; missing entries anchor on the `module:` key
+    # line with a one-char highlight (no specific offending token).
     for wf_file in sorted(workflows_dir.glob("*.yml")):
         rel = str(wf_file.relative_to(root))
         for job_name, module_key_line, matrix_entries in workflow_module_lists(wf_file):
             matrix_set = set(matrix_entries)
             for mod in sorted(modules - matrix_set):
-                print(f"{rel}:{module_key_line}: [{job_name}] missing matrix entry for ./{mod}")
+                print(f"{rel}:{module_key_line}:1-2: [{job_name}] missing matrix entry for ./{mod}")
                 errors += 1
             for mod in sorted(matrix_set - modules):
-                print(f"{rel}:{matrix_entries[mod]}: [{job_name}] stale matrix entry ./{mod} (no go.mod)")
+                line = matrix_entries[mod]
+                start, end = col_range(wf_file, line, str(mod))
+                print(f"{rel}:{line}:{start}-{end}: [{job_name}] stale matrix entry ./{mod} (no go.mod)")
                 errors += 1
 
     return errors
@@ -171,9 +173,8 @@ def check_golangci_configs(root: Path, modules: set[Path]) -> int:
                 break
             candidate = candidate.parent
         if not found:
-            # Anchor on the module's go.mod — there is no specific line "at fault" for a
-            # missing config file, but go.mod is the file whose existence makes the check run.
-            print(f"{mod}/go.mod:1: no .golangci.yml reachable from ./{mod} (module dir or any parent up to repo root)")
+            # Anchor on the module's go.mod — no specific token at fault.
+            print(f"{mod}/go.mod:1:1-2: no .golangci.yml reachable from ./{mod} (module dir or any parent up to repo root)")
             errors += 1
     return errors
 

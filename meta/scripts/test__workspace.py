@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from meta.scripts._workspace import find_files, is_skipped
+from meta.scripts._workspace import col_range, find_files, is_skipped
 
 
 class TestIsSkipped(unittest.TestCase):
@@ -78,6 +78,43 @@ class TestFindFiles(unittest.TestCase):
             (root / "a" / "go.mod").write_text("module a\n")
             (root / "a" / "go.sum").write_text("")
             self.assertEqual(find_files(root, "go.mod"), [root / "a" / "go.mod"])
+
+
+class TestColRange(unittest.TestCase):
+
+    def _write(self, content: str) -> Path:
+        tmp = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt")
+        tmp.write(content)
+        tmp.close()
+        return Path(tmp.name)
+
+    def test_finds_needle_at_start(self):
+        f = self._write("hello\n")
+        # 1-based; endCol exclusive, so 1-6 highlights "hello" (5 chars: cols 1..5).
+        self.assertEqual(col_range(f, 1, "hello"), (1, 6))
+
+    def test_finds_needle_with_leading_whitespace(self):
+        f = self._write("          - tools/foo\n")
+        # `tools/foo` starts at col 13 (after 10 spaces + "- "); len 9 → endCol 22.
+        self.assertEqual(col_range(f, 1, "tools/foo"), (13, 22))
+
+    def test_finds_needle_on_later_line(self):
+        f = self._write("go 1.26.1\nuse ./tools/foo\n")
+        # On line 2, `./tools/foo` starts at col 5 (after "use "); len 11 → endCol 16.
+        self.assertEqual(col_range(f, 2, "./tools/foo"), (5, 16))
+
+    def test_missing_needle_falls_back(self):
+        f = self._write("hello\n")
+        # No crash, no misplaced squiggle — fallback to 1-2 (one-char highlight at col 1).
+        self.assertEqual(col_range(f, 1, "nope"), (1, 2))
+
+    def test_missing_line_falls_back(self):
+        f = self._write("hello\n")
+        self.assertEqual(col_range(f, 99, "hello"), (1, 2))
+
+    def test_missing_file_falls_back(self):
+        # File doesn't exist — fallback applies (the path was wrong, not a crash condition).
+        self.assertEqual(col_range(Path("/nonexistent/file"), 1, "x"), (1, 2))
 
 
 if __name__ == "__main__":

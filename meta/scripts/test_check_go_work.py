@@ -149,13 +149,16 @@ class TestMain(unittest.TestCase):
     def test_missing_entries_reported(self):
         rc, out = self._run(found=["tools/foo", "tools/bar"], registered=["tools/foo"])
         self.assertEqual(rc, 1)
-        self.assertIn("tools/bar/go.mod:1: missing from go.work: ./tools/bar", out)
+        # Missing-entry diagnostics always emit the 1-2 anchor column range.
+        self.assertIn("tools/bar/go.mod:1:1-2: missing from go.work: ./tools/bar", out)
         self.assertNotIn("stale entry", out)
 
     def test_stale_entries_reported(self):
+        # /fake/go.work doesn't exist, so col_range falls back to 1-2. The end-to-end column
+        # math is covered by TestColRange in test__workspace.py.
         rc, out = self._run(found=["tools/foo"], registered={"tools/foo": 3, "tools/bar": 7})
         self.assertEqual(rc, 1)
-        self.assertIn("go.work:7: stale entry: use ./tools/bar", out)
+        self.assertIn("go.work:7:1-2: stale entry: use ./tools/bar", out)
         self.assertNotIn("missing from go.work", out)
 
     def test_both_missing_and_stale_reported(self):
@@ -164,8 +167,8 @@ class TestMain(unittest.TestCase):
             registered={"tools/foo": 2, "tools/old": 5},
         )
         self.assertEqual(rc, 2)
-        self.assertIn("tools/new/go.mod:1: missing from go.work: ./tools/new", out)
-        self.assertIn("go.work:5: stale entry: use ./tools/old", out)
+        self.assertIn("tools/new/go.mod:1:1-2: missing from go.work: ./tools/new", out)
+        self.assertIn("go.work:5:1-2: stale entry: use ./tools/old", out)
 
     def test_findings_sorted(self):
         rc, out = self._run(found=["tools/zebra", "tools/alpha"], registered=[])

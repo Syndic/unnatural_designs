@@ -3,7 +3,7 @@
 
   "// Repo-health checks": "These scripts used to run in pre-commit and were briefly run silently via emeraldwalk.runonsave. Defined as tasks with problem matchers so failures surface as squiggles + Problems-panel entries instead of disappearing into an output channel. Triggered on save by gruntfuggly.triggertaskonsave (see settings.json).",
 
-  "// Diagnostic format contract": "Each script emits `path:line: message` per failure (see check_go_modules.py / check_go_work.py for how anchor lines are chosen). The matcher pattern below parses that into VS Code diagnostics. The matcher's `owner` namespaces the diagnostics so a re-run with no findings clears the previous run's squiggles.",
+  "// Diagnostic format contract": "Each script emits `path:line:startCol-endCol: message` per failure (see check_go_modules.py / check_go_work.py for anchor choice and column derivation). The matcher pattern parses that into VS Code diagnostics; columns are 1-based with endCol exclusive, so a value-bearing diagnostic squiggles the offending token while anchor-only diagnostics emit 1-2 for a one-char fallback. The matcher's `owner` namespaces the diagnostics so a re-run with no findings clears the previous run's squiggles.",
 
   "// Bazel build/test": "Marked as default for their respective groups so Cmd+Shift+B / Run Test Task pick them up. Surfaced in the Task Manager sidebar via taskManager.favorites (settings.json).",
 
@@ -26,10 +26,12 @@
         "fileLocation": ["relative", "${workspaceFolder}"],
         "severity": "error",
         "pattern": {
-          "regexp": "^(\\S+):(\\d+):\\s+(.+)$",
+          "regexp": "^(\\S+):(\\d+):(\\d+)-(\\d+):\\s+(.+)$",
           "file": 1,
           "line": 2,
-          "message": 3
+          "column": 3,
+          "endColumn": 4,
+          "message": 5
         }
       }
     },
@@ -51,10 +53,12 @@
         "fileLocation": ["relative", "${workspaceFolder}"],
         "severity": "error",
         "pattern": {
-          "regexp": "^(\\S+):(\\d+):\\s+(.+)$",
+          "regexp": "^(\\S+):(\\d+):(\\d+)-(\\d+):\\s+(.+)$",
           "file": 1,
           "line": 2,
-          "message": 3
+          "column": 3,
+          "endColumn": 4,
+          "message": 5
         }
       }
     },
