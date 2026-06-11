@@ -53,6 +53,12 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.work
+          # This step only runs `go list -deps` via check_no_cgo.py — no `go build`
+          # of our code, no `go mod download`. With cache enabled (the default),
+          # setup-go searches for go.mod/go.sum at the repo root to build a cache
+          # key and warns when it can't find them (this is a Bazel monorepo with
+          # per-module go.mod files, none at the root).
+          cache: false
       - run: python3 meta/scripts/check_no_cgo.py
 
   # TEND(lang-expand): this job lints Go only. When a new language is adopted, add a sibling
