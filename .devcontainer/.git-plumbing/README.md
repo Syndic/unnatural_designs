@@ -13,6 +13,11 @@ image. The files are gitignored and written on every `devcontainer up` by
 - `host-timezone` — IANA zone name (e.g. `America/Los_Angeles`) of the
   host's timezone. The Dockerfile reads it and symlinks `/etc/localtime`,
   so container timestamps match the host.
+- `host-gitconfig` — snapshot of the host's `~/.gitconfig`. `post-start.sh`
+  installs it into the container only when `~/.gitconfig` is empty (i.e.
+  the `devcontainer` CLI path; VS Code's Dev Containers extension copies
+  it for itself). See ".devcontainer signed commits under CLI" in
+  `.claude/CLAUDE.md`.
 
 This directory exists in git (via this README) so the Dockerfile's
 `COPY .devcontainer/.git-plumbing/ …` step always finds a source — buildx

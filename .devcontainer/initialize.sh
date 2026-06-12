@@ -57,6 +57,7 @@ workspace="$(cd "$here/.." && pwd)"          # repo/worktree root (host abs)
 link="$here/.host-git-common"
 pathfile="$here/.git-plumbing/host-git-common-path"
 tzfile="$here/.git-plumbing/host-timezone"
+gitconfigfile="$here/.git-plumbing/host-gitconfig"
 
 # The .git-plumbing dir is tracked (via its README), so it normally exists
 # already; mkdir -p covers stray cases like a manual deletion without
@@ -109,3 +110,11 @@ case "$tz" in
   /* | *..*) tz="" ;;
 esac
 printf '%s\n' "$tz" >"$tzfile"
+
+# Snapshot host ~/.gitconfig for post-start.sh to install when the Dev
+# Containers extension hasn't already done so. Empty file if absent.
+if [ -r "$HOME/.gitconfig" ]; then
+  cp "$HOME/.gitconfig" "$gitconfigfile"
+else
+  : >"$gitconfigfile"
+fi

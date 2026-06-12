@@ -63,6 +63,7 @@ target/
 /.devcontainer/.host-git-common
 /.devcontainer/.git-plumbing/host-git-common-path
 /.devcontainer/.git-plumbing/host-timezone
+/.devcontainer/.git-plumbing/host-gitconfig
 
 # ── Claude Code ───────────────────────────────────────────────────────────────────────────────────
 # settings.local.json holds per-developer overrides — never shared

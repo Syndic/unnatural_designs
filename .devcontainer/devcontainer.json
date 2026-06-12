@@ -22,7 +22,9 @@
   },
   "remoteUser": "vscode",
   "containerEnv": {
-    "GOTOOLCHAIN": "local"
+    "GOTOOLCHAIN": "local",
+    // Forward host ssh-agent for signed commits — see CLAUDE.md "Signed commits under devcontainer CLI".
+    "SSH_AUTH_SOCK": "/run/host-services/ssh-auth.sock"
   },
   // Make git fully resolve inside the container for ANY checkout layout — a full
   // clone, the main worktree, or a linked worktree living anywhere on disk —
@@ -38,7 +40,9 @@
     // container path the Dockerfile points the host-absolute path at. Docker
     // follows the symlink host-side, so this resolves to wherever the real git
     // common dir lives without the config naming that dynamic path.
-    "source=${localWorkspaceFolder}/.devcontainer/.host-git-common,target=/host-git-common,type=bind"
+    "source=${localWorkspaceFolder}/.devcontainer/.host-git-common,target=/host-git-common,type=bind",
+    // Forward host ssh-agent for signed commits — see CLAUDE.md "Signed commits under devcontainer CLI".
+    "source=/run/host-services/ssh-auth.sock,target=/run/host-services/ssh-auth.sock,type=bind"
   ],
   // Mount the workspace at its real host path (not the default /workspaces/<name>)
   // so the worktree's own files — and the .git file's back-pointer — line up
@@ -46,6 +50,7 @@
   "workspaceFolder": "${localWorkspaceFolder}",
   "workspaceMount": "source=${localWorkspaceFolder},target=${localWorkspaceFolder},type=bind",
   "postCreateCommand": ".devcontainer/post-create.sh",
+  "postStartCommand": ".devcontainer/post-start.sh",
   "customizations": {
     "vscode": {
       "extensions": [
