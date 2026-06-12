@@ -6,6 +6,14 @@ ARG BAZELISK_VERSION=v1.29.0
 # renovate: datasource=github-releases depName=bazelbuild/buildtools
 ARG BUILDIFIER_VERSION=v8.5.1
 
+# uv: the workspace's Python package manager. Single source of truth for the
+# uv.lock + requirements_lock.txt chain consumed by rules_python's pip.parse
+# and enforced by the `uv-lock-fresh` pre-commit hook. Installed first so
+# later PRs can layer `uv tool install ruff ty pre-commit` on top of it.
+# Pinned tag bumped by Renovate's docker manager (matches the pattern used in
+# ~/.dotfiles/.devcontainer/Dockerfile).
+COPY --from=ghcr.io/astral-sh/uv:0.9.30 /uv /uvx /usr/local/bin/
+
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         build-essential \
         ca-certificates \

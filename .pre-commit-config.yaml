@@ -8,6 +8,16 @@ repos:
         pass_filenames: false
         files: go\.(mod|work|sum)$
 
+      - id: uv-lock-fresh
+        name: uv lock + export
+        language: system
+        # Re-runs the lock and the requirements_lock.txt export so a pyproject
+        # edit can't land without the derived files. uv.lock is the source of
+        # truth; requirements_lock.txt is what rules_python's pip.parse reads.
+        entry: bash -c 'set -euo pipefail; uv lock; uv export --format requirements-txt --no-hashes --no-emit-project --output-file requirements_lock.txt'
+        pass_filenames: false
+        files: ^(pyproject\.toml|uv\.lock|requirements_lock\.txt)$
+
       - id: gazelle
         name: gazelle
         language: system

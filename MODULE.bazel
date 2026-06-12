@@ -73,3 +73,25 @@ python.toolchain(
     # `bazel coverage` runs, so Python tests emit lcov data alongside Go.
     configure_coverage_tool = True,
 )
+
+# Materialise the third-party Python deps locked by uv. The chain is:
+#   pyproject.toml  →  uv.lock  →  requirements_lock.txt  →  pip.parse  →  @pypi//...
+# uv.lock is the source of truth; requirements_lock.txt is its `uv export`
+# projection (rules_python does not read uv.lock natively). A pre-commit hook
+# keeps the two in sync; see `uv-lock-fresh` in .pre-commit-config.yaml.
+pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
+pip.parse(
+    hub_name = "pypi",
+    python_version = "3.14",
+    requirements_lock = "//:requirements_lock.txt",
+)
+use_repo(pip, "pypi")
+
+# DEFERRED: rules_python_gazelle_plugin (a.k.a. gazelle_python) is not wired
+# here. The plugin's gazelle binary pulls in smacker/go-tree-sitter via CGO,
+# which does not compile under our Go 1.26.4 SDK (upstream issue
+# bazel-contrib/rules_python#3416; the migration to a pure-Go binding is in
+# the unmerged bazel-contrib/rules_python#3786). Until #3786 ships in a
+# release, Python BUILD files are hand-authored. See
+# `docs/future-considerations.md` (Python BUILD generation) for the trigger
+# that brings this back in.
