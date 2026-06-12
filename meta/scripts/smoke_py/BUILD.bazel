@@ -1,0 +1,19 @@
+load("@pypi//:requirements.bzl", "requirement")
+load("@rules_python//python:py_test.bzl", "py_test")
+
+# TRANSIENT — DELETE WITH PR-1 FOLLOWUP.
+#
+# This target exists only to prove the end-to-end Python plumbing wired in PR 1:
+#   pyproject.toml  →  uv.lock  →  requirements_lock.txt  →  pip.parse  →  @pypi//...
+#
+# It imports `requests` (declared in the root pyproject.toml's transient smoke
+# dep) and asserts the module loads. Once `bazel test //meta/scripts/smoke_py:...`,
+# `bazel run //:gazelle -- -mode=diff`, and a CI run all go green, delete this
+# directory along with the smoke dep in pyproject.toml and re-export the
+# lockfiles. The chain has been verified at that point and the target's job is done.
+
+py_test(
+    name = "smoke_test",
+    srcs = ["smoke_test.py"],
+    deps = [requirement("requests")],
+)
