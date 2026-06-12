@@ -1,0 +1,33 @@
+# Root manifest for the uv workspace. This is NOT a deployable Python project
+# (`tool.uv.package = false` keeps uv from building it). It exists to:
+#
+#   1. Declare the uv workspace (`[tool.uv.workspace]`) so all Python projects in
+#      the repo resolve against a single shared lock graph.
+#   2. Hold repo-wide tool config (ruff, ty) as it is added in later PRs — one
+#      canonical home, mirrored by per-project overrides only when needed.
+#   3. Carry deps that don't belong to a specific workspace member — currently
+#      just the temporary smoke target's third-party import, which exercises the
+#      pyproject → uv.lock → requirements_lock.txt → pip.parse → @pypi//...
+#      chain end-to-end. Removed with the smoke target once the chain is proven.
+#
+# `members = []` is intentional. The existing `tools/` subdirs are Go modules,
+# so a `tools/*` glob would error at lock time; members are added explicitly as
+# real Python projects land.
+
+[project]
+name = "unnatural-designs-workspace"
+version = "0.0.0"
+description = "Workspace root for the unnatural_designs monorepo. Not a published package."
+requires-python = ">=3.14"
+# TRANSIENT: third-party dep for the meta/scripts/smoke_py smoke target. Delete
+# along with the smoke target once the pip.parse chain has been verified end-to-end.
+dependencies = [
+    "requests>=2.32",
+]
+
+[tool.uv]
+package = false
+required-version = ">=0.9"
+
+[tool.uv.workspace]
+members = []
