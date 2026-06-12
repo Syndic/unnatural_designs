@@ -1,0 +1,45 @@
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+
+package(default_visibility = ["//apps/theater:__subpackages__"])
+
+py_library(
+    name = "service",
+    srcs = [
+        "main.py",
+        "rest.py",
+        "state.py",
+        "ws_router.py",
+        "api/schema.py",
+        "api/wiring.py",
+        "devices/base.py",
+        "devices/lg_webos.py",
+        "devices/sony_bravia.py",
+        "devices/sony_escapi.py",
+        "devices/lutron_leap.py",
+        "devices/_mock.py",
+    ],
+    data = [
+        "config.example.toml",
+    ],
+    deps = [
+        # Pip deps land here once the lock file is configured:
+        # "@pip//fastapi",
+        # "@pip//uvicorn",
+        # "@pip//pydantic",
+        # "@pip//httpx",
+        # "@pip//websockets",
+        # "@pip//aiowebostv",
+        # "@pip//pylutron_caseta",
+        # "@pip//wakeonlan",
+    ],
+)
+
+# Dev runner: uvicorn with --reload against mock devices by default.
+# Pass --real-devices to point at the actual hardware.
+py_binary(
+    name = "dev",
+    srcs = ["main.py"],
+    main = "main.py",
+    deps = [":service"],
+    args = ["--reload"],
+)
