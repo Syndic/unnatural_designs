@@ -56,3 +56,46 @@ has a source — buildx errors on a `COPY` whose glob matches zero files, and CI
 build` doesn't run `initializeCommand`, so the runtime files are absent there. The shell
 `[ -s ... ]` guards in the Dockerfile make that case a clean no-op (CI keeps default UTC and skips
 the git path symlink).
+
+## .devcontainer signed commits under CLI
+
+The host signs with **SSH** (`gpg.format = ssh`, `commit.gpgsign = true`, no explicit
+`user.signingkey` — `gpg.ssh.defaultKeyCommand` shells out to `ssh-add -L`). That makes two
+things load-bearing inside the container: a usable ssh-agent socket the in-container `git` can
+reach, and the host's `~/.gitconfig`. VS Code's Dev Containers extension supplies both
+automatically — it forwards the host ssh-agent through the VS Code Server's own SSH tunnel (a
+per-user socket published by the server process, *not* Docker Desktop's magic socket — that
+mount isn't even present in extension-launched containers) and copies the host gitconfig
+between `postCreate` and `postStart`. The `devcontainer` CLI does neither. The fix is three
+additive pieces:
+
+- **SSH agent** — `devcontainer.json` binds Docker Desktop's magic socket
+  `/run/host-services/ssh-auth.sock` (Desktop's documented mechanism for exposing the host's
+  `ssh-agent` to any container on macOS) and sets `SSH_AUTH_SOCK` via `containerEnv`. The
+  macOS launchd path is *not* used: it's unreachable inside the container and rotates across
+  reboots. Trade-off: the mount is Docker-Desktop-specific and would dangle under colima /
+  OrbStack / podman. A socat-based engine-agnostic relay is the known alternative; not worth
+  the setup until a non-DD engine is on the table. Docker Desktop intercepts that path even
+  though it isn't physically on the host; on other engines it isn't intercepted *and*
+  doesn't exist, so the bind would fail at container start. `initialize.sh` checks
+  `docker info` for "Docker Desktop"; if absent it `sudo touch`es a placeholder at the magic
+  path so the bind succeeds (agent forwarding won't be functional there, which is fine —
+  CI's smoke job just needs the container to start).
+- **SSH agent socket ownership** — Docker Desktop bind-mounts the magic socket root-owned
+  mode 660. The remoteUser is `vscode` (uid 1000), so it can't connect to a root-owned
+  socket. `post-start.sh` `chown`s it to the current user (vscode has passwordless sudo in
+  the `devcontainers/base:debian` image). Has to happen on every container start, because
+  the bind-mounted socket is re-created root-owned each time. Harmless under VS Code, which
+  uses its own tunneled socket and ignores the magic one entirely.
+- **`~/.gitconfig`** — `initialize.sh` writes a snapshot to `.git-plumbing/host-gitconfig`.
+  `post-start.sh` copies it to `$HOME/.gitconfig` *only if that file is missing or empty*.
+  `postStartCommand` runs after the Dev Containers extension's own gitconfig copy, so the
+  empty-check naturally lets VS Code win when it's involved; CI's `devcontainer build` never
+  reaches postStart, so the file is absent there and the script is a clean no-op. Same
+  lifecycle/buildx-safety story as `host-git-common-path` and `host-timezone` — gitignored,
+  regenerated every `up`, anchored by the tracked `.git-plumbing/README.md`.
+
+`gpg.ssh.allowedSignersFile` in the copied gitconfig points to a host-only path that doesn't
+exist in the container. Irrelevant: git only reads it for `git verify-commit`, not for
+signing — `git log --show-signature` prints "Unable to open allowed keys file…" / "No
+principal matched" and the commit is still validly signed.

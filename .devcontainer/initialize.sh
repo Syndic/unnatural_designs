@@ -57,6 +57,7 @@ workspace="$(cd "$here/.." && pwd)"          # repo/worktree root (host abs)
 link="$here/.host-git-common"
 pathfile="$here/.git-plumbing/host-git-common-path"
 tzfile="$here/.git-plumbing/host-timezone"
+gitconfigfile="$here/.git-plumbing/host-gitconfig"
 
 # The .git-plumbing dir is tracked (via its README), so it normally exists
 # already; mkdir -p covers stray cases like a manual deletion without
@@ -109,3 +110,26 @@ case "$tz" in
   /* | *..*) tz="" ;;
 esac
 printf '%s\n' "$tz" >"$tzfile"
+
+# Snapshot host ~/.gitconfig for post-start.sh to install when the Dev
+# Containers extension hasn't already done so. Empty file if absent.
+if [ -r "$HOME/.gitconfig" ]; then
+  cp "$HOME/.gitconfig" "$gitconfigfile"
+else
+  : >"$gitconfigfile"
+fi
+
+# Pre-create the magic ssh-agent socket placeholder on hosts where Docker
+# Desktop isn't intercepting it (CI runners, plain Docker on Linux). Docker
+# Desktop auto-forwards the host ssh-agent at /run/host-services/ssh-auth.sock
+# even though that path isn't physically present on the host; elsewhere the
+# bind declared in devcontainer.json fails before the container starts.
+# Placeholder makes the bind succeed; SSH forwarding won't be functional
+# there but the container can start (CI smoke jobs don't sign commits).
+docker_info="$(docker info 2>/dev/null || true)"
+if ! printf '%s' "$docker_info" | grep -q "Docker Desktop"; then
+  if [ ! -e /run/host-services/ssh-auth.sock ]; then
+    sudo mkdir -p /run/host-services
+    sudo touch /run/host-services/ssh-auth.sock
+  fi
+fi
