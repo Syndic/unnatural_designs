@@ -39,9 +39,21 @@ go_sdk = use_extension("@rules_go//go:extensions.bzl", "go_sdk")
 #
 # Renovate's regex matcher in renovate.json picks up each occurrence; bumps will
 # arrive as one grouped PR ("Language toolchain SDKs") keeping all three in sync.
-go_sdk.download(version = "1.26.4", goos = "linux", goarch = "amd64")
-go_sdk.download(version = "1.26.4", goos = "linux", goarch = "arm64")
-go_sdk.download(version = "1.26.4", goos = "darwin", goarch = "arm64")
+go_sdk.download(
+    goarch = "amd64",
+    goos = "linux",
+    version = "1.26.4",
+)
+go_sdk.download(
+    goarch = "arm64",
+    goos = "linux",
+    version = "1.26.4",
+)
+go_sdk.download(
+    goarch = "arm64",
+    goos = "darwin",
+    version = "1.26.4",
+)
 
 # Discover external Go deps from the workspace's go.work + per-module go.mod files.
 go_deps = use_extension("@gazelle//:extensions.bzl", "go_deps")
@@ -62,16 +74,16 @@ bazel_dep(name = "rules_python", version = "2.0.1")
 # that release as a version-bump PR; that PR is the prompt to drop this override.
 git_override(
     module_name = "rules_python",
-    remote = "https://github.com/bazel-contrib/rules_python.git",
     commit = "8b38325e7c1b8b3240088b14d5ba2e5316aceabc",
+    remote = "https://github.com/bazel-contrib/rules_python.git",
 )
 
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")
 python.toolchain(
-    python_version = "3.14",
     # Wires the bundled `coverage` library into py_test runfiles when
     # `bazel coverage` runs, so Python tests emit lcov data alongside Go.
     configure_coverage_tool = True,
+    python_version = "3.14",
 )
 
 # Materialise the third-party Python deps locked by uv. The chain is:
