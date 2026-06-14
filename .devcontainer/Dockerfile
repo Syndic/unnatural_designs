@@ -10,6 +10,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
         build-essential \
         ca-certificates \
         curl \
+        ripgrep \
         unzip \
         zip \
     && rm -rf /var/lib/apt/lists/*
