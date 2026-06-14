@@ -60,20 +60,17 @@
         "github.vscode-github-actions",
         "golang.go",
         "gruntfuggly.todo-tree",
-        "gruntfuggly.triggertaskonsave",
+        "Gruntfuggly.triggertaskonsave",
         "mechatroner.rainbow-csv",
-        "mermaidchart.vscode-mermaid-chart",
         "ms-azuretools.vscode-containers",
-        "ms-azuretools.vscode-docker",
         "ms-kubernetes-tools.vscode-kubernetes-tools",
         "ms-python.debugpy",
         "ms-python.python",
         "redhat.vscode-yaml",
-        "ryanluker.vscode-coverage-gutters"
+        "ryanluker.vscode-coverage-gutters",
       ],
       "settings": {
-        "go.toolsManagement.checkForUpdates": "off",
-        "go.useLanguageServer": true
+        "todo-tree.ripgrep.ripgrep": "/usr/bin/rg"
       }
     }
   }
