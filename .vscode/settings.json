@@ -1,13 +1,42 @@
 {
-  "go.lintTool": "golangci-lint",
-  "go.lintOnSave": "package",
-  "prettier.printWidth": 100,
-  "prettier.proseWrap": "always",
-
+  "bazel.enableCodeLens": true,
   "// Coverage Gutters": "Paints gutter marks from a local `bazel coverage //...` run. Bazel writes the merged lcov to bazel-out/_coverage/_coverage_report.dat; search is scoped there.",
   "coverage-gutters.coverageFileNames": ["_coverage_report.dat", "lcov.info"],
   "coverage-gutters.coverageBaseDir": "bazel-out",
-
+  "editor.autoIndentOnPaste": true,
+  "editor.formatOnPaste": true,
+  "editor.formatOnSave": true,
+  "editor.rulers": [
+    100,
+    120
+  ],
+  "files.insertFinalNewline": true,
+  "go.lintOnSave": "package",
+  "go.lintTool": "golangci-lint",
+  "go.useLanguageServer": true,
+  "prettier.printWidth": 100,
+  "prettier.proseWrap": "always",
+  "prettier.trailingComma": "all",
+  "python.languageServer": "Default",
+  "// Task Manager favorites": "Pins the Bazel build/test tasks to the cnshenj.vscode-task-manager sidebar (recommended in the devcontainer; see devcontainer.json). Names must match the `label` fields in tasks.json. The `UnnaturalDesigns/Workspace/` prefix is Task Manager's own scoping convention.",
+  "taskManager.favorites": [
+    "UnnaturalDesigns/Workspace/Bazel Build all",
+    "UnnaturalDesigns/Workspace/Bazel Test all"
+  ],
+  "todo-tree.filtering.excludeGlobs": [
+      "**/node_modules/*/**",
+      "**/docs/reminder-tags.md"
+  ],
+  "todo-tree.general.tags": [
+      "FIXME",
+      "HACK",
+      "TODO",
+      "TEND",
+      "NOTE",
+      "[]",
+      "[x]"
+  ],
+  "todo-tree.ripgrep.ripgrep": "/usr/bin/rg",
   "// Repo-health checks on save": "These scripts run via the VS Code tasks defined in tasks.json, triggered by gruntfuggly.triggertaskonsave (recommended in extensions.json) when the matching files are saved. The matchers in tasks.json turn each `path:line: message` failure into a Problems-panel entry with a squiggle at the offending line.",
   "triggerTaskOnSave.tasks": {
     "check: go modules": [
@@ -22,10 +51,6 @@
   },
   "triggerTaskOnSave.showStatusBarToggle": true,
   "triggerTaskOnSave.restart": true,
-
-  "// Task Manager favorites": "Pins the Bazel build/test tasks to the cnshenj.vscode-task-manager sidebar (recommended in the devcontainer; see devcontainer.json). Names must match the `label` fields in tasks.json. The `UnnaturalDesigns/Workspace/` prefix is Task Manager's own scoping convention.",
-  "taskManager.favorites": [
-    "UnnaturalDesigns/Workspace/Bazel Build all",
-    "UnnaturalDesigns/Workspace/Bazel Test all"
-  ]
+  "yaml.format.printWidth": 100,
+  "yaml.format.enable": false,
 }
