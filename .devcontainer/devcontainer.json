@@ -54,6 +54,7 @@
   "customizations": {
     "vscode": {
       "extensions": [
+        "astral-sh.ty",
         "bazelbuild.vscode-bazel",
         "charliermarsh.ruff",
         "cnshenj.vscode-task-manager",

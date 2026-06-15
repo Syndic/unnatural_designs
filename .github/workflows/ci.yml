@@ -118,6 +118,28 @@ jobs:
           args: format --check
       - run: ruff check
 
+  # ty: Astral's static type checker. Config lives in `[tool.ty]` in
+  # //:pyproject.toml — same single-source-of-truth posture as ruff. No
+  # dedicated GitHub Action exists yet (ty is still alpha), so we install uv
+  # and run `uvx ty@<pin> check`. The pin is Renovate-tracked via the comment
+  # above TY_VERSION.
+  ty:
+    name: ty
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v6
+      # `uv sync` materializes `.venv` from uv.lock so ty can resolve
+      # third-party imports (e.g. the smoke target's `requests`). Without it,
+      # ty's only search paths are first-party + stdlib and any non-stdlib
+      # import fails with `unresolved-import`.
+      - run: uv sync
+      - name: ty check
+        env:
+          # renovate: datasource=pypi depName=ty
+          TY_VERSION: "0.0.1a25"
+        run: uvx "ty@${TY_VERSION}" check
+
   # Build and test runs once per supported target platform, on a runner whose host matches
   # the target. (Running tests natively per platform is the only way (without an emulation
   # layer we do not have) to actually exercise platform-specific code paths and catch regressions
@@ -137,6 +159,7 @@ jobs:
       no-cgo-check,
       golangci-lint,
       ruff,
+      ty,
     ]
     strategy:
       fail-fast: false

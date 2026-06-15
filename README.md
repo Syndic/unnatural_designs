@@ -160,6 +160,7 @@ Two GitHub Actions workflows run on every push and pull request to `main`.
 | No-cgo policy check          | Always - rejects `import "C"` and transitive deps that compile C/C++/cgo/SWIG                      |
 | golangci-lint                | After module check passes - runs per Go module                                                     |
 | ruff                         | Always - `ruff format --check` and `ruff check` over all Python                                    |
+| ty                           | Always - `uvx ty check` (Astral's static type checker) over all Python                             |
 | Build and test               | After all checks above pass                                                                        |
 | Coverage                     | After build and test - `bazel coverage //...`, uploads merged lcov to Codecov                      |
 
@@ -205,6 +206,9 @@ VS Code-derived editors (e.g. Google Antigravity). Recommended extensions
 - [`charliermarsh.ruff`](https://marketplace.visualstudio.com/items?itemName=charliermarsh.ruff) -
   surfaces `ruff check` diagnostics inline and applies `ruff format` on save, matching what the CI
   `ruff` job and the pre-commit hooks enforce.
+- [`astral-sh.ty`](https://marketplace.visualstudio.com/items?itemName=astral-sh.ty) - surfaces
+  `ty check` diagnostics inline, matching what the CI `ty` job enforces. Config lives in
+  `[tool.ty]` in `//:pyproject.toml`.
 - [`emeraldwalk.runonsave`](https://marketplace.visualstudio.com/items?itemName=emeraldwalk.RunOnSave) -
   triggers the repo-health scripts on save.
 - [`ryanluker.vscode-coverage-gutters`](https://marketplace.visualstudio.com/items?itemName=ryanluker.vscode-coverage-gutters) -
@@ -214,6 +218,7 @@ VS Code-derived editors (e.g. Google Antigravity). Recommended extensions
 | -------------------- | ------------------------------------------ |
 | `golangci-lint`      | `*.go` files                               |
 | `ruff` (diagnostics + format) | `*.py` files                      |
+| `ty` (type diagnostics)       | `*.py` files                      |
 | `check-go-modules`   | `go.mod`, workflow `.yml`, `.golangci.yml` |
 | `check-go-work`      | `go.mod`, `go.work`                        |
 
