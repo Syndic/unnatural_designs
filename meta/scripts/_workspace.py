@@ -14,7 +14,9 @@ _SKIP_DIR_NAMES = {".git", "node_modules"}
 def workspace_root() -> Path:
     result = subprocess.run(
         ["git", "rev-parse", "--show-toplevel"],
-        capture_output=True, text=True, check=True,
+        capture_output=True,
+        text=True,
+        check=True,
     )
     return Path(result.stdout.strip())
 
@@ -27,8 +29,7 @@ def is_skipped(path: Path) -> bool:
     that should never contain repo-managed sources.
     """
     return any(
-        part in _SKIP_DIR_NAMES or part.startswith(_SKIP_DIR_PREFIXES)
-        for part in path.parts
+        part in _SKIP_DIR_NAMES or part.startswith(_SKIP_DIR_PREFIXES) for part in path.parts
     )
 
 
@@ -54,7 +55,7 @@ def col_range(file: Path, lineno: int, needle: str) -> tuple[int, int]:
         line = file.read_text().splitlines()[lineno - 1]
         start = line.index(needle) + 1
         return start, start + len(needle)
-    except (OSError, IndexError, ValueError):
+    except OSError, IndexError, ValueError:
         # bad path / past-EOF lineno / needle-not-on-line all collapse to the same fallback.
         return 1, 2
 

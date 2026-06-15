@@ -18,6 +18,14 @@
   "prettier.proseWrap": "always",
   "prettier.trailingComma": "all",
   "python.languageServer": "Default",
+  "// Ruff format-on-save": "charliermarsh.ruff surfaces diagnostics inline; this block makes it the default Python formatter so `editor.formatOnSave` calls ruff format, and runs ruff check --fix + import-organize as save-time code actions. Config is read from `[tool.ruff]` in //:pyproject.toml — single source of truth shared with CI + pre-commit.",
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.codeActionsOnSave": {
+      "source.fixAll.ruff": "explicit",
+      "source.organizeImports.ruff": "explicit"
+    }
+  },
   "// Task Manager favorites": "Pins the Bazel build/test tasks to the cnshenj.vscode-task-manager sidebar (recommended in the devcontainer; see devcontainer.json). Names must match the `label` fields in tasks.json. The `UnnaturalDesigns/Workspace/` prefix is Task Manager's own scoping convention.",
   "taskManager.favorites": [
     "UnnaturalDesigns/Workspace/Bazel Build all",

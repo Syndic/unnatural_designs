@@ -34,7 +34,7 @@ from pathlib import Path
 # where rules_python already makes the import resolvable.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from meta.scripts._workspace import (  # noqa: E402
+from meta.scripts._workspace import (
     find_files,
     registered_modules,
     workspace_root,
@@ -55,7 +55,7 @@ def find_cgo_in_sources(root: Path) -> list[Path]:
     for go_file in find_files(root, "*.go"):
         try:
             content = go_file.read_text()
-        except (UnicodeDecodeError, OSError):
+        except UnicodeDecodeError, OSError:
             continue
         if _CGO_IMPORT_RE.search(content):
             offenders.append(go_file.relative_to(root))
@@ -92,9 +92,7 @@ def find_cgo_in_deps(module_dir: Path) -> list[str]:
         check=False,
     )
     if result.returncode != 0:
-        raise RuntimeError(
-            f"`go list` failed in {module_dir}:\n{result.stderr.strip()}"
-        )
+        raise RuntimeError(f"`go list` failed in {module_dir}:\n{result.stderr.strip()}")
     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
@@ -104,7 +102,7 @@ def check(root: Path) -> int:
     sources = find_cgo_in_sources(root)
     if sources:
         exit_code = 1
-        print("Found `import \"C\"` in repo source files:")
+        print('Found `import "C"` in repo source files:')
         for path in sources:
             print(f"  {path}")
         print()
@@ -130,9 +128,7 @@ def check(root: Path) -> int:
                 continue
             if offenders:
                 exit_code = 1
-                print(
-                    f"Module //{module_rel} has dependencies that compile C/C++/cgo/SWIG:"
-                )
+                print(f"Module //{module_rel} has dependencies that compile C/C++/cgo/SWIG:")
                 for path in offenders:
                     print(f"  {path}")
                 print()
@@ -143,7 +139,7 @@ def check(root: Path) -> int:
     else:
         print(
             "Pure-Go policy violation. See docs/future-considerations.md "
-            "(\"Introducing cgo or Python C-Extensions\") for the implications "
+            '("Introducing cgo or Python C-Extensions") for the implications '
             "and required infrastructure changes."
         )
 

@@ -18,6 +18,23 @@ repos:
         pass_filenames: false
         files: ^(pyproject\.toml|uv\.lock|requirements_lock\.txt)$
 
+      # ruff check first (with --fix), then ruff format — check's import
+      # sorting can produce output the formatter wants to retouch. Both fix in
+      # place; pre-commit re-flags modified files so the user re-stages.
+      - id: ruff-check
+        name: ruff check --fix
+        language: system
+        entry: ruff check --fix
+        pass_filenames: false
+        files: \.py$
+
+      - id: ruff-format
+        name: ruff format
+        language: system
+        entry: ruff format
+        pass_filenames: false
+        files: \.py$
+
       - id: gazelle
         name: gazelle
         language: system

@@ -23,7 +23,6 @@ def write_go_mod(root: Path, module_path: str) -> None:
 
 
 class TestRegisteredModules(unittest.TestCase):
-
     def test_empty_go_work(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -67,7 +66,6 @@ class TestRegisteredModules(unittest.TestCase):
 
 
 class TestFoundModules(unittest.TestCase):
-
     def test_no_modules(self):
         with tempfile.TemporaryDirectory() as tmp:
             self.assertEqual(found_modules(Path(tmp)), set())
@@ -93,7 +91,6 @@ class TestFoundModules(unittest.TestCase):
 
 
 class TestConsistency(unittest.TestCase):
-
     def test_consistent(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -125,17 +122,20 @@ class TestConsistency(unittest.TestCase):
 
 
 class TestMain(unittest.TestCase):
-
     def _run(self, *, found, registered):
         """registered may be a list of paths (each defaulting to line 1) or {path: line} dict."""
         if isinstance(registered, dict):
             reg_locs = {Path(p): n for p, n in registered.items()}
         else:
             reg_locs = {Path(p): 1 for p in registered}
-        with mock.patch.object(check_go_work, "workspace_root", return_value=Path("/fake")), \
-             mock.patch.object(check_go_work, "found_modules", return_value={Path(p) for p in found}), \
-             mock.patch.object(check_go_work, "registered_modules", return_value=reg_locs), \
-             mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+        with (
+            mock.patch.object(check_go_work, "workspace_root", return_value=Path("/fake")),
+            mock.patch.object(
+                check_go_work, "found_modules", return_value={Path(p) for p in found}
+            ),
+            mock.patch.object(check_go_work, "registered_modules", return_value=reg_locs),
+            mock.patch("sys.stdout", new_callable=io.StringIO) as stdout,
+        ):
             rc = check_go_work.main()
         return rc, stdout.getvalue()
 

@@ -16,7 +16,7 @@ from pathlib import Path
 # where rules_python already makes the import resolvable.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from meta.scripts._workspace import (  # noqa: E402
+from meta.scripts._workspace import (
     col_range,
     found_modules,
     registered_modules,

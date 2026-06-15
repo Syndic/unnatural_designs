@@ -8,7 +8,7 @@ import unittest
 
 class PyPiHubReachableTest(unittest.TestCase):
     def test_third_party_import_resolves(self) -> None:
-        import requests  # noqa: PLC0415  - import inside test is the point
+        import requests
 
         self.assertTrue(hasattr(requests, "get"))
 

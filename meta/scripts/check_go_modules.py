@@ -19,7 +19,7 @@ from pathlib import Path
 # where rules_python already makes the import resolvable.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from meta.scripts._workspace import col_range, found_modules, workspace_root  # noqa: E402
+from meta.scripts._workspace import col_range, found_modules, workspace_root
 
 
 def workflow_module_lists(
@@ -52,7 +52,7 @@ def workflow_module_lists(
     text = workflow_file.read_text()
     result: list[tuple[str, int, dict[Path, int]]] = []
 
-    state = "scanning"   # scanning | in_matrix | in_module
+    state = "scanning"  # scanning | in_matrix | in_module
     matrix_indent = -1
     module_indent = -1
     module_key_line = -1
@@ -109,9 +109,8 @@ def workflow_module_lists(
                 module_key_line = lineno
                 current = {}
 
-        elif state == "in_module":
-            if stripped.startswith("- "):
-                current[Path(stripped[2:].strip())] = lineno
+        elif state == "in_module" and stripped.startswith("- "):
+            current[Path(stripped[2:].strip())] = lineno
 
     # End of file while still inside a module list.
     if state == "in_module" and current is not None:
@@ -146,7 +145,10 @@ def check_workflow_matrices(root: Path, modules: set[Path]) -> int:
             for mod in sorted(matrix_set - modules):
                 line = matrix_entries[mod]
                 start, end = col_range(wf_file, line, str(mod))
-                print(f"{rel}:{line}:{start}-{end}: [{job_name}] stale matrix entry ./{mod} (no go.mod)")
+                print(
+                    f"{rel}:{line}:{start}-{end}: "
+                    f"[{job_name}] stale matrix entry ./{mod} (no go.mod)"
+                )
                 errors += 1
 
     return errors
@@ -174,7 +176,10 @@ def check_golangci_configs(root: Path, modules: set[Path]) -> int:
             candidate = candidate.parent
         if not found:
             # Anchor on the module's go.mod — no specific token at fault.
-            print(f"{mod}/go.mod:1:1-2: no .golangci.yml reachable from ./{mod} (module dir or any parent up to repo root)")
+            print(
+                f"{mod}/go.mod:1:1-2: no .golangci.yml reachable from ./{mod} "
+                f"(module dir or any parent up to repo root)"
+            )
             errors += 1
     return errors
 

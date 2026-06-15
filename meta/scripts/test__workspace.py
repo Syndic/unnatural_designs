@@ -13,7 +13,6 @@ from meta.scripts._workspace import col_range, find_files, is_skipped
 
 
 class TestIsSkipped(unittest.TestCase):
-
     def test_plain_path_not_skipped(self):
         self.assertFalse(is_skipped(Path("foo/bar.py")))
 
@@ -38,7 +37,6 @@ class TestIsSkipped(unittest.TestCase):
 
 
 class TestFindFiles(unittest.TestCase):
-
     def test_no_matches(self):
         with tempfile.TemporaryDirectory() as tmp:
             self.assertEqual(find_files(Path(tmp), "*.go"), [])
@@ -81,11 +79,9 @@ class TestFindFiles(unittest.TestCase):
 
 
 class TestColRange(unittest.TestCase):
-
     def _write(self, content: str) -> Path:
-        tmp = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt")
-        tmp.write(content)
-        tmp.close()
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as tmp:
+            tmp.write(content)
         return Path(tmp.name)
 
     def test_finds_needle_at_start(self):

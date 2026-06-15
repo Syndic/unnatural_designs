@@ -55,6 +55,7 @@
     "vscode": {
       "extensions": [
         "bazelbuild.vscode-bazel",
+        "charliermarsh.ruff",
         "cnshenj.vscode-task-manager",
         "esbenp.prettier-vscode",
         "github.vscode-github-actions",
