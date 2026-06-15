@@ -12,7 +12,7 @@ ARG BUILDIFIER_VERSION=v8.5.1
 # later PRs can layer `uv tool install ruff ty pre-commit` on top of it.
 # Pinned tag bumped by Renovate's docker manager (matches the pattern used in
 # ~/.dotfiles/.devcontainer/Dockerfile).
-COPY --from=ghcr.io/astral-sh/uv:0.9.30 /uv /uvx /usr/local/bin/
+COPY --from=ghcr.io/astral-sh/uv:0.11.21 /uv /uvx /usr/local/bin/
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         build-essential \
