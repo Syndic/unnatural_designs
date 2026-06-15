@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from meta.scripts._workspace import (
     col_range,
-    found_modules,
+    find_go_modules,
     registered_modules,
     workspace_root,
 )
@@ -28,7 +28,7 @@ def main() -> int:
     root = workspace_root()
     registered_locs = registered_modules(root)
     registered = set(registered_locs)
-    found = found_modules(root)
+    found = find_go_modules(root)
 
     errors = 0
 

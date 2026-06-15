@@ -38,26 +38,26 @@ py_test(
 )
 
 py_library(
-    name = "check_go_modules_lib",
-    srcs = ["check_go_modules.py"],
+    name = "check_modules_lib",
+    srcs = ["check_modules.py"],
     deps = [":_workspace_lib"],
 )
 
 py_binary(
-    name = "check_go_modules",
-    srcs = ["check_go_modules.py"],
-    main = "check_go_modules.py",
+    name = "check_modules",
+    srcs = ["check_modules.py"],
+    main = "check_modules.py",
     deps = [":_workspace_lib"],
 )
 
 py_test(
-    name = "test_check_go_modules",
+    name = "test_check_modules",
     size = "small",
-    srcs = ["test_check_go_modules.py"],
-    main = "test_check_go_modules.py",
+    srcs = ["test_check_modules.py"],
+    main = "test_check_modules.py",
     deps = [
         ":_workspace_lib",
-        ":check_go_modules_lib",
+        ":check_modules_lib",
     ],
 )
 

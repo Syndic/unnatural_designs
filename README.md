@@ -154,7 +154,7 @@ Two GitHub Actions workflows run on every push and pull request to `main`.
 | Job                          | Trigger condition                                                                                  |
 | ---------------------------- | -------------------------------------------------------------------------------------------------- |
 | Gazelle check                | Always - verifies BUILD files match source                                                         |
-| Go module completeness check | Always - verifies every Go module is in the workflow matrices and has linter config                |
+| Module completeness check    | Always - verifies Go module matrix/config and Python workspace/lock invariants                     |
 | go.work check                | Always - verifies all Go modules are registered in `go.work`                                       |
 | Secrets check                | Always - verifies the `secrets/` directory contains no committed files                             |
 | No-cgo policy check          | Always - rejects `import "C"` and transitive deps that compile C/C++/cgo/SWIG                      |
@@ -168,7 +168,7 @@ Two GitHub Actions workflows run on every push and pull request to `main`.
 
 | Job                          | Purpose                                                                         |
 | ---------------------------- | ------------------------------------------------------------------------------- |
-| Go module completeness check | Gate for the per-module security jobs below                                     |
+| Module completeness check    | Gate for the per-module security jobs below                                     |
 | Semgrep                      | SAST - scans for injection flaws, insecure API usage, and hardcoded secrets     |
 | govulncheck                  | Dependency CVE scanning - checks reachable call paths against the Go vuln DB    |
 | govulncheck-all              | A single static target that github can require pass for branch protection rules |
@@ -219,7 +219,7 @@ VS Code-derived editors (e.g. Google Antigravity). Recommended extensions
 | `golangci-lint`      | `*.go` files                               |
 | `ruff` (diagnostics + format) | `*.py` files                      |
 | `ty` (type diagnostics)       | `*.py` files                      |
-| `check-go-modules`   | `go.mod`, workflow `.yml`, `.golangci.yml` |
+| `check-modules`      | `go.mod`, `pyproject.toml`, `uv.lock`, workflow `.yml`, `.golangci.yml` |
 | `check-go-work`      | `go.mod`, `go.work`                        |
 
 **Viewing coverage locally**: run `bazel coverage //...` from the repo root, then open the Command

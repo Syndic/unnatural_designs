@@ -46,8 +46,11 @@
   ],
   "// Repo-health checks on save": "These scripts run via the VS Code tasks defined in tasks.json, triggered by gruntfuggly.triggertaskonsave (recommended in extensions.json) when the matching files are saved. The matchers in tasks.json turn each `path:line: message` failure into a Problems-panel entry with a squiggle at the offending line.",
   "triggerTaskOnSave.tasks": {
-    "check: go modules": [
+    "check: modules": [
       "**/go.mod",
+      "**/pyproject.toml",
+      "uv.lock",
+      "requirements_lock.txt",
       ".github/workflows/*.yml",
       "**/.golangci.yml"
     ],
