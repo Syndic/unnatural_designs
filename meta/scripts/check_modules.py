@@ -17,7 +17,13 @@ Verifies cross-language module/project invariants:
 
 Polyglot replacement for the former check_go_modules.py; matrix-list parsing remains
 Go-specific in practice because today only Go uses matrix.module:. Python adds its checks
-without sharing a matrix-list contract until a Python language adds matrices of its own.
+without sharing a matrix-list contract until a Python project adopts matrices of its own.
+
+TEND(lang-expand): adopting a new language means adding an entry to LANGUAGES (discovery
+fn + config-file names + module anchor) and, if that language drives matrix-per-module CI
+jobs, adding a parallel matrix-completeness callsite parameterized by its matrix key
+(matrix.module: is currently Go's; a Python equivalent would use a different key to keep
+the two from colliding).
 
 Usage: ./meta/scripts/check_modules.py
 """

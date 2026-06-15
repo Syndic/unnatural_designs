@@ -29,6 +29,10 @@ dependencies = [
 package = false
 required-version = ">=0.9"
 
+# TEND(project-expand): every new Python project lands as an entry (or matching glob)
+# here so uv pulls it into the workspace resolution. check_modules.py's
+# check_python_workspace_members catches a forgotten one at CI time; this tag is the
+# forward pointer at the site that needs updating.
 [tool.uv.workspace]
 members = []
 
@@ -38,8 +42,12 @@ members = []
 [tool.ruff]
 line-length = 100
 target-version = "py314"
-# Where first-party code lives — affects import grouping (`I` rules) so internal
-# packages sort together. Extend as new top-level Python roots land.
+# Where first-party code lives. Load-bearing: ruff's `I` (isort) rules classify
+# top-level dirs listed here as first-party and group their imports separately
+# from third-party. A missed entry surfaces as `I001` ("imports out of order")
+# in a *different* file than this one — the symptom decoupled from the cause.
+# TEND(project-expand): every new top-level Python root (apps/, services/,
+# libs/, infra/, etc.) is added here so ruff classifies its imports correctly.
 src = ["meta", "tools"]
 extend-exclude = [
     "bazel-*",

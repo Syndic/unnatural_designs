@@ -113,6 +113,11 @@ jobs:
   # Python's sibling of golangci-lint. Format + lint in one job; config lives in
   # `[tool.ruff]` in //:pyproject.toml. Renovate's regex manager tracks the
   # version pin via the comment above (matches the Dockerfile pattern).
+  # TEND(project-expand): repo-wide today because there is no per-project
+  # tuning. When real Python projects land and want per-project ruff config,
+  # convert this to a matrix-per-project job (mirroring golangci-lint) and
+  # add a matching matrix-completeness callsite to check_modules.py keyed off
+  # a Python matrix key (matrix.module: is currently Go-only).
   ruff:
     name: ruff
     runs-on: ubuntu-latest
@@ -130,6 +135,9 @@ jobs:
   # dedicated GitHub Action exists yet (ty is still alpha), so we install uv
   # and run `uvx ty@<pin> check`. The pin is Renovate-tracked via the comment
   # above TY_VERSION.
+  # TEND(project-expand): see the ruff job's TEND — same reasoning. When
+  # per-project ty config is needed, convert to a matrix-per-project job and
+  # extend check_modules.py with the matching matrix-completeness callsite.
   ty:
     name: ty
     runs-on: ubuntu-latest
