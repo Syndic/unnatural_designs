@@ -62,12 +62,13 @@ the git path symlink).
 The host signs with **SSH** (`gpg.format = ssh`, `commit.gpgsign = true`, no explicit
 `user.signingkey` — `gpg.ssh.defaultKeyCommand` shells out to `ssh-add -L`). That makes two
 things load-bearing inside the container: a usable ssh-agent socket the in-container `git` can
-reach, and the host's `~/.gitconfig`. VS Code's Dev Containers extension supplies both
-automatically — it forwards the host ssh-agent through the VS Code Server's own SSH tunnel (a
-per-user socket published by the server process, *not* Docker Desktop's magic socket — that
-mount isn't even present in extension-launched containers) and copies the host gitconfig
-between `postCreate` and `postStart`. The `devcontainer` CLI does neither. The fix is three
-additive pieces:
+reach, and the host's `~/.gitconfig`. Pushing the resulting signed commit then needs a third —
+the host's `~/.ssh/known_hosts`, or SSH refuses the unknown github.com fingerprint. VS Code's
+Dev Containers extension supplies all three automatically — it forwards the host ssh-agent
+through the VS Code Server's own SSH tunnel (a per-user socket published by the server process,
+*not* Docker Desktop's magic socket — that mount isn't even present in extension-launched
+containers), and bridges the host gitconfig + known_hosts between `postCreate` and `postStart`.
+The `devcontainer` CLI does none of that. The fix is four additive pieces:
 
 - **SSH agent** — `devcontainer.json` binds Docker Desktop's magic socket
   `/run/host-services/ssh-auth.sock` (Desktop's documented mechanism for exposing the host's
@@ -94,6 +95,15 @@ additive pieces:
   reaches postStart, so the file is absent there and the script is a clean no-op. Same
   lifecycle/buildx-safety story as `host-git-common-path` and `host-timezone` — gitignored,
   regenerated every `up`, anchored by the tracked `.git-plumbing/README.md`.
+- **`~/.ssh/known_hosts`** — same shape as the gitconfig copy. `initialize.sh`
+  snapshots the host's `~/.ssh/known_hosts` to `.git-plumbing/host-known-hosts`;
+  `post-start.sh` installs it into `$HOME/.ssh/known_hosts` only if that file
+  is missing or empty (creating `~/.ssh` mode 700 first). Without it, `git
+  push` from inside the CLI-launched container fails with "Host key
+  verification failed" on first contact with github.com — the base image's
+  `~/.ssh` is empty and SSH refuses unknown fingerprints by default. VS Code
+  bridges known_hosts itself, so the empty-check leaves that path alone.
+  Same gitignored / regenerated-every-`up` lifecycle as the gitconfig snapshot.
 
 `gpg.ssh.allowedSignersFile` in the copied gitconfig points to a host-only path that doesn't
 exist in the container. Irrelevant: git only reads it for `git verify-commit`, not for
