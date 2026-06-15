@@ -92,21 +92,10 @@ python.toolchain(
 # projection (rules_python does not read uv.lock natively). A pre-commit hook
 # keeps the two in sync; see `uv-lock-fresh` in .pre-commit-config.yaml.
 pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
-
-# `target_platforms` matches the matrix in .github/workflows/ci.yml: linux_x86_64
-# and linux_arm64 (BuildBuddy executors), plus darwin_arm64 (macOS runner). Empty
-# defaults to host-only, which breaks the cross-targeted matrix jobs (e.g.
-# `--config=linux_arm64` on the x86_64 runner finds no matching wheel for any
-# pypi dep). The Python version is supplied separately by `python_version`.
 pip.parse(
     hub_name = "pypi",
     python_version = "3.14",
     requirements_lock = "//:requirements_lock.txt",
-    target_platforms = [
-        "linux_x86_64",
-        "linux_aarch64",
-        "osx_aarch64",
-    ],
 )
 use_repo(pip, "pypi")
 

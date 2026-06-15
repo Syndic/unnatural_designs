@@ -128,10 +128,11 @@ sysroots, no Apple SDK handling, and Linux outputs are statically linked (no gli
 they drop into `FROM scratch` containers directly.
 
 CI builds and tests every PR against each supported platform (`linux_x86_64`, `linux_arm64`,
-`darwin_arm64`) — Linux on `ubuntu-latest` runners dispatching to matching-arch BuildBuddy
-executors, darwin on `macos-latest` locally. Tests run natively on their target arch; there is no
-emulation layer (qemu, Rosetta) in the build. A change that breaks any platform fails CI before it
-can land.
+`darwin_arm64`) — each row of the matrix runs on a host of the matching arch (`ubuntu-latest`,
+`ubuntu-24.04-arm`, `macos-latest`) so the build host always equals the target. Linux rows
+register their matching BuildBuddy executor as an exec candidate via `--config=<platform>`;
+darwin executes on the runner because BB has no macOS executors. No emulation layer (qemu,
+Rosetta) anywhere in the build. A change that breaks any platform fails CI before it can land.
 
 Local builds default to the host platform. To build for a different target, use the
 platform-shortcut config:
