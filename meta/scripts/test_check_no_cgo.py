@@ -26,7 +26,6 @@ def write(root: Path, rel: str, content: str) -> Path:
 
 
 class TestFindCgoInSources(unittest.TestCase):
-
     def test_no_go_files(self):
         with tempfile.TemporaryDirectory() as tmp:
             self.assertEqual(find_cgo_in_sources(Path(tmp)), [])
@@ -40,49 +39,37 @@ class TestFindCgoInSources(unittest.TestCase):
     def test_detects_import_c(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            write(root, "pkg/foo.go", (
-                'package foo\n'
-                '\n'
-                '/*\n'
-                '#include <stdio.h>\n'
-                '*/\n'
-                'import "C"\n'
-            ))
+            write(root, "pkg/foo.go", ('package foo\n\n/*\n#include <stdio.h>\n*/\nimport "C"\n'))
             self.assertEqual(find_cgo_in_sources(root), [Path("pkg/foo.go")])
 
     def test_detects_import_c_with_other_imports(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            write(root, "pkg/foo.go", (
-                'package foo\n'
-                '\n'
-                'import (\n'
-                '    "fmt"\n'
-                ')\n'
-                '\n'
-                'import "C"\n'
-            ))
+            write(root, "pkg/foo.go", ('package foo\n\nimport (\n    "fmt"\n)\n\nimport "C"\n'))
             self.assertEqual(find_cgo_in_sources(root), [Path("pkg/foo.go")])
 
     def test_does_not_match_string_literal(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            write(root, "pkg/foo.go", (
-                'package foo\n'
-                '\n'
-                'var s = `import "C"`\n'  # backtick string, not a top-level import
-            ))
+            write(
+                root,
+                "pkg/foo.go",
+                (
+                    "package foo\n"
+                    "\n"
+                    'var s = `import "C"`\n'  # backtick string, not a top-level import
+                ),
+            )
             self.assertEqual(find_cgo_in_sources(root), [])
 
     def test_does_not_match_quoted_in_doc_comment(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            write(root, "pkg/foo.go", (
-                'package foo\n'
-                '\n'
-                '// We do not use `import "C"` here.\n'
-                'import "fmt"\n'
-            ))
+            write(
+                root,
+                "pkg/foo.go",
+                ('package foo\n\n// We do not use `import "C"` here.\nimport "fmt"\n'),
+            )
             self.assertEqual(find_cgo_in_sources(root), [])
 
     def test_finds_across_multiple_files(self):
@@ -106,12 +93,13 @@ class TestFindCgoInSources(unittest.TestCase):
             self.assertEqual(find_cgo_in_sources(root), [])
 
 
-def _completed(stdout: str = "", stderr: str = "", returncode: int = 0) -> subprocess.CompletedProcess:
+def _completed(
+    stdout: str = "", stderr: str = "", returncode: int = 0
+) -> subprocess.CompletedProcess:
     return subprocess.CompletedProcess(args=[], returncode=returncode, stdout=stdout, stderr=stderr)
 
 
 class TestFindCgoInDeps(unittest.TestCase):
-
     def test_empty_output_returns_empty_list(self):
         with mock.patch.object(subprocess, "run", return_value=_completed(stdout="")) as m:
             self.assertEqual(check_no_cgo.find_cgo_in_deps(Path("/tmp/m")), [])
@@ -143,7 +131,9 @@ class TestFindCgoInDeps(unittest.TestCase):
             )
 
     def test_nonzero_exit_raises(self):
-        with mock.patch.object(subprocess, "run", return_value=_completed(stderr="boom", returncode=1)):
+        with mock.patch.object(
+            subprocess, "run", return_value=_completed(stderr="boom", returncode=1)
+        ):
             with self.assertRaises(RuntimeError) as cm:
                 check_no_cgo.find_cgo_in_deps(Path("/tmp/m"))
             self.assertIn("boom", str(cm.exception))
@@ -151,8 +141,9 @@ class TestFindCgoInDeps(unittest.TestCase):
 
 
 class TestCheck(unittest.TestCase):
-
-    def _patches(self, *, sources=None, deps_by_module=None, modules=("tools/foo",), go_present=True):
+    def _patches(
+        self, *, sources=None, deps_by_module=None, modules=("tools/foo",), go_present=True
+    ):
         sources = sources or []
         deps_by_module = deps_by_module or {}
 
@@ -160,15 +151,23 @@ class TestCheck(unittest.TestCase):
             return deps_by_module.get(module_dir.name, [])
 
         return [
-            mock.patch.object(check_no_cgo, "find_cgo_in_sources", return_value=[Path(p) for p in sources]),
+            mock.patch.object(
+                check_no_cgo, "find_cgo_in_sources", return_value=[Path(p) for p in sources]
+            ),
             mock.patch.object(check_no_cgo, "find_cgo_in_deps", side_effect=fake_find_cgo_in_deps),
-            mock.patch.object(check_no_cgo, "registered_modules", return_value={Path(m): 1 for m in modules}),
-            mock.patch.object(check_no_cgo.shutil, "which", return_value="/usr/bin/go" if go_present else None),
+            mock.patch.object(
+                check_no_cgo, "registered_modules", return_value={Path(m): 1 for m in modules}
+            ),
+            mock.patch.object(
+                check_no_cgo.shutil, "which", return_value="/usr/bin/go" if go_present else None
+            ),
         ]
 
     def _run(self, *, root=Path("/tmp/repo"), **kwargs):
-        with mock.patch("sys.stdout", new_callable=io.StringIO) as stdout, \
-             mock.patch("sys.stderr", new_callable=io.StringIO) as stderr:
+        with (
+            mock.patch("sys.stdout", new_callable=io.StringIO) as stdout,
+            mock.patch("sys.stderr", new_callable=io.StringIO) as stderr,
+        ):
             patches = self._patches(**kwargs)
             for p in patches:
                 p.start()
@@ -215,12 +214,17 @@ class TestCheck(unittest.TestCase):
     def test_runtime_error_in_deps_check_fails(self):
         def explode(module_dir: Path):
             raise RuntimeError("simulated `go list` failure")
-        with mock.patch.object(check_no_cgo, "find_cgo_in_sources", return_value=[]), \
-             mock.patch.object(check_no_cgo, "find_cgo_in_deps", side_effect=explode), \
-             mock.patch.object(check_no_cgo, "registered_modules", return_value={Path("tools/foo"): 1}), \
-             mock.patch.object(check_no_cgo.shutil, "which", return_value="/usr/bin/go"), \
-             mock.patch("sys.stdout", new_callable=io.StringIO), \
-             mock.patch("sys.stderr", new_callable=io.StringIO) as stderr:
+
+        with (
+            mock.patch.object(check_no_cgo, "find_cgo_in_sources", return_value=[]),
+            mock.patch.object(check_no_cgo, "find_cgo_in_deps", side_effect=explode),
+            mock.patch.object(
+                check_no_cgo, "registered_modules", return_value={Path("tools/foo"): 1}
+            ),
+            mock.patch.object(check_no_cgo.shutil, "which", return_value="/usr/bin/go"),
+            mock.patch("sys.stdout", new_callable=io.StringIO),
+            mock.patch("sys.stderr", new_callable=io.StringIO) as stderr,
+        ):
             rc = check_no_cgo.check(Path("/tmp/repo"))
         self.assertEqual(rc, 1)
         self.assertIn("simulated `go list` failure", stderr.getvalue())
@@ -235,17 +239,22 @@ class TestCheck(unittest.TestCase):
 
 
 class TestMain(unittest.TestCase):
-
     def test_main_delegates_to_check_at_workspace_root(self):
-        with mock.patch.object(check_no_cgo, "workspace_root", return_value=Path("/fake/root")) as wr, \
-             mock.patch.object(check_no_cgo, "check", return_value=0) as ck:
+        with (
+            mock.patch.object(
+                check_no_cgo, "workspace_root", return_value=Path("/fake/root")
+            ) as wr,
+            mock.patch.object(check_no_cgo, "check", return_value=0) as ck,
+        ):
             self.assertEqual(check_no_cgo.main(), 0)
             wr.assert_called_once_with()
             ck.assert_called_once_with(Path("/fake/root"))
 
     def test_main_propagates_exit_code(self):
-        with mock.patch.object(check_no_cgo, "workspace_root", return_value=Path("/fake/root")), \
-             mock.patch.object(check_no_cgo, "check", return_value=1):
+        with (
+            mock.patch.object(check_no_cgo, "workspace_root", return_value=Path("/fake/root")),
+            mock.patch.object(check_no_cgo, "check", return_value=1),
+        ):
             self.assertEqual(check_no_cgo.main(), 1)
 
 

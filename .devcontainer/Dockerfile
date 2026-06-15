@@ -9,10 +9,22 @@ ARG BUILDIFIER_VERSION=v8.5.1
 # uv: the workspace's Python package manager. Single source of truth for the
 # uv.lock + requirements_lock.txt chain consumed by rules_python's pip.parse
 # and enforced by the `uv-lock-fresh` pre-commit hook. Installed first so
-# later PRs can layer `uv tool install ruff ty pre-commit` on top of it.
+# later layers can layer `uv tool install ruff ty pre-commit` on top of it.
 # Pinned tag bumped by Renovate's docker manager (matches the pattern used in
 # ~/.dotfiles/.devcontainer/Dockerfile).
 COPY --from=ghcr.io/astral-sh/uv:0.11.21 /uv /uvx /usr/local/bin/
+
+# ruff: format + lint. Installed via `uv tool install` so the binary lives in
+# /usr/local/bin and `ruff` is on PATH for the pre-commit hooks and the VS Code
+# extension. UV_TOOL_DIR is forced to a world-readable system location because
+# the install runs as root; the default ~/.local/share/uv would land under
+# /root (mode 700) and the vscode user could not follow the bin/ symlink.
+# Renovate's regex manager tracks RUFF_VERSION via the comment above the ARG.
+# renovate: datasource=pypi depName=ruff
+ARG RUFF_VERSION=0.15.17
+ENV UV_TOOL_BIN_DIR=/usr/local/bin \
+    UV_TOOL_DIR=/usr/local/share/uv-tools
+RUN uv tool install --no-cache "ruff==${RUFF_VERSION}"
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         build-essential \

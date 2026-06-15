@@ -11,7 +11,6 @@ from meta.scripts.check_go_modules import (
     workflow_module_lists,
 )
 
-
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 
@@ -61,9 +60,7 @@ jobs:
 """
 
 
-def make_module_workflow(
-    root: Path, name: str, jobs: dict[str, list[str]]
-) -> Path:
+def make_module_workflow(root: Path, name: str, jobs: dict[str, list[str]]) -> Path:
     """Create a workflow file with one job per entry in jobs, each with a module matrix."""
     job_blocks = "".join(
         _JOB_TEMPLATE.format(
@@ -79,7 +76,6 @@ def make_module_workflow(
 
 
 class TestFoundModules(unittest.TestCase):
-
     def test_no_modules(self):
         with tempfile.TemporaryDirectory() as tmp:
             self.assertEqual(found_modules(Path(tmp)), set())
@@ -114,7 +110,6 @@ class TestFoundModules(unittest.TestCase):
 
 
 class TestWorkflowModuleLists(unittest.TestCase):
-
     def _parse(self, content: str) -> list[tuple[str, int, dict[Path, int]]]:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "workflow.yml"
@@ -380,7 +375,6 @@ jobs:
 
 
 class TestCheckWorkflowMatrices(unittest.TestCase):
-
     def test_consistent_single_job(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -393,10 +387,14 @@ class TestCheckWorkflowMatrices(unittest.TestCase):
             root = Path(tmp)
             make_module(root, "tools/foo")
             make_module(root, "libs/bar")
-            make_module_workflow(root, "security.yml", {
-                "govulncheck": ["tools/foo", "libs/bar"],
-                "golangci-lint": ["tools/foo", "libs/bar"],
-            })
+            make_module_workflow(
+                root,
+                "security.yml",
+                {
+                    "govulncheck": ["tools/foo", "libs/bar"],
+                    "golangci-lint": ["tools/foo", "libs/bar"],
+                },
+            )
             self.assertEqual(check_workflow_matrices(root, found_modules(root)), 0)
 
     def test_module_missing_from_matrix(self):
@@ -411,9 +409,13 @@ class TestCheckWorkflowMatrices(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             make_module(root, "tools/foo")
-            make_module_workflow(root, "security.yml", {
-                "scan": ["tools/foo", "tools/nonexistent"],
-            })
+            make_module_workflow(
+                root,
+                "security.yml",
+                {
+                    "scan": ["tools/foo", "tools/nonexistent"],
+                },
+            )
             self.assertEqual(check_workflow_matrices(root, found_modules(root)), 1)
 
     def test_missing_and_stale_are_both_counted(self):
@@ -429,10 +431,14 @@ class TestCheckWorkflowMatrices(unittest.TestCase):
             root = Path(tmp)
             make_module(root, "tools/foo")
             make_module(root, "tools/bar")
-            make_module_workflow(root, "security.yml", {
-                "govulncheck": ["tools/foo"],
-                "golangci-lint": ["tools/foo"],
-            })
+            make_module_workflow(
+                root,
+                "security.yml",
+                {
+                    "govulncheck": ["tools/foo"],
+                    "golangci-lint": ["tools/foo"],
+                },
+            )
             # tools/bar missing from both matrices = 2 errors
             self.assertEqual(check_workflow_matrices(root, found_modules(root)), 2)
 
@@ -469,7 +475,6 @@ class TestCheckWorkflowMatrices(unittest.TestCase):
 
 
 class TestCheckGolangciConfigs(unittest.TestCase):
-
     def test_all_modules_have_config(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

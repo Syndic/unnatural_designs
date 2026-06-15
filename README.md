@@ -159,6 +159,7 @@ Two GitHub Actions workflows run on every push and pull request to `main`.
 | Secrets check                | Always - verifies the `secrets/` directory contains no committed files                             |
 | No-cgo policy check          | Always - rejects `import "C"` and transitive deps that compile C/C++/cgo/SWIG                      |
 | golangci-lint                | After module check passes - runs per Go module                                                     |
+| ruff                         | Always - `ruff format --check` and `ruff check` over all Python                                    |
 | Build and test               | After all checks above pass                                                                        |
 | Coverage                     | After build and test - `bazel coverage //...`, uploads merged lcov to Codecov                      |
 
@@ -181,16 +182,19 @@ each commit. To install:
 pre-commit install
 ```
 
-Only hooks that either fix the problem they detect (`bazel-mod-tidy`, `gazelle`) or prevent unsafe
-content from entering the repo (`check-secrets-dir`) run here. Verification-only checks live in the
-editor instead (see **Editor integration** below) so they can surface findings without blocking a
-commit when you want to switch contexts.
+Only hooks that either fix the problem they detect (`bazel-mod-tidy`, `gazelle`, `uv-lock-fresh`,
+`ruff-check`, `ruff-format`) or prevent unsafe content from entering the repo (`check-secrets-dir`)
+run here. Verification-only checks live in the editor instead (see **Editor integration** below) so
+they can surface findings without blocking a commit when you want to switch contexts.
 
-| Hook                | Triggers on                   |
-| ------------------- | ----------------------------- |
-| `bazel-mod-tidy`    | `go.mod`, `go.work`, `go.sum` |
-| `gazelle`           | `*.go` files                  |
-| `check-secrets-dir` | files under `secrets/`        |
+| Hook                | Triggers on                                  |
+| ------------------- | -------------------------------------------- |
+| `bazel-mod-tidy`    | `go.mod`, `go.work`, `go.sum`                |
+| `uv-lock-fresh`     | `pyproject.toml`, `uv.lock`, `requirements_lock.txt` |
+| `ruff-check`        | `*.py` files                                 |
+| `ruff-format`       | `*.py` files                                 |
+| `gazelle`           | `*.go` files                                 |
+| `check-secrets-dir` | files under `secrets/`                       |
 
 **Editor integration** (via `.vscode/`) - runs the non-fixing checks on save. Works in VS Code and
 VS Code-derived editors (e.g. Google Antigravity). Recommended extensions
@@ -198,6 +202,9 @@ VS Code-derived editors (e.g. Google Antigravity). Recommended extensions
 
 - [`golang.go`](https://marketplace.visualstudio.com/items?itemName=golang.go) - runs
   `golangci-lint` on save at package scope, surfacing inline findings that match what CI enforces.
+- [`charliermarsh.ruff`](https://marketplace.visualstudio.com/items?itemName=charliermarsh.ruff) -
+  surfaces `ruff check` diagnostics inline and applies `ruff format` on save, matching what the CI
+  `ruff` job and the pre-commit hooks enforce.
 - [`emeraldwalk.runonsave`](https://marketplace.visualstudio.com/items?itemName=emeraldwalk.RunOnSave) -
   triggers the repo-health scripts on save.
 - [`ryanluker.vscode-coverage-gutters`](https://marketplace.visualstudio.com/items?itemName=ryanluker.vscode-coverage-gutters) -
@@ -206,6 +213,7 @@ VS Code-derived editors (e.g. Google Antigravity). Recommended extensions
 | On-save check        | Triggers on                                |
 | -------------------- | ------------------------------------------ |
 | `golangci-lint`      | `*.go` files                               |
+| `ruff` (diagnostics + format) | `*.py` files                      |
 | `check-go-modules`   | `go.mod`, workflow `.yml`, `.golangci.yml` |
 | `check-go-work`      | `go.mod`, `go.work`                        |
 

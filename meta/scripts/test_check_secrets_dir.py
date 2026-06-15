@@ -7,12 +7,11 @@ from meta.scripts.check_secrets_dir import main
 
 
 def run(files: list[str]) -> int:
-    with patch("sys.argv", ["check_secrets_dir.py"] + files):
+    with patch("sys.argv", ["check_secrets_dir.py", *files]):
         return main()
 
 
 class TestCheckSecretsDir(unittest.TestCase):
-
     def test_allowed_file_passes(self):
         self.assertEqual(run(["secrets/secrets.md"]), 0)
 

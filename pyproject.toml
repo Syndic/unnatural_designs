@@ -31,3 +31,37 @@ required-version = ">=0.9"
 
 [tool.uv.workspace]
 members = []
+
+# ruff: format + lint. Single repo-wide config. Per-project pyproject.toml
+# files inherit unless they redeclare `[tool.ruff]`. CI runs `ruff format
+# --check .` and `ruff check .`; pre-commit runs the fixing variants.
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+# Where first-party code lives — affects import grouping (`I` rules) so internal
+# packages sort together. Extend as new top-level Python roots land.
+src = ["meta", "tools"]
+extend-exclude = [
+    "bazel-*",
+    ".venv",
+    "venv",
+]
+
+[tool.ruff.lint]
+# Strict-but-reasonable. E/F = pycodestyle + pyflakes baseline; I = import sort;
+# B = bugbear (real bugs, not style); UP = pyupgrade (modern syntax); SIM =
+# code-simplification; RUF = ruff's own catches; S = bandit security rules.
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF", "S"]
+[tool.ruff.lint.per-file-ignores]
+# meta/scripts shell out to first-party tools (`git`, `go`) by name. S607
+# (partial executable path) and S603 (untrusted subprocess input) flag those
+# calls, but the executables come from a controlled devcontainer/CI PATH and
+# the arguments are not externally controlled — false positives in this
+# context.
+"meta/scripts/**" = ["S603", "S607"]
+# Test conveniences that aren't actual problems in test code:
+# S101 = `assert` (the whole point of a test); S105/S106/S311 = throwaway
+# "secrets" and non-crypto randomness in fixtures; S108 = stable fake paths
+# like "/tmp/repo" used as mock arguments (no actual temp file is created).
+"**/test_*.py" = ["S101", "S105", "S106", "S108", "S311"]
+"**/*_test.py" = ["S101", "S105", "S106", "S108", "S311"]
