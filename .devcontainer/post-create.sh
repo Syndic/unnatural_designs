@@ -48,6 +48,13 @@ fi
 # Full path: postCreate may not see remoteEnv's PATH yet.
 "$HOME/.local/bin/pre-commit" install
 
+# Materialize the uv workspace's .venv so the ty editor extension (and any
+# CLI `ty check` run) can resolve third-party imports. Without it, ty has no
+# search path beyond first-party + stdlib and every non-stdlib import is
+# flagged. Idempotent; subsequent rebuilds are no-ops if the lockfile is
+# unchanged.
+uv sync
+
 # Warm Bazel: fetches the registered Go SDK, rules_go, gazelle, etc.
 bazel version
 

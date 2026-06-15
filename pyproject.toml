@@ -65,3 +65,24 @@ select = ["E", "F", "I", "B", "UP", "SIM", "RUF", "S"]
 # like "/tmp/repo" used as mock arguments (no actual temp file is created).
 "**/test_*.py" = ["S101", "S105", "S106", "S108", "S311"]
 "**/*_test.py" = ["S101", "S105", "S106", "S108", "S311"]
+
+# ty: static type checker. Single repo-wide config. CI runs `uvx ty check`;
+# the editor extension (`astral-sh.ty` in devcontainer.json) reads the same
+# section. Strict mode — promote inference warnings to errors so missing
+# annotations don't silently pass.
+[tool.ty]
+
+[tool.ty.environment]
+python-version = "3.14"
+
+[tool.ty.src]
+# Mirror ruff's `src` so ty scans the same first-party trees. Excludes cover
+# Bazel's symlink farm, virtualenvs, and the host-state directory populated by
+# .devcontainer/initialize.sh (none of which are first-party source).
+include = ["meta", "tools"]
+exclude = ["bazel-*", ".venv", "venv", ".git-plumbing"]
+
+# Rule severities are left at ty's defaults for now. ty ships with a
+# strict-leaning default profile and refining the rule map preemptively (before
+# real Python code lands) would be speculative; tighten as needed when real
+# code surfaces a category of finding we want to escalate.

@@ -22,9 +22,15 @@ COPY --from=ghcr.io/astral-sh/uv:0.11.21 /uv /uvx /usr/local/bin/
 # Renovate's regex manager tracks RUFF_VERSION via the comment above the ARG.
 # renovate: datasource=pypi depName=ruff
 ARG RUFF_VERSION=0.15.17
+# ty: static type checker. Same `uv tool install` pattern as ruff so the
+# binary lands on PATH for CI, pre-commit, and the `astral-sh.ty` editor
+# extension. UV_TOOL_{BIN_DIR,DIR} are shared across both installs.
+# renovate: datasource=pypi depName=ty
+ARG TY_VERSION=0.0.1a25
 ENV UV_TOOL_BIN_DIR=/usr/local/bin \
     UV_TOOL_DIR=/usr/local/share/uv-tools
-RUN uv tool install --no-cache "ruff==${RUFF_VERSION}"
+RUN uv tool install --no-cache "ruff==${RUFF_VERSION}" \
+    && uv tool install --no-cache "ty==${TY_VERSION}"
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         build-essential \

@@ -1,5 +1,6 @@
 {
   "recommendations": [
+    "astral-sh.ty",
     "bazelbuild.vscode-bazel",
     "charliermarsh.ruff",
     "esbenp.prettier-vscode",
