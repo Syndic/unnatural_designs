@@ -18,6 +18,12 @@ image. The files are gitignored and written on every `devcontainer up` by
   the `devcontainer` CLI path; VS Code's Dev Containers extension copies
   it for itself). See ".devcontainer signed commits under CLI" in
   `.claude/CLAUDE.md`.
+- `host-known-hosts` — snapshot of the host's `~/.ssh/known_hosts`.
+  `post-start.sh` installs it into the container only when
+  `~/.ssh/known_hosts` is empty, so `git push` from inside the CLI-
+  launched container doesn't trip "Host key verification failed" on first
+  contact with github.com. Same VS-Code-wins behaviour as the gitconfig
+  copy.
 
 This directory exists in git (via this README) so the Dockerfile's
 `COPY .devcontainer/.git-plumbing/ …` step always finds a source — buildx

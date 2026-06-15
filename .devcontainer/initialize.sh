@@ -58,6 +58,7 @@ link="$here/.host-git-common"
 pathfile="$here/.git-plumbing/host-git-common-path"
 tzfile="$here/.git-plumbing/host-timezone"
 gitconfigfile="$here/.git-plumbing/host-gitconfig"
+knownhostsfile="$here/.git-plumbing/host-known-hosts"
 
 # The .git-plumbing dir is tracked (via its README), so it normally exists
 # already; mkdir -p covers stray cases like a manual deletion without
@@ -117,6 +118,19 @@ if [ -r "$HOME/.gitconfig" ]; then
   cp "$HOME/.gitconfig" "$gitconfigfile"
 else
   : >"$gitconfigfile"
+fi
+
+# Snapshot host ~/.ssh/known_hosts the same way. Without it, `git push` from
+# inside a CLI-launched container fails with "Host key verification failed"
+# the first time it talks to github.com — the base image's $HOME/.ssh is
+# empty and SSH refuses unknown fingerprints by default. The host's
+# known_hosts is the right trust set to carry (same flavor as the gitconfig
+# — both are the user's existing trust state, neither secret). Empty file
+# if absent so the `[ -s ... ]` guard in post-start.sh stays a clean no-op.
+if [ -r "$HOME/.ssh/known_hosts" ]; then
+  cp "$HOME/.ssh/known_hosts" "$knownhostsfile"
+else
+  : >"$knownhostsfile"
 fi
 
 # Pre-create the magic ssh-agent socket placeholder on hosts where Docker
