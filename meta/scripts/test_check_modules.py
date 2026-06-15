@@ -4,12 +4,15 @@ Workflow-matrix parsing and Go discovery coverage carried over from the predeces
 (test_check_go_modules.py); Python invariants tested directly.
 """
 
+import io
+import subprocess
 import tempfile
 import textwrap
 import unittest
 from pathlib import Path
 from unittest import mock
 
+from meta.scripts import check_modules
 from meta.scripts._workspace import (
     find_go_modules,
     find_python_projects,
@@ -17,6 +20,7 @@ from meta.scripts._workspace import (
 )
 from meta.scripts.check_modules import (
     LANGUAGES,
+    _strip_header,
     check_module_configs,
     check_python_workspace_members,
     check_python_workspace_root,
@@ -253,6 +257,177 @@ class TestWorkflowModuleLists(unittest.TestCase):
         _, _, modules = self._parse(content)[0]
         self.assertEqual(set(modules), {Path("tools/foo")})
 
+    def test_empty_workflow(self):
+        self.assertEqual(self._parse(""), [])
+
+    def test_job_with_no_matrix(self):
+        content = textwrap.dedent("""\
+            name: CI
+            on:
+              push:
+                branches: [main]
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - run: echo hi
+            """)
+        self.assertEqual(self._parse(content), [])
+
+    def test_matrix_without_module_key(self):
+        """A matrix block keyed on something other than `module:` is ignored."""
+        content = textwrap.dedent("""\
+            jobs:
+              build:
+                strategy:
+                  matrix:
+                    os: [ubuntu-latest, macos-latest]
+                steps:
+                  - run: echo hi
+            """)
+        self.assertEqual(self._parse(content), [])
+
+    def test_single_job_multiple_modules(self):
+        content = textwrap.dedent("""\
+            jobs:
+              scan:
+                strategy:
+                  matrix:
+                    module:
+                      - tools/foo
+                      - libs/bar
+                steps:
+                  - run: echo hi
+            """)
+        result = self._parse(content)
+        self.assertEqual(len(result), 1)
+        _, _, modules = result[0]
+        self.assertEqual(set(modules), {Path("tools/foo"), Path("libs/bar")})
+
+    def test_two_jobs_only_one_has_module_matrix(self):
+        """A matrix without `module:` in one job must not bleed into the next job's parse state."""
+        content = textwrap.dedent("""\
+            jobs:
+              build:
+                strategy:
+                  matrix:
+                    os: [ubuntu-latest]
+                steps:
+                  - run: echo hi
+              lint:
+                strategy:
+                  matrix:
+                    module:
+                      - tools/foo
+                steps:
+                  - run: echo hi
+            """)
+        result = self._parse(content)
+        self.assertEqual(len(result), 1)
+        job, _, _ = result[0]
+        self.assertEqual(job, "lint")
+
+    def test_job_name_with_hyphens(self):
+        content = textwrap.dedent("""\
+            jobs:
+              golangci-lint:
+                strategy:
+                  matrix:
+                    module:
+                      - tools/foo
+                steps:
+                  - run: echo hi
+            """)
+        result = self._parse(content)
+        self.assertEqual(len(result), 1)
+        job, _, _ = result[0]
+        self.assertEqual(job, "golangci-lint")
+
+    def test_comment_job_block_does_not_confuse_job_name(self):
+        """A `# ── Section ──` comment at indent 2 must not be mistaken for a job key."""
+        content = textwrap.dedent("""\
+            jobs:
+              # ── Section header ─────────────────────────────────────────────────────────
+              real-job:
+                strategy:
+                  matrix:
+                    module:
+                      - tools/foo
+                steps:
+                  - run: echo hi
+            """)
+        result = self._parse(content)
+        self.assertEqual(len(result), 1)
+        job, _, _ = result[0]
+        self.assertEqual(job, "real-job")
+
+    def test_real_security_yml_shape(self):
+        """Realistic security.yml excerpt — mix of matrixed and non-matrixed jobs."""
+        content = textwrap.dedent("""\
+            name: Security
+
+            on:
+              push:
+                branches: [main]
+              pull_request:
+                branches: [main]
+
+            jobs:
+              # ── Semgrep ─────────────────────────────────────────────────────────────────
+              semgrep:
+                name: Semgrep
+                runs-on: ubuntu-latest
+                permissions:
+                  security-events: write
+                  contents: read
+                steps:
+                  - uses: actions/checkout@v6
+
+              # ── govulncheck ──────────────────────────────────────────────────────────────
+              govulncheck:
+                name: govulncheck (${{ matrix.module }})
+                runs-on: ubuntu-latest
+                permissions:
+                  security-events: write
+                  contents: read
+                strategy:
+                  fail-fast: false
+                  matrix:
+                    module:
+                      - tools/network_infrastructure_maintenance
+                steps:
+                  - uses: actions/checkout@v6
+
+              # ── golangci-lint ────────────────────────────────────────────────────────────
+              golangci-lint:
+                name: golangci-lint (${{ matrix.module }})
+                runs-on: ubuntu-latest
+                strategy:
+                  fail-fast: false
+                  matrix:
+                    module:
+                      - tools/network_infrastructure_maintenance
+                steps:
+                  - uses: actions/checkout@v6
+
+              # ── Trivy ────────────────────────────────────────────────────────────────────
+              trivy:
+                name: Trivy
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: actions/checkout@v6
+            """)
+        result = self._parse(content)
+        self.assertEqual(len(result), 2)
+        by_job = {job: set(mods) for job, _, mods in result}
+        self.assertIn("govulncheck", by_job)
+        self.assertIn("golangci-lint", by_job)
+        self.assertNotIn("semgrep", by_job)
+        self.assertNotIn("trivy", by_job)
+        expected = {Path("tools/network_infrastructure_maintenance")}
+        self.assertEqual(by_job["govulncheck"], expected)
+        self.assertEqual(by_job["golangci-lint"], expected)
+
 
 # ── TestCheckWorkflowMatrices ──────────────────────────────────────────────────
 
@@ -298,6 +473,49 @@ class TestCheckWorkflowMatrices(unittest.TestCase):
             make_go_module(root, "tools/foo")
             self.assertEqual(check_workflow_matrices(root, find_go_modules(root)), 0)
 
+    def test_consistent_multiple_jobs_same_modules(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_go_module(root, "tools/foo")
+            make_go_module(root, "libs/bar")
+            make_module_workflow(
+                root,
+                "security.yml",
+                {
+                    "govulncheck": ["tools/foo", "libs/bar"],
+                    "golangci-lint": ["tools/foo", "libs/bar"],
+                },
+            )
+            self.assertEqual(check_workflow_matrices(root, find_go_modules(root)), 0)
+
+    def test_missing_and_stale_are_both_counted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_go_module(root, "tools/new")
+            make_module_workflow(root, "security.yml", {"scan": ["tools/old"]})
+            self.assertEqual(check_workflow_matrices(root, find_go_modules(root)), 2)
+
+    def test_workflow_with_no_module_matrix_is_ignored(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_go_module(root, "tools/foo")
+            make_workflow(root, "ci.yml", "name: CI\non:\n  push:\n    branches: [main]\n")
+            self.assertEqual(check_workflow_matrices(root, find_go_modules(root)), 0)
+
+    def test_multiple_workflow_files_checked(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_go_module(root, "tools/foo")
+            make_module_workflow(root, "security.yml", {"scan": ["tools/foo"]})
+            make_module_workflow(root, "other.yml", {"scan": ["tools/foo"]})
+            self.assertEqual(check_workflow_matrices(root, find_go_modules(root)), 0)
+
+    def test_no_modules_no_matrices(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_workflow(root, "ci.yml", "name: CI\non:\n  push:\n    branches: [main]\n")
+            self.assertEqual(check_workflow_matrices(root, set()), 0)
+
 
 # ── TestCheckModuleConfigs ─────────────────────────────────────────────────────
 
@@ -328,6 +546,46 @@ class TestCheckModuleConfigsGo(unittest.TestCase):
             root = Path(tmp)
             make_go_module(root, "tools/foo")
             (root / "tools/foo/.golangci.yml").mkdir(parents=True, exist_ok=True)
+            self.assertEqual(check_module_configs(root, GO, find_go_modules(root)), 1)
+
+    def test_some_present_some_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_go_module(root, "tools/foo")
+            make_golangci(root, "tools/foo")
+            make_go_module(root, "libs/bar")
+            self.assertEqual(check_module_configs(root, GO, find_go_modules(root)), 1)
+
+    def test_multiple_modules_all_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_go_module(root, "tools/foo")
+            make_go_module(root, "libs/bar")
+            self.assertEqual(check_module_configs(root, GO, find_go_modules(root)), 2)
+
+    def test_intermediate_directory_config_satisfies_module(self):
+        """A .golangci.yml anywhere between the module dir and the repo root is accepted."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_go_module(root, "tools/foo")
+            (root / "tools").mkdir(parents=True, exist_ok=True)
+            (root / "tools" / ".golangci.yml").write_text("linters: {}\n")
+            self.assertEqual(check_module_configs(root, GO, find_go_modules(root)), 0)
+
+    def test_root_config_satisfies_multiple_modules(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_go_module(root, "tools/foo")
+            make_go_module(root, "libs/bar")
+            (root / ".golangci.yml").write_text("linters: {}\n")
+            self.assertEqual(check_module_configs(root, GO, find_go_modules(root)), 0)
+
+    def test_root_directory_named_config_does_not_satisfy(self):
+        """A directory named .golangci.yml at the root must not satisfy the check."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_go_module(root, "tools/foo")
+            (root / ".golangci.yml").mkdir(parents=True, exist_ok=True)
             self.assertEqual(check_module_configs(root, GO, find_go_modules(root)), 1)
 
 
@@ -471,6 +729,181 @@ class TestCheckUvLockFresh(unittest.TestCase):
             (root / "requirements_lock.txt").write_text("foo==1.0\n")
             with mock.patch("meta.scripts.check_modules._uv_export", return_value="foo==2.0\n"):
                 self.assertEqual(check_uv_lock_fresh(root), 1)
+
+    def test_uv_export_failure_reported(self):
+        """uv invocation itself fails (malformed pyproject, resolver error, etc.)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "requirements_lock.txt").write_text("foo==1.0\n")
+            err = subprocess.CalledProcessError(
+                returncode=1, cmd=["uv", "export"], stderr="resolution failed"
+            )
+            with mock.patch("meta.scripts.check_modules._uv_export", side_effect=err):
+                with mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                    rc = check_uv_lock_fresh(root)
+                self.assertEqual(rc, 1)
+                self.assertIn("uv export` failed", stdout.getvalue())
+
+
+# ── TestStripHeader ────────────────────────────────────────────────────────────
+# Internal helper, but load-bearing for check_uv_lock_fresh: the `# via X` annotations
+# uv emits on each package line are leading-whitespace-prefixed and MUST survive stripping.
+# A refactor that drops all `#`-prefixed lines would silently make lock drift undetectable.
+
+
+class TestStripHeader(unittest.TestCase):
+    def test_two_line_header_stripped(self):
+        text = (
+            "# This file was autogenerated by uv\n"
+            "#    uv export --format requirements-txt\n"
+            "certifi==2026.5.20\n"
+        )
+        self.assertEqual(_strip_header(text), "certifi==2026.5.20\n")
+
+    def test_indented_via_annotation_preserved(self):
+        """Per-package `# via X` lines have leading whitespace and must not be stripped."""
+        text = (
+            "# header line\n"
+            "certifi==2026.5.20\n"
+            "    # via requests\n"
+            "requests==2.34.2\n"
+            "    # via unnatural-designs-workspace\n"
+        )
+        expected = (
+            "certifi==2026.5.20\n"
+            "    # via requests\n"
+            "requests==2.34.2\n"
+            "    # via unnatural-designs-workspace\n"
+        )
+        self.assertEqual(_strip_header(text), expected)
+
+    def test_no_header_passthrough(self):
+        text = "certifi==2026.5.20\nrequests==2.34.2\n"
+        self.assertEqual(_strip_header(text), text)
+
+    def test_empty_input(self):
+        self.assertEqual(_strip_header(""), "")
+
+    def test_all_header_lines(self):
+        text = "# one\n# two\n# three\n"
+        self.assertEqual(_strip_header(text), "")
+
+    def test_only_first_run_of_headers_stripped(self):
+        """A `#`-prefixed line after content is not a header — only the leading run is dropped."""
+        text = "# header\ncertifi==1.0\n# stray top-level comment mid-file\nfoo==2.0\n"
+        expected = "certifi==1.0\n# stray top-level comment mid-file\nfoo==2.0\n"
+        self.assertEqual(_strip_header(text), expected)
+
+
+# ── TestCheckPythonWorkspaceMembersDefensive ───────────────────────────────────
+
+
+class TestCheckPythonWorkspaceMembersDefensive(unittest.TestCase):
+    def test_members_not_a_list_silently_passes(self):
+        """Malformed config (members as a string) is silently a no-op — the workspace-root
+        check is the canonical home for shape diagnostics, this check assumes well-formed input."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_pyproject(
+                root,
+                textwrap.dedent("""\
+                    [tool.uv.workspace]
+                    members = "not a list"
+                    """),
+            )
+            make_python_project(root, "tools/foo")
+            self.assertEqual(check_python_workspace_members(root, find_python_projects(root)), 0)
+
+
+# ── TestMain ───────────────────────────────────────────────────────────────────
+# Driver-level wiring. Mocks each per-language and per-invariant check function to
+# return preset error counts; asserts main aggregates correctly and prints the
+# success message only when every check returns 0. Catches "added a check but
+# forgot to wire it into main" regressions.
+
+
+class TestMain(unittest.TestCase):
+    def _run(self, **return_values: int) -> tuple[int, str]:
+        """Run check_modules.main() with mocks for every check function.
+
+        return_values keys: 'configs_go', 'configs_python', 'matrices', 'py_root',
+        'py_members', 'uv_lock'. Missing keys default to 0.
+        """
+        configs_results = {
+            "go": return_values.get("configs_go", 0),
+            "python": return_values.get("configs_python", 0),
+        }
+
+        def fake_configs(_root, language, _modules):
+            return configs_results[language.name]
+
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.object(check_modules, "workspace_root", return_value=Path(tmp)),
+            mock.patch.object(check_modules, "check_module_configs", side_effect=fake_configs),
+            mock.patch.object(
+                check_modules,
+                "check_workflow_matrices",
+                return_value=return_values.get("matrices", 0),
+            ),
+            mock.patch.object(
+                check_modules,
+                "check_python_workspace_root",
+                return_value=return_values.get("py_root", 0),
+            ),
+            mock.patch.object(
+                check_modules,
+                "check_python_workspace_members",
+                return_value=return_values.get("py_members", 0),
+            ),
+            mock.patch.object(
+                check_modules,
+                "check_uv_lock_fresh",
+                return_value=return_values.get("uv_lock", 0),
+            ),
+            mock.patch("sys.stdout", new_callable=io.StringIO) as stdout,
+        ):
+            rc = check_modules.main()
+        return rc, stdout.getvalue()
+
+    def test_all_clean_prints_success(self):
+        rc, out = self._run()
+        self.assertEqual(rc, 0)
+        self.assertIn("consistent", out)
+
+    def test_aggregates_error_counts(self):
+        rc, _ = self._run(
+            configs_go=2, configs_python=1, matrices=3, py_root=1, py_members=2, uv_lock=1
+        )
+        self.assertEqual(rc, 10)
+
+    def test_success_message_suppressed_on_any_error(self):
+        rc, out = self._run(uv_lock=1)
+        self.assertEqual(rc, 1)
+        self.assertNotIn("consistent", out)
+
+    def test_workflow_matrix_check_runs_for_go_only(self):
+        """The matrix-completeness check is Go-keyed (matrix.module:) today; Python projects
+        shouldn't trigger a duplicate run that would double-count Go errors against Python."""
+        matrix_calls: list[str] = []
+
+        def fake_matrices(_root, _modules):
+            matrix_calls.append("called")
+            return 0
+
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.object(check_modules, "workspace_root", return_value=Path(tmp)),
+            mock.patch.object(check_modules, "check_module_configs", return_value=0),
+            mock.patch.object(check_modules, "check_workflow_matrices", side_effect=fake_matrices),
+            mock.patch.object(check_modules, "check_python_workspace_root", return_value=0),
+            mock.patch.object(check_modules, "check_python_workspace_members", return_value=0),
+            mock.patch.object(check_modules, "check_uv_lock_fresh", return_value=0),
+            mock.patch("sys.stdout", new_callable=io.StringIO),
+        ):
+            check_modules.main()
+        # Exactly one call — the Go-branch in the LANGUAGES loop, no Python double-run.
+        self.assertEqual(len(matrix_calls), 1)
 
 
 if __name__ == "__main__":
