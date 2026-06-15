@@ -86,6 +86,27 @@ smaller:
 
 ---
 
+## Python BUILD Generation (gazelle_python)
+
+The Go side enjoys gazelle-generated BUILD files. The Python equivalent — the
+`rules_python_gazelle_plugin` extension — is **not** wired today: its gazelle
+binary depends on `smacker/go-tree-sitter` via CGO, which does not compile under
+the repo's pinned Go SDK. The upstream replacement is tracked in
+[bazel-contrib/rules_python#3416](https://github.com/bazel-contrib/rules_python/issues/3416);
+the pure-Go binding fix is the unmerged
+[#3786](https://github.com/bazel-contrib/rules_python/pull/3786).
+
+Until #3786 lands in a `rules_python_gazelle_plugin` release, Python `BUILD.bazel`
+files are hand-authored. The cost is low while the Python footprint is small.
+
+**Trigger to revisit:** Renovate will surface the `rules_python_gazelle_plugin`
+release containing #3786. That release is the prompt to add the `bazel_dep`,
+the polyglot `gazelle_binary` rule, the `modules_mapping`, the
+`gazelle_python_manifest`, and widen the gazelle pre-commit hook's `files`
+pattern to include `\.py$`.
+
+---
+
 ## Devcontainer: Docker / Kubernetes Extensions Not Fully Wired
 
 The devcontainer recommends a set of VS Code extensions that mirrors `.vscode/extensions.json`,
