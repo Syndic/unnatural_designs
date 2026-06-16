@@ -30,9 +30,14 @@ Container_ from the Command Palette. First build takes a few minutes; subsequent
 
 **What's inside**: [bazelisk](https://github.com/bazelbuild/bazelisk) (driven by `.bazelversion`),
 [`buildifier`](https://github.com/bazelbuild/buildtools/tree/main/buildifier), Go, Python,
-[`gh`](https://cli.github.com), [pre-commit](https://pre-commit.com), and
-[`golangci-lint`](https://golangci-lint.run). Named volumes (`ud-bazel-cache`, `ud-go-cache`)
-preserve the Bazel and Go caches across container rebuilds.
+[`gh`](https://cli.github.com), [`uv`](https://docs.astral.sh/uv/) (Python package manager),
+[`ruff`](https://docs.astral.sh/ruff/) (Python format + lint),
+[`ty`](https://docs.astral.sh/ty/) (Python type checker, alpha),
+[pre-commit](https://pre-commit.com), and [`golangci-lint`](https://golangci-lint.run). All Python
+tools (`ruff`, `ty`, `pre-commit`) are installed via `uv tool install` at image build time, so the
+devcontainer has a single Python package manager (uv) and no `pip install --user` in post-create.
+Named volumes (`ud-bazel-cache`, `ud-go-cache`) preserve the Bazel and Go caches across container
+rebuilds.
 
 **Known limitations**: the Docker and Kubernetes VS Code extensions install but aren't wired to a
 daemon or `kubectl` inside the container; BuildBuddy credentials still need host-side setup. See
@@ -160,7 +165,7 @@ Two GitHub Actions workflows run on every push and pull request to `main`.
 | No-cgo policy check          | Always - rejects `import "C"` and transitive deps that compile C/C++/cgo/SWIG                      |
 | golangci-lint                | After module check passes - runs per Go module                                                     |
 | ruff                         | Always - `ruff format --check` and `ruff check` over all Python                                    |
-| ty                           | Always - `uvx ty check` (Astral's static type checker) over all Python                             |
+| ty                           | Always - `uvx ty@<pin> check` (Astral's static type checker, alpha) over all Python                |
 | Build and test               | After all checks above pass                                                                        |
 | Coverage                     | After build and test - `bazel coverage //...`, uploads merged lcov to Codecov                      |
 
@@ -228,6 +233,10 @@ lives at `bazel-out/_coverage/_coverage_report.dat`; the extension is pre-config
 [`.vscode/settings.json`](.vscode/settings.json) to find it there. CI uploads the same file to
 Codecov, so local gutters and the Codecov dashboard reflect the same data.
 
-**Dependency updates** are managed automatically by [Renovate](https://docs.renovatebot.com), which
-groups updates into separate PRs: Bazel toolchains and rulesets, Go dependencies, GitHub Actions,
-and language toolchain SDKs (Go and Python version pins in `MODULE.bazel`).
+**Dependency updates** are managed automatically by [Renovate](https://docs.renovatebot.com). PRs
+are grouped where it's useful — Bazel toolchains and rulesets, Go modules, GitHub Actions, language
+toolchain SDKs (Go and Python version pins, tracked across `MODULE.bazel` / `go.work` / per-module
+`go.mod` / workflow `setup-python` / Dockerfile), and a dedicated group for `ruff`. Other tracked
+dependencies (`ty`, `pre-commit`, `buildifier`, `bazelisk`, the `uv` container-image tag,
+individual GitHub Actions) land as their own PRs. The full set of managers and groups lives in
+[`renovate.json`](renovate.json).

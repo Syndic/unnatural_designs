@@ -3,8 +3,8 @@
 #
 #   1. Declare the uv workspace (`[tool.uv.workspace]`) so all Python projects in
 #      the repo resolve against a single shared lock graph.
-#   2. Hold repo-wide tool config (ruff, ty) as it is added in later PRs — one
-#      canonical home, mirrored by per-project overrides only when needed.
+#   2. Hold repo-wide tool config (ruff, ty) — one canonical home, mirrored by
+#      per-project overrides only when needed.
 #   3. Carry deps that don't belong to a specific workspace member — currently
 #      just the temporary smoke target's third-party import, which exercises the
 #      pyproject → uv.lock → requirements_lock.txt → pip.parse → @pypi//...
@@ -74,10 +74,9 @@ select = ["E", "F", "I", "B", "UP", "SIM", "RUF", "S"]
 "**/test_*.py" = ["S101", "S105", "S106", "S108", "S311"]
 "**/*_test.py" = ["S101", "S105", "S106", "S108", "S311"]
 
-# ty: static type checker. Single repo-wide config. CI runs `uvx ty check`;
+# ty: static type checker. Single repo-wide config. CI runs `uvx ty@<pin> check`;
 # the editor extension (`astral-sh.ty` in devcontainer.json) reads the same
-# section. Strict mode — promote inference warnings to errors so missing
-# annotations don't silently pass.
+# section. Rule severities are left at ty's defaults (see comment below).
 [tool.ty]
 
 [tool.ty.environment]
