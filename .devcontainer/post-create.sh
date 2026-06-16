@@ -18,9 +18,10 @@ sudo chown -R "$(id -u):$(id -g)" "$HOME/.cache" "$HOME/go"
 GOLANGCI_LINT_VERSION=v2.12.2
 go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}"
 
-# Install pre-commit and wire up the hooks.
-pip install --user --no-warn-script-location pre-commit
-
+# Wire up the pre-commit hooks. pre-commit itself is installed at image build
+# time via `uv tool install` (Dockerfile), so it's on PATH here — no pip,
+# no $HOME/.local/bin dance.
+#
 # pre-commit refuses to `install` when core.hooksPath is set. Clear it when
 # redundant (equals git's default); leave + warn otherwise (might be a custom
 # hooks dir the user wants). Scope the unset to --worktree if available so
@@ -45,8 +46,7 @@ if [ -n "$hooks_path" ]; then
   fi
 fi
 
-# Full path: postCreate may not see remoteEnv's PATH yet.
-"$HOME/.local/bin/pre-commit" install
+pre-commit install
 
 # Materialize the uv workspace's .venv so the ty editor extension (and any
 # CLI `ty check` run) can resolve third-party imports. Without it, ty has no
