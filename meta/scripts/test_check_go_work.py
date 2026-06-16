@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest import mock
 
 from meta.scripts import check_go_work
-from meta.scripts._workspace import found_modules, registered_modules
+from meta.scripts._workspace import find_go_modules, registered_modules
 
 
 def write_go_work(root: Path, content: str) -> None:
@@ -65,29 +65,29 @@ class TestRegisteredModules(unittest.TestCase):
             self.assertEqual(registered_modules(root), {})
 
 
-class TestFoundModules(unittest.TestCase):
+class TestFindGoModules(unittest.TestCase):
     def test_no_modules(self):
         with tempfile.TemporaryDirectory() as tmp:
-            self.assertEqual(found_modules(Path(tmp)), set())
+            self.assertEqual(find_go_modules(Path(tmp)), set())
 
     def test_finds_go_mod(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             write_go_mod(root, "tools/foo")
-            self.assertEqual(found_modules(root), {Path("tools/foo")})
+            self.assertEqual(find_go_modules(root), {Path("tools/foo")})
 
     def test_finds_multiple_modules(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             write_go_mod(root, "tools/foo")
             write_go_mod(root, "libs/bar")
-            self.assertEqual(found_modules(root), {Path("tools/foo"), Path("libs/bar")})
+            self.assertEqual(find_go_modules(root), {Path("tools/foo"), Path("libs/bar")})
 
     def test_excludes_bazel_symlinks(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             write_go_mod(root, "bazel-out/fake_module")
-            self.assertEqual(found_modules(root), set())
+            self.assertEqual(find_go_modules(root), set())
 
 
 class TestConsistency(unittest.TestCase):
@@ -97,7 +97,7 @@ class TestConsistency(unittest.TestCase):
             write_go_work(root, "go 1.26.1\nuse ./tools/foo\n")
             write_go_mod(root, "tools/foo")
             registered = set(registered_modules(root))
-            found = found_modules(root)
+            found = find_go_modules(root)
             self.assertEqual(found - registered, set())
             self.assertEqual(registered - found, set())
 
@@ -107,7 +107,7 @@ class TestConsistency(unittest.TestCase):
             write_go_work(root, "go 1.26.1\n")
             write_go_mod(root, "tools/foo")
             self.assertEqual(
-                found_modules(root) - set(registered_modules(root)),
+                find_go_modules(root) - set(registered_modules(root)),
                 {Path("tools/foo")},
             )
 
@@ -116,7 +116,7 @@ class TestConsistency(unittest.TestCase):
             root = Path(tmp)
             write_go_work(root, "go 1.26.1\nuse ./tools/nonexistent\n")
             self.assertEqual(
-                set(registered_modules(root)) - found_modules(root),
+                set(registered_modules(root)) - find_go_modules(root),
                 {Path("tools/nonexistent")},
             )
 
@@ -131,7 +131,7 @@ class TestMain(unittest.TestCase):
         with (
             mock.patch.object(check_go_work, "workspace_root", return_value=Path("/fake")),
             mock.patch.object(
-                check_go_work, "found_modules", return_value={Path(p) for p in found}
+                check_go_work, "find_go_modules", return_value={Path(p) for p in found}
             ),
             mock.patch.object(check_go_work, "registered_modules", return_value=reg_locs),
             mock.patch("sys.stdout", new_callable=io.StringIO) as stdout,

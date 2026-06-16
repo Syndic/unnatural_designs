@@ -26,6 +26,15 @@ class TestIsSkipped(unittest.TestCase):
         self.assertTrue(is_skipped(Path("bazel-out/foo")))
         self.assertTrue(is_skipped(Path("bazel-bin/foo")))
 
+    def test_venv_skipped(self):
+        self.assertTrue(is_skipped(Path(".venv/lib/site-packages/x.py")))
+        self.assertTrue(is_skipped(Path("venv/bin/python")))
+
+    def test_git_plumbing_skipped(self):
+        # .git-plumbing holds host-state snapshots regenerated every devcontainer up — never
+        # repo-managed source, so walkers should always skip it.
+        self.assertTrue(is_skipped(Path(".git-plumbing/host-gitconfig")))
+
     def test_skipped_component_anywhere_in_path(self):
         self.assertTrue(is_skipped(Path("foo/.git/bar")))
         self.assertTrue(is_skipped(Path("a/b/node_modules/c")))
