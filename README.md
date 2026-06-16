@@ -152,7 +152,7 @@ future toolchain changes.
 
 ## CI
 
-Two GitHub Actions workflows run on every push and pull request to `main`.
+Three GitHub Actions workflows run on every push and pull request to `main`.
 
 **CI** - code-change-driven checks:
 
@@ -178,6 +178,11 @@ Two GitHub Actions workflows run on every push and pull request to `main`.
 | govulncheck                  | Dependency CVE scanning - checks reachable call paths against the Go vuln DB    |
 | govulncheck-all              | A single static target that github can require pass for branch protection rules |
 | Trivy                        | Supply chain and filesystem scanning - secrets, CVEs across all ecosystems      |
+
+**Devcontainer** - builds the devcontainer image and smoke-tests the toolchain it ships
+(`bazel --version`, `go version`, `python3 --version`). The job is gated on a path diff against
+the PR base: it only runs the build when `.devcontainer/` or `.github/workflows/devcontainer.yml`
+changed in this PR, and reports success otherwise so the status check always reports.
 
 ## Automation
 
@@ -214,8 +219,9 @@ VS Code-derived editors (e.g. Google Antigravity). Recommended extensions
 - [`astral-sh.ty`](https://marketplace.visualstudio.com/items?itemName=astral-sh.ty) - surfaces
   `ty check` diagnostics inline, matching what the CI `ty` job enforces. Config lives in
   `[tool.ty]` in `//:pyproject.toml`.
-- [`emeraldwalk.runonsave`](https://marketplace.visualstudio.com/items?itemName=emeraldwalk.RunOnSave) -
-  triggers the repo-health scripts on save.
+- [`gruntfuggly.triggertaskonsave`](https://marketplace.visualstudio.com/items?itemName=Gruntfuggly.triggertaskonsave) -
+  triggers the repo-health scripts on save (wired via `triggerTaskOnSave.tasks` in
+  `.vscode/settings.json`).
 - [`ryanluker.vscode-coverage-gutters`](https://marketplace.visualstudio.com/items?itemName=ryanluker.vscode-coverage-gutters) -
   paints gutter marks in Go files from a local `bazel coverage //...` run.
 
@@ -224,7 +230,7 @@ VS Code-derived editors (e.g. Google Antigravity). Recommended extensions
 | `golangci-lint`      | `*.go` files                               |
 | `ruff` (diagnostics + format) | `*.py` files                      |
 | `ty` (type diagnostics)       | `*.py` files                      |
-| `check-modules`      | `go.mod`, `pyproject.toml`, `uv.lock`, workflow `.yml`, `.golangci.yml` |
+| `check-modules`      | `go.mod`, `pyproject.toml`, `uv.lock`, `requirements_lock.txt`, workflow `.yml`, `.golangci.yml` |
 | `check-go-work`      | `go.mod`, `go.work`                        |
 
 **Viewing coverage locally**: run `bazel coverage //...` from the repo root, then open the Command
@@ -237,6 +243,5 @@ Codecov, so local gutters and the Codecov dashboard reflect the same data.
 are grouped where it's useful — Bazel toolchains and rulesets, Go modules, GitHub Actions, language
 toolchain SDKs (Go and Python version pins, tracked across `MODULE.bazel` / `go.work` / per-module
 `go.mod` / workflow `setup-python` / Dockerfile), and a dedicated group for `ruff`. Other tracked
-dependencies (`ty`, `pre-commit`, `buildifier`, `bazelisk`, the `uv` container-image tag,
-individual GitHub Actions) land as their own PRs. The full set of managers and groups lives in
-[`renovate.json`](renovate.json).
+dependencies (`ty`, `pre-commit`, `buildifier`, `bazelisk`, the `uv` container-image tag) land as
+their own PRs. The full set of managers and groups lives in [`renovate.json`](renovate.json).

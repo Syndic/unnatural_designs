@@ -51,6 +51,11 @@ per-step rationale lives at each site, not here:
   that exact host-absolute path inside the image as a symlink to `/host-git-common`; reads
   `host-timezone` and points `/etc/localtime` at it.
 
+`.devcontainer/devcontainer-lock.json` pins the digests of the `ghcr.io/devcontainers/features/*`
+features referenced from `devcontainer.json` (common-utils, git, github-cli, go, python). It is
+maintained by the `devcontainer` CLI (`devcontainer features upgrade`) and bumped by Renovate's
+`devcontainer` manager; nothing else writes it.
+
 `.git-plumbing/` is a tracked directory anchored by its README so the Dockerfile's `COPY` always
 has a source — buildx errors on a `COPY` whose glob matches zero files, and CI's `devcontainer
 build` doesn't run `initializeCommand`, so the runtime files are absent there. The shell

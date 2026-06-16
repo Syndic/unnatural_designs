@@ -110,11 +110,10 @@ pattern to include `\.py$`.
 ## Devcontainer: Docker / Kubernetes Extensions Not Fully Wired
 
 The devcontainer recommends a set of VS Code extensions that mirrors `.vscode/extensions.json`,
-including `ms-azuretools.vscode-docker`, `ms-azuretools.vscode-containers`, and
-`ms-kubernetes-tools.vscode-kubernetes-tools`. These extensions install cleanly but are **not
+including `ms-azuretools.vscode-containers` and `ms-kubernetes-tools.vscode-kubernetes-tools`. These extensions install cleanly but are **not
 functional inside the container**:
 
-- The Docker extensions need access to a Docker daemon. We have not added Docker-outside-of-Docker
+- The container extension needs access to a Docker daemon. We have not added Docker-outside-of-Docker
   (host socket mount) or Docker-in-Docker (devcontainer feature) — so `docker ps` etc. will fail
   from inside the container.
 - The Kubernetes extension expects `kubectl` (and typically `helm` / a kubeconfig) on PATH. The
