@@ -21,6 +21,7 @@ from meta.scripts._workspace import (
 from meta.scripts.check_modules import (
     LANGUAGES,
     _strip_header,
+    _uv_export,
     check_module_configs,
     check_python_workspace_members,
     check_python_workspace_root,
@@ -815,6 +816,34 @@ class TestCheckPythonWorkspaceMembersDefensive(unittest.TestCase):
             )
             make_python_project(root, "tools/foo")
             self.assertEqual(check_python_workspace_members(root, find_python_projects(root)), 0)
+
+
+# ── TestUvExport ───────────────────────────────────────────────────────────────
+# Direct-seam coverage for the argv contract. check_uv_lock_fresh tests mock at the
+# _uv_export boundary, so they can't catch a refactor that silently swaps a flag
+# (e.g. --no-emit-project -> --no-emit-workspace, or --format requirements-txt ->
+# --format json). The freshness check's correctness depends on these flags mirroring
+# the uv-lock-fresh pre-commit hook's invocation; this is the test that catches drift.
+
+
+class TestUvExport(unittest.TestCase):
+    def test_invokes_uv_with_expected_flags(self):
+        captured: list[list[str]] = []
+
+        def fake_run(cmd, **_kwargs):
+            captured.append(list(cmd))
+            Path(cmd[cmd.index("--output-file") + 1]).write_text("ok\n")
+            return mock.Mock(returncode=0)
+
+        with mock.patch("subprocess.run", side_effect=fake_run):
+            _uv_export(Path("/fake"))
+
+        self.assertEqual(len(captured), 1)
+        cmd = captured[0]
+        self.assertEqual(cmd[:2], ["uv", "export"])
+        self.assertIn("--no-hashes", cmd)
+        self.assertIn("--no-emit-project", cmd)
+        self.assertEqual(cmd[cmd.index("--format") + 1], "requirements-txt")
 
 
 # ── TestMain ───────────────────────────────────────────────────────────────────
