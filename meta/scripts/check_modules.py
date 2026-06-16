@@ -5,8 +5,10 @@ Verifies cross-language module/project invariants:
   Per language (Go, Python):
     1. Every discovered module/project has a config file reachable via the language's
        config-search semantics (per-module file or any ancestor up to the repo root).
-    2. Every matrix.module list in .github/workflows/*.yml that names language modules
-       contains exactly the discovered set (no missing, no stale).
+    2. Every matrix.<language-key> list in .github/workflows/*.yml contains exactly the
+       discovered set (no missing, no stale). The matrix key is per-language and explicit
+       (`matrix.go_module:` for Go) so a workflow can carry multiple languages' matrices
+       without the parser conflating them.
 
   Python-only:
     3. Root pyproject.toml has [tool.uv.workspace], [tool.ruff], and [tool.ty] sections —
@@ -15,15 +17,16 @@ Verifies cross-language module/project invariants:
        so workspace resolution and member iteration agree.
     5. requirements_lock.txt is fresh relative to uv.lock (cheap diff via `uv export`).
 
-Polyglot replacement for the former check_go_modules.py; matrix-list parsing remains
-Go-specific in practice because today only Go uses matrix.module:. Python adds its checks
-without sharing a matrix-list contract until a Python project adopts matrices of its own.
+Polyglot replacement for the former check_go_modules.py. Matrix-list parsing is driven
+by LanguageSpec.matrix_key; today only Go has a matrix key (`go_module`), and Python's
+spec carries `matrix_key=None` until a Python project adopts per-project matrices.
 
 TEND(lang-expand): adopting a new language means adding an entry to LANGUAGES (discovery
-fn + config-file names + module anchor) and, if that language drives matrix-per-module CI
-jobs, adding a parallel matrix-completeness callsite parameterized by its matrix key
-(matrix.module: is currently Go's; a Python equivalent would use a different key to keep
-the two from colliding).
+fn + config-file names + module anchor) and, if that language drives per-module CI jobs,
+setting matrix_key on its spec to a distinct, explicit key (e.g. "python_project") and
+using that same key in the workflow YAML. Hyphens in matrix keys collide with GitHub
+Actions' expression parser (`matrix.go-module` parses as `matrix.go - module`); use
+snake_case.
 
 Usage: ./meta/scripts/check_modules.py
 """
@@ -47,7 +50,7 @@ from meta.scripts._workspace import (
     col_range,
     find_go_modules,
     find_python_projects,
-    workflow_module_lists,
+    workflow_matrix_lists,
     workspace_root,
 )
 
@@ -64,12 +67,19 @@ class LanguageSpec:
                      semantics of golangci-lint and Python's nearest-pyproject).
     module_anchor  — relative filename within a module used to anchor "missing config"
                      diagnostics on a file that actually exists (e.g. go.mod, pyproject.toml).
+    matrix_key     — YAML key used in this language's `strategy.matrix.<key>:` blocks. None
+                     means "no per-module CI matrices for this language today" and skips the
+                     matrix-completeness check entirely. Must be snake_case (hyphens collide
+                     with GitHub Actions' expression parser — `matrix.go-module` parses as
+                     subtraction). Distinct per language so a workflow can carry multiple
+                     languages' matrices without conflation.
     """
 
     name: str
     discover: Callable[[Path], set[Path]]
     config_files: tuple[str, ...]
     module_anchor: str
+    matrix_key: str | None
 
 
 LANGUAGES: tuple[LanguageSpec, ...] = (
@@ -78,12 +88,14 @@ LANGUAGES: tuple[LanguageSpec, ...] = (
         discover=find_go_modules,
         config_files=(".golangci.yml",),
         module_anchor="go.mod",
+        matrix_key="go_module",
     ),
     LanguageSpec(
         name="python",
         discover=find_python_projects,
         config_files=("pyproject.toml",),
         module_anchor="pyproject.toml",
+        matrix_key=None,
     ),
 )
 
@@ -124,13 +136,13 @@ def check_module_configs(root: Path, language: LanguageSpec, modules: set[Path])
     return errors
 
 
-def check_workflow_matrices(root: Path, modules: set[Path]) -> int:
-    """Check all .github/workflows/*.yml files for module matrix completeness.
+def check_workflow_matrices(root: Path, modules: set[Path], matrix_key: str) -> int:
+    """Check all .github/workflows/*.yml files for completeness of one language's matrices.
 
-    Iterates every `matrix.module:` block found across all workflow files and verifies the
-    list matches the discovered module set. Language-agnostic by structure but Go-de-facto:
-    today only Go uses `matrix.module:` (per-Python-project matrices would need a separate
-    key — `matrix.project:` or similar — and a separate caller).
+    Iterates every `matrix.<matrix_key>:` block found across all workflow files and verifies
+    the list matches the discovered module set. The matrix_key is supplied per-language
+    (LanguageSpec.matrix_key) so Go's `go_module` matrices and any future Python
+    `python_project` matrices in the same workflow file don't conflate.
     """
     workflows_dir = root / ".github" / "workflows"
     if not workflows_dir.is_dir():
@@ -139,10 +151,10 @@ def check_workflow_matrices(root: Path, modules: set[Path]) -> int:
     errors = 0
     for wf_file in sorted(workflows_dir.glob("*.yml")):
         rel = str(wf_file.relative_to(root))
-        for job_name, module_key_line, matrix_entries in workflow_module_lists(wf_file):
+        for job_name, key_line, matrix_entries in workflow_matrix_lists(wf_file, matrix_key):
             matrix_set = set(matrix_entries)
             for mod in sorted(modules - matrix_set):
-                print(f"{rel}:{module_key_line}:1-2: [{job_name}] missing matrix entry for ./{mod}")
+                print(f"{rel}:{key_line}:1-2: [{job_name}] missing matrix entry for ./{mod}")
                 errors += 1
             for mod in sorted(matrix_set - modules):
                 line = matrix_entries[mod]
@@ -333,11 +345,11 @@ def main() -> int:
     for language in LANGUAGES:
         modules = language.discover(root)
         errors += check_module_configs(root, language, modules)
-        # Workflow matrix completeness is gated by language: today only Go has matrix-driven
-        # per-module jobs. When a Python language adopts matrix.<something>:, a parallel
-        # callsite parameterized by that key is the right shape.
-        if language.name == "go":
-            errors += check_workflow_matrices(root, modules)
+        # Workflow matrix completeness only runs for languages with a matrix_key — others
+        # have no per-module CI matrices to validate (yet). Python flips this on by giving
+        # its LanguageSpec a snake_case matrix_key when its first per-project matrix lands.
+        if language.matrix_key is not None:
+            errors += check_workflow_matrices(root, modules, language.matrix_key)
 
     errors += check_python_workspace_root(root)
     errors += check_python_workspace_members(root, find_python_projects(root))

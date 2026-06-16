@@ -95,20 +95,20 @@ jobs:
   # TEND(lang-expand): this job lints Go only. When a new language is adopted, add a sibling
   # job (e.g. ruff for Python) — do not extend this matrix, the linter is Go-specific.
   golangci-lint:
-    name: golangci-lint (${{ matrix.module }})
+    name: golangci-lint (${{ matrix.go_module }})
     runs-on: ubuntu-latest
     needs: [modules-check]
     strategy:
       fail-fast: false
       matrix:
-        module:
+        go_module:
           - tools/network_infrastructure_maintenance
     steps:
       - uses: actions/checkout@v6
 
       - uses: golangci/golangci-lint-action@82606bf257cbaff209d206a39f5134f0cfbfd2ee # v9.2.1
         with:
-          working-directory: ${{ matrix.module }}
+          working-directory: ${{ matrix.go_module }}
 
   # Python's sibling of golangci-lint. Format + lint in one job; config lives in
   # `[tool.ruff]` in //:pyproject.toml. Renovate's regex manager tracks the

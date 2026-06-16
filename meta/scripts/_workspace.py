@@ -123,44 +123,48 @@ def registered_modules(root: Path) -> dict[Path, int]:
     return modules
 
 
-def workflow_module_lists(
+def workflow_matrix_lists(
     workflow_file: Path,
+    matrix_key: str,
 ) -> list[tuple[str, int, dict[Path, int]]]:
-    """Parse a GitHub Actions workflow file and return all matrix.module lists with line numbers.
+    """Parse a GitHub Actions workflow and return all `matrix.<matrix_key>` lists with line numbers.
 
-    Returns one (job_name, module_key_line, {module_path: line_number}) tuple per matrix.module
-    block found. module_key_line is the 1-based line of the `module:` key (the anchor used by
-    callers for "missing entry" diagnostics, which have no specific offending line). Each entry
-    in the dict maps a module path to the 1-based line of its `- path` list item.
+    matrix_key is the YAML key the matrix block uses (e.g. ``"go_module"`` for Go's
+    per-module matrices, ``"python_project"`` for a future Python equivalent). The
+    key string is supplied per-language so a single workflow file can carry both
+    Go and Python matrices without the parser conflating them — see check_modules.py's
+    LanguageSpec.matrix_key.
 
-    job_name is the YAML job key, captured on a best-effort basis by tracking keys at indent 2
-    inside the jobs: block; falls back to '<unknown>'. Parsing is line-oriented and indent-aware,
-    with no third-party dependencies. The GitHub Actions YAML structure is regular enough to
-    make this reliable:
+    Returns one ``(job_name, key_line, {entry_path: line_number})`` tuple per matched
+    block. ``key_line`` is the 1-based line of the ``<matrix_key>:`` key (the anchor used
+    by callers for "missing entry" diagnostics, which have no specific offending line).
+    Each entry maps a path to the 1-based line of its ``- path`` list item.
+
+    job_name is the YAML job key, captured on a best-effort basis by tracking keys at
+    indent 2 inside ``jobs:``; falls back to '<unknown>'. Parsing is line-oriented and
+    indent-aware, with no third-party dependencies. The GitHub Actions YAML structure
+    is regular enough to make this reliable::
 
         jobs:
-          <job-key>:           # indent 2  — recorded as job_name
+          <job-key>:                  # indent 2  — recorded as job_name
             strategy:
-              matrix:          # marks start of matrix block
-                module:        # marks start of module list — line recorded as module_key_line
-                  - some/path  # collected as a {Path: line_number} entry
+              matrix:                 # marks start of matrix block
+                <matrix_key>:         # marks start of entry list — line recorded as key_line
+                  - some/path         # collected as a {Path: line_number} entry
 
     The parser uses two guard checks that fire before each line is processed, handling dedent
-    out of the module list and out of the matrix block. This avoids re-processing lines across
+    out of the entry list and out of the matrix block. This avoids re-processing lines across
     state transitions. Line numbers are retained so callers can emit `file:line: message`
     diagnostics that VS Code's problem matcher surfaces as squiggles.
-
-    Polyglot note: the function is language-agnostic — it parses `matrix.module:` lists
-    regardless of whether they hold Go module paths or any other identifier. Callers
-    parameterize meaning via the discovered-module set they compare against.
     """
     text = workflow_file.read_text()
     result: list[tuple[str, int, dict[Path, int]]] = []
+    key_line_marker = f"{matrix_key}:"
 
-    state = "scanning"  # scanning | in_matrix | in_module
+    state = "scanning"  # scanning | in_matrix | in_entries
     matrix_indent = -1
-    module_indent = -1
-    module_key_line = -1
+    entries_indent = -1
+    key_line = -1
     current: dict[Path, int] | None = None
 
     # Job name tracking: record the YAML key at indent 2 inside jobs:.
@@ -182,16 +186,16 @@ def workflow_module_lists(
             elif indent == 2 and stripped.endswith(":"):
                 current_job = stripped[:-1]
 
-        # ── Guard: leaving module list ─────────────────────────────────────
-        # Any line at or above the module: key's indent signals that the list is over. Save the
+        # ── Guard: leaving entry list ──────────────────────────────────────
+        # Any line at or above the matrix_key:'s indent signals that the list is over. Save the
         # accumulated entries and decide which state to return to based on whether we're still
         # inside the matrix block.
-        if state == "in_module" and indent <= module_indent:
+        if state == "in_entries" and indent <= entries_indent:
             if current is not None:
-                result.append((current_job, module_key_line, current))
+                result.append((current_job, key_line, current))
             current = None
-            module_indent = -1
-            module_key_line = -1
+            entries_indent = -1
+            key_line = -1
             state = "in_matrix" if indent > matrix_indent else "scanning"
             if state == "scanning":
                 matrix_indent = -1
@@ -208,17 +212,17 @@ def workflow_module_lists(
                 matrix_indent = indent
 
         elif state == "in_matrix":
-            if stripped == "module:":
-                state = "in_module"
-                module_indent = indent
-                module_key_line = lineno
+            if stripped == key_line_marker:
+                state = "in_entries"
+                entries_indent = indent
+                key_line = lineno
                 current = {}
 
-        elif state == "in_module" and stripped.startswith("- "):
+        elif state == "in_entries" and stripped.startswith("- "):
             current[Path(stripped[2:].strip())] = lineno
 
-    # End of file while still inside a module list.
-    if state == "in_module" and current is not None:
-        result.append((current_job, module_key_line, current))
+    # End of file while still inside an entry list.
+    if state == "in_entries" and current is not None:
+        result.append((current_job, key_line, current))
 
     return result

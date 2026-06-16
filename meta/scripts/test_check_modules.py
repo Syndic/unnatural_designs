@@ -16,7 +16,7 @@ from meta.scripts import check_modules
 from meta.scripts._workspace import (
     find_go_modules,
     find_python_projects,
-    workflow_module_lists,
+    workflow_matrix_lists,
 )
 from meta.scripts.check_modules import (
     LANGUAGES,
@@ -67,12 +67,12 @@ def make_workflow(root: Path, name: str, content: str) -> Path:
 
 _JOB_TEMPLATE = """\
   {job_name}:
-    name: {job_name} (${{{{ matrix.module }}}})
+    name: {job_name} (${{{{ matrix.go_module }}}})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        module:
+        go_module:
 {module_lines}
     steps:
       - run: echo hi
@@ -172,11 +172,13 @@ class TestFindPythonProjects(unittest.TestCase):
 
 
 class TestWorkflowModuleLists(unittest.TestCase):
-    def _parse(self, content: str) -> list[tuple[str, int, dict[Path, int]]]:
+    def _parse(
+        self, content: str, matrix_key: str = "go_module"
+    ) -> list[tuple[str, int, dict[Path, int]]]:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "workflow.yml"
             path.write_text(content)
-            return workflow_module_lists(path)
+            return workflow_matrix_lists(path, matrix_key)
 
     def test_no_jobs(self):
         self.assertEqual(self._parse("name: CI\non:\n  push:\n    branches: [main]\n"), [])
@@ -187,7 +189,7 @@ class TestWorkflowModuleLists(unittest.TestCase):
               scan:
                 strategy:
                   matrix:
-                    module:
+                    go_module:
                       - tools/foo
                 steps:
                   - run: echo hi
@@ -205,14 +207,14 @@ class TestWorkflowModuleLists(unittest.TestCase):
               govulncheck:
                 strategy:
                   matrix:
-                    module:
+                    go_module:
                       - tools/foo
                 steps:
                   - run: echo hi
               golangci-lint:
                 strategy:
                   matrix:
-                    module:
+                    go_module:
                       - tools/foo
                 steps:
                   - run: echo hi
@@ -231,7 +233,7 @@ class TestWorkflowModuleLists(unittest.TestCase):
               govulncheck:
                 strategy:
                   matrix:
-                    module:
+                    go_module:
                       - tools/foo
                 steps:
                   - run: echo hi
@@ -248,7 +250,7 @@ class TestWorkflowModuleLists(unittest.TestCase):
               scan:
                 strategy:
                   matrix:
-                    module:
+                    go_module:
                       # - tools/commented-out
                       - tools/foo
                 steps:
@@ -275,7 +277,7 @@ class TestWorkflowModuleLists(unittest.TestCase):
         self.assertEqual(self._parse(content), [])
 
     def test_matrix_without_module_key(self):
-        """A matrix block keyed on something other than `module:` is ignored."""
+        """A matrix block keyed on something other than the target key is ignored."""
         content = textwrap.dedent("""\
             jobs:
               build:
@@ -293,7 +295,7 @@ class TestWorkflowModuleLists(unittest.TestCase):
               scan:
                 strategy:
                   matrix:
-                    module:
+                    go_module:
                       - tools/foo
                       - libs/bar
                 steps:
@@ -305,7 +307,7 @@ class TestWorkflowModuleLists(unittest.TestCase):
         self.assertEqual(set(modules), {Path("tools/foo"), Path("libs/bar")})
 
     def test_two_jobs_only_one_has_module_matrix(self):
-        """A matrix without `module:` in one job must not bleed into the next job's parse state."""
+        """A matrix without the target key in one job must not bleed into the next job's parse."""
         content = textwrap.dedent("""\
             jobs:
               build:
@@ -317,7 +319,7 @@ class TestWorkflowModuleLists(unittest.TestCase):
               lint:
                 strategy:
                   matrix:
-                    module:
+                    go_module:
                       - tools/foo
                 steps:
                   - run: echo hi
@@ -333,7 +335,7 @@ class TestWorkflowModuleLists(unittest.TestCase):
               golangci-lint:
                 strategy:
                   matrix:
-                    module:
+                    go_module:
                       - tools/foo
                 steps:
                   - run: echo hi
@@ -351,7 +353,7 @@ class TestWorkflowModuleLists(unittest.TestCase):
               real-job:
                 strategy:
                   matrix:
-                    module:
+                    go_module:
                       - tools/foo
                 steps:
                   - run: echo hi
@@ -385,7 +387,7 @@ class TestWorkflowModuleLists(unittest.TestCase):
 
               # ── govulncheck ──────────────────────────────────────────────────────────────
               govulncheck:
-                name: govulncheck (${{ matrix.module }})
+                name: govulncheck (${{ matrix.go_module }})
                 runs-on: ubuntu-latest
                 permissions:
                   security-events: write
@@ -393,19 +395,19 @@ class TestWorkflowModuleLists(unittest.TestCase):
                 strategy:
                   fail-fast: false
                   matrix:
-                    module:
+                    go_module:
                       - tools/network_infrastructure_maintenance
                 steps:
                   - uses: actions/checkout@v6
 
               # ── golangci-lint ────────────────────────────────────────────────────────────
               golangci-lint:
-                name: golangci-lint (${{ matrix.module }})
+                name: golangci-lint (${{ matrix.go_module }})
                 runs-on: ubuntu-latest
                 strategy:
                   fail-fast: false
                   matrix:
-                    module:
+                    go_module:
                       - tools/network_infrastructure_maintenance
                 steps:
                   - uses: actions/checkout@v6
@@ -438,7 +440,7 @@ class TestCheckWorkflowMatrices(unittest.TestCase):
             root = Path(tmp)
             make_go_module(root, "tools/foo")
             make_module_workflow(root, "security.yml", {"scan": ["tools/foo"]})
-            self.assertEqual(check_workflow_matrices(root, find_go_modules(root)), 0)
+            self.assertEqual(check_workflow_matrices(root, find_go_modules(root), "go_module"), 0)
 
     def test_module_missing_from_matrix(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -446,14 +448,14 @@ class TestCheckWorkflowMatrices(unittest.TestCase):
             make_go_module(root, "tools/foo")
             make_go_module(root, "tools/bar")
             make_module_workflow(root, "security.yml", {"scan": ["tools/foo"]})
-            self.assertEqual(check_workflow_matrices(root, find_go_modules(root)), 1)
+            self.assertEqual(check_workflow_matrices(root, find_go_modules(root), "go_module"), 1)
 
     def test_stale_entry_in_matrix(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             make_go_module(root, "tools/foo")
             make_module_workflow(root, "security.yml", {"scan": ["tools/foo", "tools/nonexistent"]})
-            self.assertEqual(check_workflow_matrices(root, find_go_modules(root)), 1)
+            self.assertEqual(check_workflow_matrices(root, find_go_modules(root), "go_module"), 1)
 
     def test_two_jobs_both_missing_same_module(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -465,13 +467,13 @@ class TestCheckWorkflowMatrices(unittest.TestCase):
                 "security.yml",
                 {"govulncheck": ["tools/foo"], "golangci-lint": ["tools/foo"]},
             )
-            self.assertEqual(check_workflow_matrices(root, find_go_modules(root)), 2)
+            self.assertEqual(check_workflow_matrices(root, find_go_modules(root), "go_module"), 2)
 
     def test_no_workflows_directory(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             make_go_module(root, "tools/foo")
-            self.assertEqual(check_workflow_matrices(root, find_go_modules(root)), 0)
+            self.assertEqual(check_workflow_matrices(root, find_go_modules(root), "go_module"), 0)
 
     def test_consistent_multiple_jobs_same_modules(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -486,21 +488,21 @@ class TestCheckWorkflowMatrices(unittest.TestCase):
                     "golangci-lint": ["tools/foo", "libs/bar"],
                 },
             )
-            self.assertEqual(check_workflow_matrices(root, find_go_modules(root)), 0)
+            self.assertEqual(check_workflow_matrices(root, find_go_modules(root), "go_module"), 0)
 
     def test_missing_and_stale_are_both_counted(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             make_go_module(root, "tools/new")
             make_module_workflow(root, "security.yml", {"scan": ["tools/old"]})
-            self.assertEqual(check_workflow_matrices(root, find_go_modules(root)), 2)
+            self.assertEqual(check_workflow_matrices(root, find_go_modules(root), "go_module"), 2)
 
     def test_workflow_with_no_module_matrix_is_ignored(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             make_go_module(root, "tools/foo")
             make_workflow(root, "ci.yml", "name: CI\non:\n  push:\n    branches: [main]\n")
-            self.assertEqual(check_workflow_matrices(root, find_go_modules(root)), 0)
+            self.assertEqual(check_workflow_matrices(root, find_go_modules(root), "go_module"), 0)
 
     def test_multiple_workflow_files_checked(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -508,13 +510,13 @@ class TestCheckWorkflowMatrices(unittest.TestCase):
             make_go_module(root, "tools/foo")
             make_module_workflow(root, "security.yml", {"scan": ["tools/foo"]})
             make_module_workflow(root, "other.yml", {"scan": ["tools/foo"]})
-            self.assertEqual(check_workflow_matrices(root, find_go_modules(root)), 0)
+            self.assertEqual(check_workflow_matrices(root, find_go_modules(root), "go_module"), 0)
 
     def test_no_modules_no_matrices(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             make_workflow(root, "ci.yml", "name: CI\non:\n  push:\n    branches: [main]\n")
-            self.assertEqual(check_workflow_matrices(root, set()), 0)
+            self.assertEqual(check_workflow_matrices(root, set(), "go_module"), 0)
 
 
 # ── TestCheckModuleConfigs ─────────────────────────────────────────────────────
@@ -883,11 +885,12 @@ class TestMain(unittest.TestCase):
         self.assertNotIn("consistent", out)
 
     def test_workflow_matrix_check_runs_for_go_only(self):
-        """The matrix-completeness check is Go-keyed (matrix.module:) today; Python projects
-        shouldn't trigger a duplicate run that would double-count Go errors against Python."""
+        """The matrix-completeness check runs once per language whose LanguageSpec has a
+        matrix_key. Today only Go does (`go_module`); Python's matrix_key=None must skip the
+        check so Go entries aren't compared against the Python discovered-set."""
         matrix_calls: list[str] = []
 
-        def fake_matrices(_root, _modules):
+        def fake_matrices(_root, _modules, _matrix_key):
             matrix_calls.append("called")
             return 0
 
