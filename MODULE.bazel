@@ -74,7 +74,7 @@ bazel_dep(name = "rules_python", version = "2.0.1")
 # that release as a version-bump PR; that PR is the prompt to drop this override.
 git_override(
     module_name = "rules_python",
-    commit = "8b38325e7c1b8b3240088b14d5ba2e5316aceabc",
+    commit = "6ce7840252cfe2b4ba4484007d0c1c1650d1196d",
     remote = "https://github.com/bazel-contrib/rules_python.git",
 )
 
