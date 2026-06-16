@@ -39,8 +39,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v6
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v8.2.0
+      - uses: actions/setup-python@v6
         with:
           # renovate: datasource=python-version depName=python
           python-version: "3.14"
@@ -51,7 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           # renovate: datasource=python-version depName=python
           python-version: "3.14"
@@ -62,7 +62,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           # renovate: datasource=python-version depName=python
           python-version: "3.14"
@@ -73,7 +73,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           # renovate: datasource=python-version depName=python
           python-version: "3.14"
@@ -143,7 +143,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v8.2.0
       # `uv sync` materializes `.venv` from uv.lock so ty can resolve
       # third-party imports (e.g. the smoke target's `requests`). Without it,
       # ty's only search paths are first-party + stdlib and any non-stdlib
