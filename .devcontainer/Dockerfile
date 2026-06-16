@@ -24,13 +24,30 @@ COPY --from=ghcr.io/astral-sh/uv:0.11.21 /uv /uvx /usr/local/bin/
 ARG RUFF_VERSION=0.15.17
 # ty: static type checker. Same `uv tool install` pattern as ruff so the
 # binary lands on PATH for CI, pre-commit, and the `astral-sh.ty` editor
-# extension. UV_TOOL_{BIN_DIR,DIR} are shared across both installs.
+# extension. UV_TOOL_{BIN_DIR,DIR} are shared across all uv tool installs.
 # renovate: datasource=pypi depName=ty
 ARG TY_VERSION=0.0.1a25
+# pre-commit: the hook runner. Installed via `uv tool install` (not pip) so
+# we have a single Python package manager in the devcontainer; the binary
+# lands at /usr/local/bin/pre-commit, so post-create.sh and any contributor
+# shell can invoke it directly without a $HOME/.local/bin PATH dance.
+# renovate: datasource=pypi depName=pre-commit
+ARG PRE_COMMIT_VERSION=4.6.0
+# UV_TOOL_DIR holds the per-tool venvs; UV_PYTHON_INSTALL_DIR is where uv
+# downloads its managed Python interpreters. Both must be world-readable
+# because tools install as root but run as the vscode user. The Python path
+# matters for *pure-Python* tools (pre-commit): the venv's `bin/python`
+# symlinks into UV_PYTHON_INSTALL_DIR, and a pre-commit shebang to a path
+# under root-owned /root/.local (uv's default) makes `pre-commit` fail with
+# "bad interpreter: Permission denied" for vscode. ruff and ty are standalone
+# binaries and don't actually invoke the symlinked Python, which is why this
+# only surfaces with pre-commit.
 ENV UV_TOOL_BIN_DIR=/usr/local/bin \
-    UV_TOOL_DIR=/usr/local/share/uv-tools
+    UV_TOOL_DIR=/usr/local/share/uv-tools \
+    UV_PYTHON_INSTALL_DIR=/usr/local/share/uv-python
 RUN uv tool install --no-cache "ruff==${RUFF_VERSION}" \
-    && uv tool install --no-cache "ty==${TY_VERSION}"
+    && uv tool install --no-cache "ty==${TY_VERSION}" \
+    && uv tool install --no-cache "pre-commit==${PRE_COMMIT_VERSION}"
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         build-essential \
