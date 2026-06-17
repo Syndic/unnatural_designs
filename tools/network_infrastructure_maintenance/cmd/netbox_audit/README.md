@@ -16,6 +16,15 @@ go run ./cmd/netbox_audit \
 By default the tool prints a human-readable report to stdout and progress messages to stderr. See
 [OPERATION.md](OPERATION.md) for all flags, environment variables, and output formats.
 
+### Recommended terminal setup
+
+The interactive UI is aligned with the Unnatural Designs brand system. For best results, run it in
+a terminal configured with [Roboto Mono](https://fonts.google.com/specimen/Roboto+Mono) — the
+brand monospaced face. Any monospaced font with broad Unicode coverage works; the box-drawing,
+block-fill, and braille characters used by the banner, progress bars, and spinner all need glyph
+support. No font is shipped with the tool — terminal output inherits whatever font the user has
+configured.
+
 ## How it works
 
 1. **Snapshot** — A snapshot of NetBox is taken: First, the latest changelog entry is read. Then all

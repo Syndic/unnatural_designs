@@ -239,6 +239,49 @@ func TestRichReporter_ChecksCompleteWithoutFindingsUsesPassMarker(t *testing.T) 
 	}
 }
 
+func TestRichReporter_StartupBannerBox_ColorEnabled(t *testing.T) {
+	pd := newPipeDrainer(t)
+	enabled, err := shared.NewColorizer(shared.ColorAlways, pd.w)
+	if err != nil {
+		t.Fatalf("NewColorizer: %v", err)
+	}
+	r := newRichReporter(pd.w, enabled)
+	r.Startupf("Starting NetBox audit against %s using %s", "https://nb", "cfg.json")
+	if err := r.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	out := stripANSI(pd.Close(t))
+	// Box borders + accented brand mark + tagline + the contextual line.
+	for _, want := range []string{
+		"┌",
+		"└",
+		"netbox-audit",
+		"UNNATURAL_DESIGNS",
+		brandTagline,
+		"[netbox-audit] Starting NetBox audit against https://nb using cfg.json",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in colorized banner output:\n%s", want, out)
+		}
+	}
+}
+
+func TestRichReporter_StartupBannerBox_ColorDisabledOmitsBox(t *testing.T) {
+	pd := newPipeDrainer(t)
+	r := newRichReporter(pd.w, shared.Colorizer{})
+	r.Startupf("hello")
+	if err := r.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	out := stripANSI(pd.Close(t))
+	if strings.Contains(out, "┌") || strings.Contains(out, "└") {
+		t.Errorf("uncolorized startup should omit the hairline box; got:\n%s", out)
+	}
+	if !strings.Contains(out, "[netbox-audit] hello") {
+		t.Errorf("missing pipe-safe one-liner:\n%s", out)
+	}
+}
+
 // Compile-time interface assertion: richReporter implements Reporter.
 var _ Reporter = (*richReporter)(nil)
 

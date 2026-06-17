@@ -120,13 +120,23 @@ func TestColorizer_Disabled(t *testing.T) {
 		t.Fatalf("NewColorizer: %v", err)
 	}
 	for name, got := range map[string]string{
-		"Pass": c.Pass("ok"),
-		"Warn": c.Warn("ok"),
-		"Fail": c.Fail("ok"),
+		"Pass":      c.Pass("ok"),
+		"Warn":      c.Warn("ok"),
+		"Fail":      c.Fail("ok"),
+		"Accent":    c.Accent("ok"),
+		"Track":     c.Track("ok"),
+		"PassBlock": c.PassBlock("ok"),
+		"WarnBlock": c.WarnBlock("ok"),
+		"FailBlock": c.FailBlock("ok"),
 	} {
 		if got != "ok" {
 			t.Errorf("%s on disabled colorizer = %q, want %q", name, got, "ok")
 		}
+	}
+	// Tag carries its bracket text even with colors disabled — that's the
+	// pipe-safe fallback the spec relies on.
+	if got := c.Tag(StatusPass); got != "[PASS]" {
+		t.Errorf("Tag(PASS) on disabled colorizer = %q, want %q", got, "[PASS]")
 	}
 }
 
@@ -137,9 +147,11 @@ func TestColorizer_Enabled(t *testing.T) {
 	}
 	const reset = "\033[0m"
 	cases := map[string]string{
-		"Pass": c.Pass("ok"),
-		"Warn": c.Warn("ok"),
-		"Fail": c.Fail("ok"),
+		"Pass":   c.Pass("ok"),
+		"Warn":   c.Warn("ok"),
+		"Fail":   c.Fail("ok"),
+		"Accent": c.Accent("ok"),
+		"Track":  c.Track("ok"),
 	}
 	for name, got := range cases {
 		if !strings.Contains(got, "ok") {
@@ -152,7 +164,69 @@ func TestColorizer_Enabled(t *testing.T) {
 			t.Errorf("%s output %q missing ANSI prefix", name, got)
 		}
 	}
-	if cases["Pass"] == cases["Warn"] || cases["Pass"] == cases["Fail"] || cases["Warn"] == cases["Fail"] {
-		t.Error("Pass/Warn/Fail produced identical wrapping")
+	// Pass/Warn/Fail/Accent must all be distinguishable from each other.
+	seen := map[string]string{}
+	for name, got := range cases {
+		if prior, ok := seen[got]; ok {
+			t.Errorf("%s and %s produced identical wrapping %q", prior, name, got)
+		}
+		seen[got] = name
+	}
+	// Warn now tracks the user's theme via ANSI 3, not the old 256-color 214
+	// that the spec called out as competing with the accent.
+	if !strings.Contains(c.Warn("ok"), "\033[33m") {
+		t.Errorf("Warn() should use ANSI 3 (\\033[33m); got %q", c.Warn("ok"))
+	}
+	if strings.Contains(c.Warn("ok"), "38;5;214") {
+		t.Errorf("Warn() still emits the old 256-color 214; got %q", c.Warn("ok"))
+	}
+}
+
+func TestColorizer_Block_ReverseVideo(t *testing.T) {
+	c, err := NewColorizer("always", nonTTY(t))
+	if err != nil {
+		t.Fatalf("NewColorizer: %v", err)
+	}
+	for name, got := range map[string]string{
+		"PassBlock": c.PassBlock("[PASS]"),
+		"WarnBlock": c.WarnBlock("[WARN]"),
+		"FailBlock": c.FailBlock("[FAIL]"),
+	} {
+		if !strings.HasPrefix(got, "\033[7m") {
+			t.Errorf("%s missing SGR 7 reverse-video prefix; got %q", name, got)
+		}
+		if !strings.HasSuffix(got, "\033[0m") {
+			t.Errorf("%s missing reset suffix; got %q", name, got)
+		}
+	}
+}
+
+func TestColorizer_Tag(t *testing.T) {
+	enabled, err := NewColorizer("always", nonTTY(t))
+	if err != nil {
+		t.Fatalf("NewColorizer: %v", err)
+	}
+	disabled, err := NewColorizer("never", nonTTY(t))
+	if err != nil {
+		t.Fatalf("NewColorizer: %v", err)
+	}
+
+	for _, status := range []string{StatusPass, StatusWarn, StatusFail} {
+		bracketed := "[" + status + "]"
+		if got := disabled.Tag(status); got != bracketed {
+			t.Errorf("disabled Tag(%s) = %q, want %q", status, got, bracketed)
+		}
+		got := enabled.Tag(status)
+		if !strings.HasPrefix(got, "\033[7m") {
+			t.Errorf("enabled Tag(%s) missing SGR 7; got %q", status, got)
+		}
+		if !strings.Contains(got, bracketed) {
+			t.Errorf("enabled Tag(%s) missing bracket text %q; got %q", status, bracketed, got)
+		}
+	}
+
+	// Unknown status names fall back to plain brackets — defensive default.
+	if got := enabled.Tag("MAYBE"); got != "[MAYBE]" {
+		t.Errorf("Tag(unknown) = %q, want %q", got, "[MAYBE]")
 	}
 }

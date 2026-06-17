@@ -73,15 +73,13 @@ func writeTextReport(w io.Writer, rep report, colors shared.Colorizer) {
 		if len(check.Findings) > 0 || len(check.Extra) > 0 {
 			status = shared.StatusWarn
 		}
-		coloredStatus := colors.Pass(status)
-		if status == shared.StatusWarn {
-			coloredStatus = colors.Warn(status)
-		}
 		count := len(check.Findings)
 		for _, drift := range check.Extra {
 			count += len(drift.Details)
 		}
-		_, _ = fmt.Fprintf(w, "\n[%s] %s (%d)\n", coloredStatus, check.Name, count)
+		// Direction A reverse-video tag (spec §05). Tag carries the bracket
+		// form internally, so the NO_COLOR pipe fallback is still `[PASS]`.
+		_, _ = fmt.Fprintf(w, "\n%s %s (%d)\n", colors.Tag(status), check.Name, count)
 		for _, finding := range check.Findings {
 			_, _ = fmt.Fprintf(w, "- %s\n", finding)
 		}
