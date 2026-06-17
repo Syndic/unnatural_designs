@@ -30,7 +30,7 @@ go install "github.com/go-delve/delve/cmd/dlv@${DLV_VERSION}"
 
 # Install gotests — generates table-driven test scaffolds from a function.
 # renovate: datasource=go depName=github.com/cweill/gotests
-GOTESTS_VERSION=v1.6.0
+GOTESTS_VERSION=v1.9.0
 go install "github.com/cweill/gotests/gotests@${GOTESTS_VERSION}"
 
 # Install gomodifytags — add/remove/edit struct field tags from the editor.
