@@ -73,6 +73,10 @@
       "matchDatasources": [ "pypi" ],
       "matchDepNames": [ "ruff" ],
       "groupName": "ruff"
+    },
+    {
+      "matchManagers": [ "pep621" ],
+      "groupName": "Python dependencies"
     }
   ]
 }

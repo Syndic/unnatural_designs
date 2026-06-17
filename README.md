@@ -177,6 +177,7 @@ Three GitHub Actions workflows run on every push and pull request to `main`.
 | Semgrep                      | SAST - scans for injection flaws, insecure API usage, and hardcoded secrets     |
 | govulncheck                  | Dependency CVE scanning - checks reachable call paths against the Go vuln DB    |
 | govulncheck-all              | A single static target that github can require pass for branch protection rules |
+| pip-audit                    | Dependency CVE scanning for Python - manifest-based scan over the uv resolution |
 | Trivy                        | Supply chain and filesystem scanning - secrets, CVEs across all ecosystems      |
 
 **Devcontainer** - builds the devcontainer image and smoke-tests the toolchain it ships
@@ -242,6 +243,16 @@ Codecov, so local gutters and the Codecov dashboard reflect the same data.
 **Dependency updates** are managed automatically by [Renovate](https://docs.renovatebot.com). PRs
 are grouped where it's useful — Bazel toolchains and rulesets, Go modules, GitHub Actions, language
 toolchain SDKs (Go and Python version pins, tracked across `MODULE.bazel` / `go.work` / per-module
-`go.mod` / workflow `setup-python` / Dockerfile), and a dedicated group for `ruff`. Other tracked
-dependencies (`ty`, `pre-commit`, `buildifier`, `bazelisk`, the `uv` container-image tag) land as
+`go.mod` / workflow `setup-python` / Dockerfile), Python workspace dependencies (`pyproject.toml`
+plus the `uv.lock` it derives), and a dedicated group for `ruff`. Other tracked dependencies
+(`ty`, `pip-audit`, `pre-commit`, `buildifier`, `bazelisk`, the `uv` container-image tag) land as
 their own PRs. The full set of managers and groups lives in [`renovate.json`](renovate.json).
+
+On Renovate PRs that touch `pyproject.toml` or `uv.lock`, the
+[`renovate-requirements-lock.yml`](.github/workflows/renovate-requirements-lock.yml) workflow
+re-runs `uv export` and commits the refreshed `requirements_lock.txt` back to the PR branch via
+the GitHub GraphQL `createCommitOnBranch` mutation (signed by GitHub's web-flow key). The call
+uses an installation token from a dedicated GitHub App rather than the default `GITHUB_TOKEN` so
+required status checks retrigger on the new head. See
+[`docs/future-considerations.md`](docs/future-considerations.md) for the upstream
+`rules_python` work that would let us drop the derived file (and this workflow) entirely.

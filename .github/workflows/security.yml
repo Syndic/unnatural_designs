@@ -53,12 +53,15 @@ jobs:
             p/secrets
 
   # ── Dependency CVE Scanning ───────────────────────────────────────────────────
-  # Checks whether the code calls into known-vulnerable dependency code paths, not just whether a
-  # vulnerable package is present (lower noise than pure manifest scanning). Runs once per module.
-  # Currently covers Go via govulncheck.
+  # Per-language scanners that flag known-vulnerable third-party dependencies. The signal model
+  # differs by language — govulncheck does call-graph reachability (only fires when our code
+  # reaches the vulnerable symbol); pip-audit is manifest-based (fires on any flagged version in
+  # the resolved set). Both run once per resolution unit: govulncheck per Go module, pip-audit
+  # once over the workspace-wide uv resolution (uv enforces single-version-per-package across
+  # workspace members, so one scan covers every member).
   # TEND(lang-expand): add an equivalent per-language scanner as languages are adopted
-  #   (e.g. pip-audit for Python, cargo-audit for Rust, trivy fs --scanners vuln
-  #   for languages without a dedicated reachability tool).
+  #   (e.g. cargo-audit for Rust, trivy fs --scanners vuln for languages without a dedicated
+  #   reachability tool).
   govulncheck:
     name: govulncheck (${{ matrix.go_module }})
     runs-on: ubuntu-latest
@@ -102,6 +105,36 @@ jobs:
             exit 1
           fi
           echo "All govulncheck jobs passed"
+
+  # Python sibling of govulncheck. pip-audit reads requirements.txt format; we feed it a
+  # fresh `uv export` of uv.lock (the source of truth) into a tempfile rather than the
+  # committed requirements_lock.txt, so this scan is decoupled from whether the derived
+  # file is currently in sync — pre-commit and the Renovate auto-commit workflow each
+  # police that on their own paths.
+  pip-audit:
+    name: pip-audit
+    runs-on: ubuntu-latest
+    needs: [modules-check]
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v8.2.0
+      - uses: actions/setup-python@v6
+        with:
+          # renovate: datasource=python-version depName=python
+          python-version: "3.14"
+      - name: Export uv.lock to requirements.txt
+        run: |
+          uv export --format requirements-txt --no-hashes --no-emit-project \
+            --output-file "${RUNNER_TEMP}/requirements.txt"
+      - name: pip-audit
+        env:
+          # renovate: datasource=pypi depName=pip-audit
+          PIP_AUDIT_VERSION: "2.10.1"
+        run: uvx "pip-audit@${PIP_AUDIT_VERSION}" --requirement "${RUNNER_TEMP}/requirements.txt" --strict --disable-pip
 
   # ── Supply Chain and Filesystem Scanning ─────────────────────────────────────
   # Scans the entire repository for secrets committed to source, dependency CVEs across all
