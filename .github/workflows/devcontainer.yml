@@ -20,7 +20,7 @@ jobs:
     name: Build devcontainer and smoke test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           # Need history back to the PR base / previous push so we can diff for changed paths.
           fetch-depth: 0
