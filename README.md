@@ -248,11 +248,19 @@ plus the `uv.lock` it derives), and a dedicated group for `ruff`. Other tracked 
 (`ty`, `pip-audit`, `pre-commit`, `buildifier`, `bazelisk`, the `uv` container-image tag) land as
 their own PRs. The full set of managers and groups lives in [`renovate.json`](renovate.json).
 
-On Renovate PRs that touch `pyproject.toml` or `uv.lock`, the
-[`renovate-requirements-lock.yml`](.github/workflows/renovate-requirements-lock.yml) workflow
-re-runs `uv export` and commits the refreshed `requirements_lock.txt` back to the PR branch via
-the GitHub GraphQL `createCommitOnBranch` mutation (signed by GitHub's web-flow key). The call
-uses an installation token from a dedicated GitHub App rather than the default `GITHUB_TOKEN` so
+Two workflows handle derived lock files Renovate cannot update itself (each shells out to a
+build tool whose execution is blocked by Mend-hosted Renovate's `allowedUnsafeExecutions`
+allowlist):
+
+| Workflow | Trigger paths | Re-runs | Commits |
+| --- | --- | --- | --- |
+| [`renovate-requirements-lock.yml`](.github/workflows/renovate-requirements-lock.yml) | `pyproject.toml`, `uv.lock` | `uv export` | `requirements_lock.txt` |
+| [`renovate-module-bazel-lock.yml`](.github/workflows/renovate-module-bazel-lock.yml) | `MODULE.bazel` | `bazel mod deps --lockfile_mode=update` | `MODULE.bazel.lock` |
+
+Both delegate the actual commit to the shared composite action
+[`.github/actions/commit-file-via-app/`](.github/actions/commit-file-via-app/action.yml), which
+calls the GitHub GraphQL `createCommitOnBranch` mutation (signed by GitHub's web-flow key) using
+an installation token from a dedicated GitHub App rather than the default `GITHUB_TOKEN` — so
 required status checks retrigger on the new head. See
-[`docs/future-considerations.md`](docs/future-considerations.md) for the upstream
-`rules_python` work that would let us drop the derived file (and this workflow) entirely.
+[`docs/future-considerations.md`](docs/future-considerations.md) "Auto-commit GitHub App" for
+the rationale and the triggers that would retire each workflow.
