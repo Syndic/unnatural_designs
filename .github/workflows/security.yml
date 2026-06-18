@@ -134,7 +134,10 @@ jobs:
         env:
           # renovate: datasource=pypi depName=pip-audit
           PIP_AUDIT_VERSION: "2.10.1"
-        run: uvx "pip-audit@${PIP_AUDIT_VERSION}" --requirement "${RUNNER_TEMP}/requirements.txt" --strict --disable-pip
+        # `--no-deps` tells pip-audit to trust the file as the resolution (uv has already
+        # produced a fully-pinned flat export, so re-resolving against PyPI would just
+        # introduce a second resolver's opinion). `--strict` promotes warnings to failures.
+        run: uvx "pip-audit@${PIP_AUDIT_VERSION}" --requirement "${RUNNER_TEMP}/requirements.txt" --no-deps --strict
 
   # ── Supply Chain and Filesystem Scanning ─────────────────────────────────────
   # Scans the entire repository for secrets committed to source, dependency CVEs across all
