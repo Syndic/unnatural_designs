@@ -5,14 +5,9 @@ name: Renovate — re-export requirements_lock.txt
 # the source of truth; requirements_lock.txt is the requirements.txt-format projection that
 # rules_python's `pip.parse` consumes — see MODULE.bazel for the chain). On human PRs the
 # pre-commit hook keeps the export fresh; on Renovate PRs there is no human pre-commit step,
-# so this workflow plays the same role.
-#
-# The commit is created via the GitHub GraphQL `createCommitOnBranch` mutation, which signs
-# the commit with GitHub's web-flow key (required by branch protection). The call is
-# authenticated with an installation token from a dedicated GitHub App (see
-# docs/future-considerations.md "Auto-commit GitHub App") so the resulting push event is
-# attributed to the app rather than `github-actions[bot]` — the latter would suppress
-# downstream workflow runs and leave required status checks stuck on the pre-export commit.
+# so this workflow plays the same role. The `commit-file-via-app` composite action handles
+# the signing + retrigger plumbing — see .github/actions/commit-file-via-app/action.yml and
+# docs/future-considerations.md "Auto-commit GitHub App" for the rationale.
 
 on:
   pull_request:
@@ -23,8 +18,6 @@ on:
       - "pyproject.toml"
       - "requirements_lock.txt"
 
-# No GITHUB_TOKEN writes from this workflow; all mutating calls go through the app
-# installation token minted below. `contents: read` is what `actions/checkout` needs.
 permissions:
   contents: read
 
@@ -34,17 +27,8 @@ jobs:
     if: github.actor == 'renovate[bot]'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/create-github-app-token@v2
-        id: app-token
-        with:
-          app-id: ${{ vars.RENOVATE_HELPER_APP_ID }}
-          private-key: ${{ secrets.RENOVATE_HELPER_PRIVATE_KEY }}
-
       - uses: actions/checkout@v6
         with:
-          # Check out the PR head branch (not the default merge-commit ref) so the export
-          # runs against the contents Renovate proposed, and so we have the right branch
-          # name to push back to.
           ref: ${{ github.head_ref }}
           persist-credentials: false
 
@@ -55,48 +39,10 @@ jobs:
           uv export --format requirements-txt --no-emit-project \
             --output-file requirements_lock.txt
 
-      - name: Check for diff
-        id: diff
-        run: |
-          if git diff --quiet -- requirements_lock.txt; then
-            echo "changed=false" >> "${GITHUB_OUTPUT}"
-          else
-            echo "changed=true" >> "${GITHUB_OUTPUT}"
-          fi
-
-      - name: Commit re-exported lock via GraphQL
-        if: steps.diff.outputs.changed == 'true'
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          REPO: ${{ github.repository }}
-          BRANCH: ${{ github.head_ref }}
-        run: |
-          set -euo pipefail
-          # Read the branch tip directly from the remote (not local HEAD) so a fast-follow
-          # push between checkout and now causes a clean mutation rejection rather than a
-          # silent overwrite.
-          OID=$(gh api "repos/${REPO}/git/ref/heads/${BRANCH}" --jq .object.sha)
-          B64=$(base64 -w0 < requirements_lock.txt)
-          gh api graphql \
-            -F repo="${REPO}" \
-            -F branch="${BRANCH}" \
-            -F oid="${OID}" \
-            -F path="requirements_lock.txt" \
-            -F contents="${B64}" \
-            -F message="chore(deps): re-export requirements_lock.txt" \
-            -f query='
-              mutation(
-                $repo: String!,
-                $branch: String!,
-                $oid: GitObjectID!,
-                $path: String!,
-                $contents: Base64String!,
-                $message: String!
-              ) {
-                createCommitOnBranch(input: {
-                  branch: { repositoryNameWithOwner: $repo, branchName: $branch },
-                  expectedHeadOid: $oid,
-                  fileChanges: { additions: [{ path: $path, contents: $contents }] },
-                  message: { headline: $message }
-                }) { commit { url } }
-              }'
+      - uses: ./.github/actions/commit-file-via-app
+        with:
+          app-id: ${{ vars.RENOVATE_HELPER_APP_ID }}
+          private-key: ${{ secrets.RENOVATE_HELPER_PRIVATE_KEY }}
+          branch: ${{ github.head_ref }}
+          file-path: requirements_lock.txt
+          commit-message: "chore(deps): re-export requirements_lock.txt"

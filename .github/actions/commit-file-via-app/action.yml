@@ -1,0 +1,83 @@
+name: Commit file via GitHub App
+description: >-
+  Commits a single file change to the current PR branch using the GraphQL
+  `createCommitOnBranch` mutation, authenticated with a GitHub App installation
+  token. Web-flow signing is automatic with this mutation, and the resulting
+  push event is attributed to the app rather than `github-actions[bot]` so
+  downstream workflows retrigger normally. No-op if the file is unchanged.
+
+inputs:
+  app-id:
+    description: GitHub App ID whose installation will mint the commit token.
+    required: true
+  private-key:
+    description: GitHub App private key (PEM).
+    required: true
+  branch:
+    description: Branch name to commit to (typically `github.head_ref`).
+    required: true
+  file-path:
+    description: Path to the file to commit, relative to repo root.
+    required: true
+  commit-message:
+    description: Commit message headline.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - id: app-token
+      uses: actions/create-github-app-token@v2
+      with:
+        app-id: ${{ inputs.app-id }}
+        private-key: ${{ inputs.private-key }}
+
+    - id: diff
+      shell: bash
+      env:
+        FILE_PATH: ${{ inputs.file-path }}
+      run: |
+        if git diff --quiet -- "${FILE_PATH}"; then
+          echo "changed=false" >> "${GITHUB_OUTPUT}"
+        else
+          echo "changed=true" >> "${GITHUB_OUTPUT}"
+        fi
+
+    - if: steps.diff.outputs.changed == 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        REPO: ${{ github.repository }}
+        BRANCH: ${{ inputs.branch }}
+        FILE_PATH: ${{ inputs.file-path }}
+        MESSAGE: ${{ inputs.commit-message }}
+      run: |
+        set -euo pipefail
+        # Read the tip from the remote (not local HEAD) so a fast-follow push between
+        # our checkout and this call causes a clean mutation rejection rather than a
+        # silent overwrite.
+        OID=$(gh api "repos/${REPO}/git/ref/heads/${BRANCH}" --jq .object.sha)
+        B64=$(base64 -w0 < "${FILE_PATH}")
+        gh api graphql \
+          -F repo="${REPO}" \
+          -F branch="${BRANCH}" \
+          -F oid="${OID}" \
+          -F path="${FILE_PATH}" \
+          -F contents="${B64}" \
+          -F message="${MESSAGE}" \
+          -f query='
+            mutation(
+              $repo: String!,
+              $branch: String!,
+              $oid: GitObjectID!,
+              $path: String!,
+              $contents: Base64String!,
+              $message: String!
+            ) {
+              createCommitOnBranch(input: {
+                branch: { repositoryNameWithOwner: $repo, branchName: $branch },
+                expectedHeadOid: $oid,
+                fileChanges: { additions: [{ path: $path, contents: $contents }] },
+                message: { headline: $message }
+              }) { commit { url } }
+            }'

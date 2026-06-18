@@ -1,0 +1,53 @@
+name: Renovate — re-update MODULE.bazel.lock
+
+# Renovate's bazel-module manager bumps `bazel_dep` versions in MODULE.bazel but cannot
+# run `bazel mod deps --lockfile_mode=update` to refresh MODULE.bazel.lock — that shell-out
+# is gated by Mend-hosted Renovate's allowedUnsafeExecutions allowlist, and `bazelModDeps`
+# is not allowed by default. Without this workflow, every Renovate bazel PR lands with
+# MODULE.bazel updated and MODULE.bazel.lock stale; Bazel silently regenerates the lock
+# on every subsequent build, so the committed copy drifts further out of date over time.
+#
+# Same shape as renovate-requirements-lock.yml: refresh the derived file, commit via the
+# `commit-file-via-app` composite action. See docs/future-considerations.md
+# "Auto-commit GitHub App" for the signing + retrigger plumbing rationale.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+    paths:
+      - "MODULE.bazel"
+      - "MODULE.bazel.lock"
+
+permissions:
+  contents: read
+
+jobs:
+  re-update:
+    name: Re-update MODULE.bazel.lock
+    if: github.actor == 'renovate[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.head_ref }}
+          persist-credentials: false
+
+      # Plain bazelisk install — no remote cache needed for `bazel mod deps`, which only
+      # resolves module versions and writes the lock file. Avoids the BuildBuddy key
+      # plumbing the main `setup-bazel-remote` composite action requires.
+      - uses: bazel-contrib/setup-bazel@0.19.0
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+
+      - name: Re-update MODULE.bazel.lock
+        run: bazel mod deps --lockfile_mode=update
+
+      - uses: ./.github/actions/commit-file-via-app
+        with:
+          app-id: ${{ vars.RENOVATE_HELPER_APP_ID }}
+          private-key: ${{ secrets.RENOVATE_HELPER_PRIVATE_KEY }}
+          branch: ${{ github.head_ref }}
+          file-path: MODULE.bazel.lock
+          commit-message: "chore(deps): re-update MODULE.bazel.lock"

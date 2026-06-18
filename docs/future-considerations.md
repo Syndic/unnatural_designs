@@ -126,24 +126,31 @@ blocks on marker-evaluation work in #2786.
 work landing). That release is the prompt to (a) switch `pip.parse(..., requirements_lock = ...)`
 to whatever the new uv-native attribute is, (b) delete `requirements_lock.txt`, (c) drop the
 `uv-lock-fresh` hook's `requirements_lock.txt` re-export, (d) delete the
-`renovate-requirements-lock.yml` workflow and uninstall its supporting GitHub App, and
-(e) remove the freshness check in `meta/scripts/check_modules.py`.
+`renovate-requirements-lock.yml` workflow (the helper app stays installed as long as any other
+workflow uses it — see "Auto-commit GitHub App" below), and (e) remove the freshness check in
+`meta/scripts/check_modules.py`.
 
 ---
 
 ## Auto-commit GitHub App (`Renovate helper`)
 
-The `.github/workflows/renovate-requirements-lock.yml` workflow re-exports
-`requirements_lock.txt` on Renovate PRs and commits the result via the GraphQL
-`createCommitOnBranch` mutation. Signing comes from GitHub's web-flow key (automatic when the
-mutation is used); workflow retriggers require a non-`GITHUB_TOKEN` identity, which is why the
-call is made with an installation token from a dedicated GitHub App rather than the default
-`secrets.GITHUB_TOKEN`.
+Two workflows currently use the helper bot to commit derived-file regenerations on Renovate PRs:
 
-The app is currently single-purpose, but the setup generalises — any future bot-style automation
-that needs to push signed commits and retrigger checks can reuse the same app + token-minting
-pattern. If we end up with several such workflows, factor the
-`actions/create-github-app-token` step into a composite action under `.github/actions/`.
+- `.github/workflows/renovate-requirements-lock.yml` — re-exports `requirements_lock.txt` after
+  Renovate's `pep621` manager updates `pyproject.toml` + `uv.lock`.
+- `.github/workflows/renovate-module-bazel-lock.yml` — re-updates `MODULE.bazel.lock` after
+  Renovate's `bazel-module` manager bumps a `bazel_dep` version. Renovate cannot run this itself
+  because `bazel mod deps --lockfile_mode=update` is gated by Mend-hosted Renovate's
+  `allowedUnsafeExecutions` allowlist (same gate that blocks `postUpgradeTasks`).
+
+Both workflows delegate the actual commit to a shared composite action
+`.github/actions/commit-file-via-app/`, which wraps:
+
+- minting an installation token from the helper app (`actions/create-github-app-token`),
+- diff-checking the file (no-op if Renovate's update was already complete),
+- calling the GraphQL `createCommitOnBranch` mutation (web-flow signing satisfies branch
+  protection; the app-token actor identity makes the resulting push event retrigger downstream
+  required status checks — `GITHUB_TOKEN` would suppress them).
 
 ### App identity in `gitIgnoredAuthors`
 
@@ -166,11 +173,11 @@ is a `Set.delete(value)` call — no wildcard, no regex). The email shape is
 Until that update lands, Renovate will react to the helper's commits as if they were user
 edits — the same state we were in before this entry existed. Visible but not load-bearing.
 
-**Trigger to revisit:** if the `rules_python` uv-native lockfile work (above) lands and we delete
-the auto-commit workflow without any other workflow having grown a dependency on the app, the
-app can be uninstalled from the repo and its key destroyed (and the `gitIgnoredAuthors` entry
-removed in the same change). Inversely: if a second use case shows up before then, that's the
-prompt to extract the composite action.
+**Trigger to revisit:** if every workflow that uses the helper bot goes away (e.g. `rules_python`
+lands uv-native lockfile support per the entry above, AND `MODULE.bazel.lock` is either
+auto-managed by Bazel or by a Mend allowlist change that lets Renovate update it directly),
+the app can be uninstalled from the repo and its key destroyed (and the `gitIgnoredAuthors`
+entry removed in the same change).
 
 ---
 
