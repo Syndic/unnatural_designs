@@ -1,10 +1,11 @@
-name: Commit file via GitHub App
+name: Commit files via GitHub App
 description: >-
-  Commits a single file change to the current PR branch using the GraphQL
+  Commits one or more file changes to the current PR branch using the GraphQL
   `createCommitOnBranch` mutation, authenticated with a GitHub App installation
   token. Web-flow signing is automatic with this mutation, and the resulting
   push event is attributed to the app rather than `github-actions[bot]` so
-  downstream workflows retrigger normally. No-op if the file is unchanged.
+  downstream workflows retrigger normally. Files with no diff are skipped; if
+  none of the listed files changed, the whole step is a clean no-op.
 
 inputs:
   app-id:
@@ -16,8 +17,11 @@ inputs:
   branch:
     description: Branch name to commit to (typically `github.head_ref`).
     required: true
-  file-path:
-    description: Path to the file to commit, relative to repo root.
+  file-paths:
+    description: >-
+      Newline-separated list of file paths to commit (relative to repo root).
+      Each path is independently diff-checked; only changed files end up in the
+      mutation's `fileChanges.additions`.
     required: true
   commit-message:
     description: Commit message headline.
@@ -35,49 +39,81 @@ runs:
     - id: diff
       shell: bash
       env:
-        FILE_PATH: ${{ inputs.file-path }}
+        FILE_PATHS: ${{ inputs.file-paths }}
       run: |
-        if git diff --quiet -- "${FILE_PATH}"; then
-          echo "changed=false" >> "${GITHUB_OUTPUT}"
-        else
-          echo "changed=true" >> "${GITHUB_OUTPUT}"
-        fi
+        set -euo pipefail
+        CHANGED=""
+        while IFS= read -r path; do
+          [ -z "${path}" ] && continue
+          if ! git diff --quiet -- "${path}"; then
+            CHANGED+="${path}"$'\n'
+          fi
+        done <<< "${FILE_PATHS}"
+        {
+          echo "changed-paths<<EOF"
+          printf "%s" "${CHANGED}"
+          echo "EOF"
+        } >> "${GITHUB_OUTPUT}"
 
-    - if: steps.diff.outputs.changed == 'true'
+    - if: steps.diff.outputs.changed-paths != ''
       shell: bash
       env:
         GH_TOKEN: ${{ steps.app-token.outputs.token }}
         REPO: ${{ github.repository }}
         BRANCH: ${{ inputs.branch }}
-        FILE_PATH: ${{ inputs.file-path }}
+        CHANGED_PATHS: ${{ steps.diff.outputs.changed-paths }}
         MESSAGE: ${{ inputs.commit-message }}
       run: |
         set -euo pipefail
+
         # Read the tip from the remote (not local HEAD) so a fast-follow push between
         # our checkout and this call causes a clean mutation rejection rather than a
         # silent overwrite.
         OID=$(gh api "repos/${REPO}/git/ref/heads/${BRANCH}" --jq .object.sha)
-        B64=$(base64 -w0 < "${FILE_PATH}")
-        gh api graphql \
-          -F repo="${REPO}" \
-          -F branch="${BRANCH}" \
-          -F oid="${OID}" \
-          -F path="${FILE_PATH}" \
-          -F contents="${B64}" \
-          -F message="${MESSAGE}" \
-          -f query='
+
+        # Build the FileAddition[] for the mutation: one {path, contents} object per
+        # changed file. jq -s slurps the per-file objects into the array.
+        ADDITIONS=$(
+          while IFS= read -r path; do
+            [ -z "${path}" ] && continue
+            contents=$(base64 -w0 < "${path}")
+            jq -n --arg path "${path}" --arg contents "${contents}" \
+              '{path: $path, contents: $contents}'
+          done <<< "${CHANGED_PATHS}" | jq -s '.'
+        )
+
+        # `gh api graphql -F` does not parse JSON values for non-scalar GraphQL
+        # variables, so build the full request body ourselves and POST it via
+        # `--input -`. This is the only way to pass `additions: [FileAddition!]!`
+        # cleanly.
+        jq -n \
+          --arg query '
             mutation(
               $repo: String!,
               $branch: String!,
               $oid: GitObjectID!,
-              $path: String!,
-              $contents: Base64String!,
+              $additions: [FileAddition!]!,
               $message: String!
             ) {
               createCommitOnBranch(input: {
                 branch: { repositoryNameWithOwner: $repo, branchName: $branch },
                 expectedHeadOid: $oid,
-                fileChanges: { additions: [{ path: $path, contents: $contents }] },
+                fileChanges: { additions: $additions },
                 message: { headline: $message }
               }) { commit { url } }
-            }'
+            }' \
+          --arg repo "${REPO}" \
+          --arg branch "${BRANCH}" \
+          --arg oid "${OID}" \
+          --argjson additions "${ADDITIONS}" \
+          --arg message "${MESSAGE}" \
+          '{
+            query: $query,
+            variables: {
+              repo: $repo,
+              branch: $branch,
+              oid: $oid,
+              additions: $additions,
+              message: $message
+            }
+          }' | gh api graphql --input -

@@ -44,5 +44,6 @@ jobs:
           app-id: ${{ vars.RENOVATE_HELPER_APP_ID }}
           private-key: ${{ secrets.RENOVATE_HELPER_PRIVATE_KEY }}
           branch: ${{ github.head_ref }}
-          file-path: requirements_lock.txt
+          file-paths: |
+            requirements_lock.txt
           commit-message: "chore(deps): re-export requirements_lock.txt"
