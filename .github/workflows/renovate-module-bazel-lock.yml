@@ -49,5 +49,6 @@ jobs:
           app-id: ${{ vars.RENOVATE_HELPER_APP_ID }}
           private-key: ${{ secrets.RENOVATE_HELPER_PRIVATE_KEY }}
           branch: ${{ github.head_ref }}
-          file-path: MODULE.bazel.lock
+          file-paths: |
+            MODULE.bazel.lock
           commit-message: "chore(deps): re-update MODULE.bazel.lock"
