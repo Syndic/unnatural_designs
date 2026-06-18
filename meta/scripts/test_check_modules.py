@@ -841,7 +841,7 @@ class TestUvExport(unittest.TestCase):
         self.assertEqual(len(captured), 1)
         cmd = captured[0]
         self.assertEqual(cmd[:2], ["uv", "export"])
-        self.assertIn("--no-hashes", cmd)
+        self.assertNotIn("--no-hashes", cmd)
         self.assertIn("--no-emit-project", cmd)
         self.assertEqual(cmd[cmd.index("--format") + 1], "requirements-txt")
 
