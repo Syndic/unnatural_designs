@@ -1,13 +1,32 @@
-name: Renovate — re-export requirements_lock.txt
+name: Renovate — re-derive Python lock files
 
-# Renovate's pep621 manager updates pyproject.toml and uv.lock together in a single PR
-# commit, but does not run the `uv export` step that produces requirements_lock.txt (uv.lock is
-# the source of truth; requirements_lock.txt is the requirements.txt-format projection that
-# rules_python's `pip.parse` consumes — see MODULE.bazel for the chain). On human PRs the
-# pre-commit hook keeps the export fresh; on Renovate PRs there is no human pre-commit step,
-# so this workflow plays the same role. The `commit-file-via-app` composite action handles
-# the signing + retrigger plumbing — see .github/actions/commit-file-via-app/action.yml and
-# docs/future-considerations.md "Auto-commit GitHub App" for the rationale.
+# Renovate's pep621 manager cannot run `uv lock` on Mend-hosted Renovate (gated by
+# allowedUnsafeExecutions), so it falls back to the pip_requirements manager which edits
+# `requirements_lock.txt` in place. That edit alone is not authoritative — `uv.lock` is the
+# resolution source of truth, and `requirements_lock.txt` is its `uv export` projection.
+#
+# This workflow treats Renovate's edits as *upgrade signals*, not authoritative state:
+#
+#   1. Read which packages Renovate touched (and the versions it proposed) by diffing
+#      `requirements_lock.txt` against the PR base.
+#   2. Run `uv lock --upgrade-package <name>` for each proposed bump. uv re-resolves and
+#      picks whatever version satisfies the workspace's constraints.
+#   3. Re-export `requirements_lock.txt` from the refreshed `uv.lock`.
+#   4. For each proposed package: did uv resolve to >= the version Renovate proposed?
+#      - If yes for all: commit `uv.lock` + `requirements_lock.txt` and the PR is mergeable.
+#      - If no for any: a workspace constraint forbids the bump. Reset the working tree
+#        (we won't silently revert Renovate's edit) and file a REQUEST_CHANGES review with
+#        the diagnosis. The review blocks merge until dismissed; dismissal is the
+#        deliberate ack that the PR can't be honored and should be closed (or the
+#        conflicting constraint relaxed first).
+#
+# Prior bot REQUEST_CHANGES reviews are dismissed after the new state lands (commit OR
+# new review filed) so the PR's review status reflects the latest evaluation. Dismissing
+# comes *after* the new action so a partial workflow failure leaves the prior review
+# intact rather than briefly clearing the gate.
+#
+# See docs/future-considerations.md "Auto-commit GitHub App" for the broader rationale,
+# and `commit-file-via-app/action.yml` for the signing + retrigger plumbing.
 
 on:
   pull_request:
@@ -22,28 +41,207 @@ permissions:
   contents: read
 
 jobs:
-  re-export:
-    name: Re-export requirements_lock.txt
+  re-derive:
+    name: Re-derive Python lock files
     if: github.actor == 'renovate[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.head_ref }}
+          # Need the base ref reachable so we can diff requirements_lock.txt against it
+          # to discover which packages Renovate proposed bumping. Shallow checkout (the
+          # default) only fetches the head commit and would not have origin/<base>.
+          fetch-depth: 0
           persist-credentials: false
 
       - uses: astral-sh/setup-uv@v8.2.0
+
+      - name: Extract proposed package bumps
+        id: proposed
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          # Renovate's edit shows up as paired `-name==old` / `+name==new` lines in the
+          # diff. Capture (name, new-version) pairs; the names go into the `--upgrade-
+          # package` flags below, and the versions are the targets we'll check against
+          # uv's resolution at the end.
+          TARGETS=$(
+            git diff "origin/${BASE_REF}" -- requirements_lock.txt \
+              | grep -E '^\+[a-zA-Z0-9_.-]+==' \
+              | sed -E 's/^\+([a-zA-Z0-9_.-]+)==([^ \\]+).*/\1 \2/' \
+              | sort -u
+          )
+          PACKAGES=$(awk '{print $1}' <<< "${TARGETS}" | sort -u)
+          {
+            echo "packages<<EOF"
+            printf "%s" "${PACKAGES}"
+            echo
+            echo "EOF"
+            echo "targets<<EOF"
+            printf "%s" "${TARGETS}"
+            echo
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Refresh uv.lock honoring proposed bumps
+        env:
+          PACKAGES: ${{ steps.proposed.outputs.packages }}
+        run: |
+          set -euo pipefail
+          # Build --upgrade-package flags from the proposed names. If the diff did not
+          # surface any (e.g. Renovate edited only pyproject.toml), plain `uv lock`
+          # still does the right thing — it re-resolves against the current pyproject.
+          FLAGS=()
+          while IFS= read -r pkg; do
+            [ -z "${pkg}" ] && continue
+            FLAGS+=(--upgrade-package "${pkg}")
+          done <<< "${PACKAGES}"
+          uv lock "${FLAGS[@]}"
 
       - name: Re-export requirements_lock.txt
         run: |
           uv export --format requirements-txt --no-emit-project \
             --output-file requirements_lock.txt
 
-      - uses: ./.github/actions/commit-file-via-app
+      - name: Check whether proposed bumps were honored
+        id: check
+        env:
+          TARGETS: ${{ steps.proposed.outputs.targets }}
+        run: |
+          set -euo pipefail
+          # For each (pkg, target) pair Renovate proposed, find the version uv actually
+          # resolved to in the regenerated requirements_lock.txt. A package counts as
+          # "honored" if uv's resolution is >= the target (uv may pick a newer version
+          # if one shipped between Renovate's scan and our run — that's still an advance
+          # in the spirit of the proposal). pep440 comparison via `packaging` because
+          # lexical comparison of version strings is unreliable.
+          CONFLICTS=$(
+            while IFS= read -r line; do
+              [ -z "${line}" ] && continue
+              pkg=$(awk '{print $1}' <<< "${line}")
+              target=$(awk '{print $2}' <<< "${line}")
+              resolved=$(grep -E "^${pkg}==" requirements_lock.txt | head -1 \
+                | sed -E 's/^[^=]+==([^ \\]+).*/\1/')
+              if [ -z "${resolved}" ]; then
+                echo "${pkg}: not present in regenerated lockfile (Renovate proposed ${target})"
+                continue
+              fi
+              advanced=$(uvx --quiet --with packaging python3 -c \
+                "from packaging.version import Version; print('yes' if Version('${resolved}') >= Version('${target}') else 'no')")
+              if [ "${advanced}" = "no" ]; then
+                echo "${pkg}: uv resolved ${resolved}; Renovate proposed ${target} (uv would not advance)"
+              fi
+            done <<< "${TARGETS}"
+          )
+          {
+            echo "conflicts<<EOF"
+            printf "%s" "${CONFLICTS}"
+            echo
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          app-id: ${{ vars.RENOVATE_HELPER_APP_ID }}
+          private-key: ${{ secrets.RENOVATE_HELPER_PRIVATE_KEY }}
+
+      # ── Conflict path ────────────────────────────────────────────────────────────
+      # Reset the working tree (we will not commit the partial uv resolution), file a
+      # REQUEST_CHANGES review with the diagnosis. Order matters in the next group:
+      # file-then-dismiss, so a partial failure leaves the stale review intact rather
+      # than briefly clearing the gate.
+
+      - name: Reset working tree (conflict path)
+        if: steps.check.outputs.conflicts != ''
+        run: git checkout -- uv.lock requirements_lock.txt
+
+      - name: File REQUEST_CHANGES review
+        if: steps.check.outputs.conflicts != ''
+        id: file-review
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          CONFLICTS: ${{ steps.check.outputs.conflicts }}
+        run: |
+          set -euo pipefail
+          BODY=$(cat <<EOF
+          \`uv lock\` would not advance the following packages to the versions Renovate proposed:
+
+          \`\`\`
+          ${CONFLICTS}
+          \`\`\`
+
+          A workspace constraint is holding them at their current versions. Likely sources:
+          - An explicit upper bound in \`pyproject.toml\` or a workspace member's \`pyproject.toml\`
+          - A transitive constraint pinning the package below the proposed version
+          - A platform marker excluding the proposed version
+
+          Not committing the revert — that would silently erase Renovate's signal. Dismiss this review when ready: either close this PR (the bump is genuinely impossible) or relax the conflicting constraint and push to the branch (the workflow will re-evaluate).
+          EOF
+          )
+          # Capture the new review's ID so the dismiss step below can exclude it from
+          # the "prior reviews" set it dismisses.
+          NEW_ID=$(gh api "repos/${REPO}/pulls/${PR}/reviews" \
+            -f event=REQUEST_CHANGES \
+            -f body="${BODY}" \
+            -f commit_id="${HEAD_SHA}" \
+            --jq '.id')
+          echo "review-id=${NEW_ID}" >> "${GITHUB_OUTPUT}"
+
+      # ── Success path ─────────────────────────────────────────────────────────────
+      # Commit both files via the composite action; the action no-ops cleanly if neither
+      # changed (e.g. a re-run on an already-honored PR). Order matters in the next
+      # group: commit-then-dismiss, so if commit fails the prior review is still in
+      # place to keep the PR blocked.
+
+      - name: Commit re-derived lock files
+        if: steps.check.outputs.conflicts == ''
+        uses: ./.github/actions/commit-file-via-app
         with:
           app-id: ${{ vars.RENOVATE_HELPER_APP_ID }}
           private-key: ${{ secrets.RENOVATE_HELPER_PRIVATE_KEY }}
           branch: ${{ github.head_ref }}
           file-paths: |
+            uv.lock
             requirements_lock.txt
-          commit-message: "chore(deps): re-export requirements_lock.txt"
+          commit-message: "chore(deps): re-derive uv.lock + requirements_lock.txt"
+
+      # ── Dismiss prior bot reviews ───────────────────────────────────────────────
+      # Runs after the success or conflict path so we never briefly clear the gate
+      # before the new state is in place. The conflict path passes the just-filed
+      # review ID via `file-review.outputs.review-id`; the filter excludes that ID so
+      # we don't dismiss our own fresh review. In the success path the input is empty
+      # and every active bot review is fair game.
+      #
+      # The bot login string is the same one tracked by `gitIgnoredAuthors` in
+      # renovate.json; if the helper app is recreated, both values need to be updated
+      # together (see docs/future-considerations.md "Auto-commit GitHub App").
+
+      - name: Dismiss prior bot CHANGES_REQUESTED reviews
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          EXCLUDE_ID: ${{ steps.file-review.outputs.review-id }}
+          DISMISS_MESSAGE: ${{ steps.check.outputs.conflicts == '' && 'Resolved by fresh evaluation.' || 'Superseded by fresh evaluation.' }}
+        run: |
+          set -euo pipefail
+          BASE_FILTER='.user.login == "unnatural-designs-renovate-helper[bot]" and .state == "CHANGES_REQUESTED"'
+          if [ -n "${EXCLUDE_ID}" ]; then
+            JQ_FILTER=".[] | select(${BASE_FILTER} and .id != ${EXCLUDE_ID}) | .id"
+          else
+            JQ_FILTER=".[] | select(${BASE_FILTER}) | .id"
+          fi
+          REVIEWS=$(gh api "repos/${REPO}/pulls/${PR}/reviews" --jq "${JQ_FILTER}")
+          while IFS= read -r review_id; do
+            [ -z "${review_id}" ] && continue
+            gh api -X PUT \
+              "repos/${REPO}/pulls/${PR}/reviews/${review_id}/dismissals" \
+              -f message="${DISMISS_MESSAGE}" \
+              -f event=DISMISS
+          done <<< "${REVIEWS}"

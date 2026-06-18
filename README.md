@@ -254,13 +254,19 @@ allowlist):
 
 | Workflow | Trigger paths | Re-runs | Commits |
 | --- | --- | --- | --- |
-| [`renovate-requirements-lock.yml`](.github/workflows/renovate-requirements-lock.yml) | `pyproject.toml`, `uv.lock` | `uv export` | `requirements_lock.txt` |
+| [`renovate-requirements-lock.yml`](.github/workflows/renovate-requirements-lock.yml) | `pyproject.toml`, `uv.lock`, `requirements_lock.txt` | `uv lock --upgrade-package <each>` + `uv export` | `uv.lock`, `requirements_lock.txt` |
 | [`renovate-module-bazel-lock.yml`](.github/workflows/renovate-module-bazel-lock.yml) | `MODULE.bazel` | `bazel mod deps --lockfile_mode=update` | `MODULE.bazel.lock` |
 
-Both delegate the actual commit to the shared composite action
+The Python workflow treats Renovate's `requirements_lock.txt` edits as upgrade signals rather
+than authoritative state — it asks uv to re-resolve with those packages flagged for upgrade, then
+commits the result. If uv refuses to advance a proposed bump (a workspace constraint conflict),
+the workflow files a `REQUEST_CHANGES` review on the PR with the diagnosis instead of silently
+reverting Renovate's edit. Prior bot reviews are dismissed once the new state lands.
+
+Both workflows delegate the actual commit to the shared composite action
 [`.github/actions/commit-file-via-app/`](.github/actions/commit-file-via-app/action.yml), which
 calls the GitHub GraphQL `createCommitOnBranch` mutation (signed by GitHub's web-flow key) using
 an installation token from a dedicated GitHub App rather than the default `GITHUB_TOKEN` — so
 required status checks retrigger on the new head. See
 [`docs/future-considerations.md`](docs/future-considerations.md) "Auto-commit GitHub App" for
-the rationale and the triggers that would retire each workflow.
+the rationale, the app's required permissions, and the triggers that would retire each workflow.
