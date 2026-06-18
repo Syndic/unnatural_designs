@@ -7,9 +7,6 @@
   "gitIgnoredAuthors": [
     "294636956+unnatural-designs-renovate-helper[bot]@users.noreply.github.com"
   ],
-  "ignorePaths": [
-    "requirements_lock.txt"
-  ],
   "customManagers": [
     {
       "customType": "regex",
