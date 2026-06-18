@@ -1,3 +1,4 @@
+load("@pypi//:requirements.bzl", "requirement")
 load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 
 py_library(
@@ -99,4 +100,28 @@ py_test(
     srcs = ["test_check_no_cgo.py"],
     main = "test_check_no_cgo.py",
     deps = [":check_no_cgo_lib"],
+)
+
+py_library(
+    name = "ratify_renovate_proposals_lib",
+    srcs = ["ratify_renovate_proposals.py"],
+    deps = [requirement("packaging")],
+)
+
+py_binary(
+    name = "ratify_renovate_proposals",
+    srcs = ["ratify_renovate_proposals.py"],
+    main = "ratify_renovate_proposals.py",
+    deps = [requirement("packaging")],
+)
+
+py_test(
+    name = "test_ratify_renovate_proposals",
+    size = "small",
+    srcs = ["test_ratify_renovate_proposals.py"],
+    main = "test_ratify_renovate_proposals.py",
+    deps = [
+        ":ratify_renovate_proposals_lib",
+        requirement("packaging"),
+    ],
 )

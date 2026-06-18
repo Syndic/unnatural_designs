@@ -136,23 +136,44 @@ text-editing the file in place — once the file is gone, the entry is moot).
 
 ## Auto-commit GitHub App (`Renovate helper`)
 
-Two workflows currently use the helper bot to commit derived-file regenerations on Renovate PRs:
+Two workflows currently use the helper bot on Renovate PRs:
 
-- `.github/workflows/renovate-requirements-lock.yml` — re-exports `requirements_lock.txt` after
-  Renovate's `pep621` manager updates `pyproject.toml` + `uv.lock`.
+- `.github/workflows/renovate-requirements-lock.yml` — **ratifies Renovate's Python dep
+  proposals via uv** and re-derives both `uv.lock` and `requirements_lock.txt`. Renovate's
+  `pep621` cannot run `uv lock` on Mend hosted (`allowedUnsafeExecutions` allowlist gate), so it
+  falls back to `pip_requirements` editing `requirements_lock.txt` in place. The workflow runs
+  [`meta/scripts/ratify_renovate_proposals.py`](../meta/scripts/ratify_renovate_proposals.py),
+  which extracts the proposed package names from the diff, runs `uv lock --upgrade-package <each>`
+  so uv is the actual resolver, re-exports `requirements_lock.txt`, and reports any packages uv
+  refused to advance (workspace constraint conflicts). The workflow then commits both files on
+  full success or files a `REQUEST_CHANGES` review with the script's per-package diagnosis on
+  conflict — never silently reverting Renovate's signal. Dismissing the review is the deliberate
+  ack that the bump is impossible (close the PR) or that the constraint will be relaxed (push
+  to the branch to re-evaluate). Prior bot `REQUEST_CHANGES` reviews are dismissed after the
+  new state lands so the PR's review status always reflects the latest evaluation. The data
+  manipulation (diff parsing, pep440 comparison) is in the Python script under tests
+  (`//meta/scripts:test_ratify_renovate_proposals`); the workflow handles only Actions-context
+  side effects (token mint, GitHub API calls, composite action invocation).
 - `.github/workflows/renovate-module-bazel-lock.yml` — re-updates `MODULE.bazel.lock` after
-  Renovate's `bazel-module` manager bumps a `bazel_dep` version. Renovate cannot run this itself
-  because `bazel mod deps --lockfile_mode=update` is gated by Mend-hosted Renovate's
-  `allowedUnsafeExecutions` allowlist (same gate that blocks `postUpgradeTasks`).
+  Renovate's `bazel-module` manager bumps a `bazel_dep` version. Same allowlist story for
+  `bazel mod deps --lockfile_mode=update`; same shape on our side, minus the ratify-vs-commit
+  branching (the Bazel update is mechanical, no equivalent of uv's "constraint refuses to
+  advance" failure mode).
 
 Both workflows delegate the actual commit to a shared composite action
 `.github/actions/commit-file-via-app/`, which wraps:
 
 - minting an installation token from the helper app (`actions/create-github-app-token`),
-- diff-checking the file (no-op if Renovate's update was already complete),
+- diff-checking each requested file (no-op if Renovate's update was already complete),
 - calling the GraphQL `createCommitOnBranch` mutation (web-flow signing satisfies branch
   protection; the app-token actor identity makes the resulting push event retrigger downstream
   required status checks — `GITHUB_TOKEN` would suppress them).
+
+### App permissions
+
+The helper app needs `Contents: read & write` (to commit) **and `Pull requests: read & write`**
+(to file and dismiss `REQUEST_CHANGES` reviews on conflict). Both are configured in the app's
+settings on GitHub; no code change.
 
 ### App identity in `gitIgnoredAuthors`
 

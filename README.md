@@ -254,13 +254,21 @@ allowlist):
 
 | Workflow | Trigger paths | Re-runs | Commits |
 | --- | --- | --- | --- |
-| [`renovate-requirements-lock.yml`](.github/workflows/renovate-requirements-lock.yml) | `pyproject.toml`, `uv.lock` | `uv export` | `requirements_lock.txt` |
+| [`renovate-requirements-lock.yml`](.github/workflows/renovate-requirements-lock.yml) | `pyproject.toml`, `uv.lock`, `requirements_lock.txt` | [`meta/scripts/ratify_renovate_proposals.py`](meta/scripts/ratify_renovate_proposals.py) (`uv lock --upgrade-package <each>` + `uv export`) | `uv.lock`, `requirements_lock.txt` |
 | [`renovate-module-bazel-lock.yml`](.github/workflows/renovate-module-bazel-lock.yml) | `MODULE.bazel` | `bazel mod deps --lockfile_mode=update` | `MODULE.bazel.lock` |
 
-Both delegate the actual commit to the shared composite action
+The Python workflow ratifies Renovate's `requirements_lock.txt` edits via uv: it extracts the
+proposed package names, asks uv to re-resolve with those packages flagged for upgrade, and either
+commits the result or files a `REQUEST_CHANGES` review on the PR (with the script's diagnosis)
+if uv refuses to advance a proposed bump. The diff parsing and pep440 comparison live in
+[`meta/scripts/ratify_renovate_proposals.py`](meta/scripts/ratify_renovate_proposals.py) under
+unit tests (`bazel test //meta/scripts:test_ratify_renovate_proposals`); the workflow handles
+only the Actions-context side effects (commit, file/dismiss reviews).
+
+Both workflows delegate the actual commit to the shared composite action
 [`.github/actions/commit-file-via-app/`](.github/actions/commit-file-via-app/action.yml), which
 calls the GitHub GraphQL `createCommitOnBranch` mutation (signed by GitHub's web-flow key) using
 an installation token from a dedicated GitHub App rather than the default `GITHUB_TOKEN` — so
 required status checks retrigger on the new head. See
 [`docs/future-considerations.md`](docs/future-considerations.md) "Auto-commit GitHub App" for
-the rationale and the triggers that would retire each workflow.
+the rationale, the app's required permissions, and the triggers that would retire each workflow.
