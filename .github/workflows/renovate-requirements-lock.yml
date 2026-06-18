@@ -70,12 +70,10 @@ jobs:
           private-key: ${{ secrets.RENOVATE_HELPER_PRIVATE_KEY }}
 
       # ── Conflict path ────────────────────────────────────────────────────────────
-      # Reset the working tree (we will not commit a partial uv resolution), file a
-      # REQUEST_CHANGES review with the diagnosis the script produced.
-
-      - name: Reset working tree (conflict path)
-        if: steps.ratify.outputs.conflicts != ''
-        run: git checkout -- uv.lock requirements_lock.txt
+      # File a REQUEST_CHANGES review with the diagnosis the script produced. The
+      # working tree's partial uv resolution is intentionally left alone — the commit
+      # step below is gated by `conflicts == ''`, and no later step reads the tree, so
+      # the runner just discards it when the job ends.
 
       - name: File REQUEST_CHANGES review
         if: steps.ratify.outputs.conflicts != ''
