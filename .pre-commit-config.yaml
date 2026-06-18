@@ -14,7 +14,11 @@ repos:
         # Re-runs the lock and the requirements_lock.txt export so a pyproject
         # edit can't land without the derived files. uv.lock is the source of
         # truth; requirements_lock.txt is what rules_python's pip.parse reads.
-        entry: bash -c 'set -euo pipefail; uv lock; uv export --format requirements-txt --no-hashes --no-emit-project --output-file requirements_lock.txt'
+        # Hashes are deliberately kept — rules_python's pip.parse uses them to
+        # verify the exact wheel uv resolved against; without them, pip.parse
+        # round-trips to PyPI's Simple API and accepts any wheel for the pinned
+        # version (see MODULE.bazel near `pip.parse` for the full rationale).
+        entry: bash -c 'set -euo pipefail; uv lock; uv export --format requirements-txt --no-emit-project --output-file requirements_lock.txt'
         pass_filenames: false
         files: ^(pyproject\.toml|uv\.lock|requirements_lock\.txt)$
 

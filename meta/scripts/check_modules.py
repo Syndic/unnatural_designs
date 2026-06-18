@@ -287,7 +287,6 @@ def _uv_export(root: Path) -> str | None:
                     "export",
                     "--format",
                     "requirements-txt",
-                    "--no-hashes",
                     "--no-emit-project",
                     "--output-file",
                     str(tmp_path),

@@ -52,7 +52,7 @@ jobs:
 
       - name: Re-export requirements_lock.txt
         run: |
-          uv export --format requirements-txt --no-hashes --no-emit-project \
+          uv export --format requirements-txt --no-emit-project \
             --output-file requirements_lock.txt
 
       - name: Check for diff
