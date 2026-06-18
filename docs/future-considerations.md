@@ -145,10 +145,32 @@ that needs to push signed commits and retrigger checks can reuse the same app + 
 pattern. If we end up with several such workflows, factor the
 `actions/create-github-app-token` step into a composite action under `.github/actions/`.
 
+### App identity in `gitIgnoredAuthors`
+
+`renovate.json` lists the helper bot's commit-author email under `gitIgnoredAuthors` so Renovate
+does not treat the auto-commit as "user modified this branch" — without it, Renovate suppresses
+its own follow-up actions (rebase, additional dep bumps within the same group) on any branch we
+have touched.
+
+The match is exact-string only ([renovate/lib/util/git/index.ts:885](https://github.com/renovatebot/renovate/blob/main/lib/util/git/index.ts#L885)
+is a `Set.delete(value)` call — no wildcard, no regex). The email shape is
+`<numeric-id>+<app-slug>[bot]@users.noreply.github.com`; both halves change if the app is recreated.
+
+**If the app is ever recreated, recovery is:**
+
+1. Wait for the next Renovate PR where our auto-commit fires.
+2. Read the new author email off it:
+   `gh api repos/Syndic/unnatural_designs/pulls/<n>/commits --jq '.[].commit.author.email'`
+3. Update `gitIgnoredAuthors` in `renovate.json` with the new value.
+
+Until that update lands, Renovate will react to the helper's commits as if they were user
+edits — the same state we were in before this entry existed. Visible but not load-bearing.
+
 **Trigger to revisit:** if the `rules_python` uv-native lockfile work (above) lands and we delete
 the auto-commit workflow without any other workflow having grown a dependency on the app, the
-app can be uninstalled from the repo and its key destroyed. Inversely: if a second use case shows
-up before then, that's the prompt to extract the composite action.
+app can be uninstalled from the repo and its key destroyed (and the `gitIgnoredAuthors` entry
+removed in the same change). Inversely: if a second use case shows up before then, that's the
+prompt to extract the composite action.
 
 ---
 
