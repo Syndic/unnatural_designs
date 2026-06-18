@@ -107,6 +107,51 @@ pattern to include `\.py$`.
 
 ---
 
+## Drop `requirements_lock.txt` once `rules_python` reads `uv.lock` natively
+
+`rules_python`'s `pip.parse` extension only accepts requirements.txt-format inputs at the pinned
+commit (and on `main`). uv.lock is uv's native TOML format, so the chain
+`pyproject.toml → uv.lock → requirements_lock.txt → pip.parse` carries a derived file
+(requirements_lock.txt) that must be kept in sync with uv.lock by the `uv-lock-fresh` pre-commit
+hook and the `Renovate — re-export requirements_lock.txt` workflow.
+
+The drift surface goes away once `rules_python` can point `pip.parse` at `uv.lock` directly.
+Upstream tracking: [bazel-contrib/rules_python#3557](https://github.com/bazel-contrib/rules_python/issues/3557)
+and the in-flight PR [bazel-contrib/rules_python#3785](https://github.com/bazel-contrib/rules_python/pull/3785).
+PEP 751 (`pylock.toml`) is the longer-term ecosystem-wide alternative — parent issue
+[bazel-contrib/rules_python#2787](https://github.com/bazel-contrib/rules_python/issues/2787), which
+blocks on marker-evaluation work in #2786.
+
+**Trigger to revisit:** the `rules_python` release containing #3785 (or, separately, the PEP 751
+work landing). That release is the prompt to (a) switch `pip.parse(..., requirements_lock = ...)`
+to whatever the new uv-native attribute is, (b) delete `requirements_lock.txt`, (c) drop the
+`uv-lock-fresh` hook's `requirements_lock.txt` re-export, (d) delete the
+`renovate-requirements-lock.yml` workflow and uninstall its supporting GitHub App, and
+(e) remove the freshness check in `meta/scripts/check_modules.py`.
+
+---
+
+## Auto-commit GitHub App (`Renovate helper`)
+
+The `.github/workflows/renovate-requirements-lock.yml` workflow re-exports
+`requirements_lock.txt` on Renovate PRs and commits the result via the GraphQL
+`createCommitOnBranch` mutation. Signing comes from GitHub's web-flow key (automatic when the
+mutation is used); workflow retriggers require a non-`GITHUB_TOKEN` identity, which is why the
+call is made with an installation token from a dedicated GitHub App rather than the default
+`secrets.GITHUB_TOKEN`.
+
+The app is currently single-purpose, but the setup generalises — any future bot-style automation
+that needs to push signed commits and retrigger checks can reuse the same app + token-minting
+pattern. If we end up with several such workflows, factor the
+`actions/create-github-app-token` step into a composite action under `.github/actions/`.
+
+**Trigger to revisit:** if the `rules_python` uv-native lockfile work (above) lands and we delete
+the auto-commit workflow without any other workflow having grown a dependency on the app, the
+app can be uninstalled from the repo and its key destroyed. Inversely: if a second use case shows
+up before then, that's the prompt to extract the composite action.
+
+---
+
 ## Devcontainer: Docker / Kubernetes Extensions Not Fully Wired
 
 The devcontainer recommends a set of VS Code extensions that mirrors `.vscode/extensions.json`,

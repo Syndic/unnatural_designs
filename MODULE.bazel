@@ -91,6 +91,10 @@ python.toolchain(
 # uv.lock is the source of truth; requirements_lock.txt is its `uv export`
 # projection (rules_python does not read uv.lock natively). A pre-commit hook
 # keeps the two in sync; see `uv-lock-fresh` in .pre-commit-config.yaml.
+# The export deliberately keeps `--hash` entries: pip.parse uses them to verify
+# the exact artifact uv resolved against. Without hashes it round-trips to
+# PyPI's Simple API at fetch time and accepts any wheel ever uploaded under the
+# pinned version — strictly weaker provenance for no gain.
 pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
 pip.parse(
     hub_name = "pypi",

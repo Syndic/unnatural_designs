@@ -287,7 +287,6 @@ def _uv_export(root: Path) -> str | None:
                     "export",
                     "--format",
                     "requirements-txt",
-                    "--no-hashes",
                     "--no-emit-project",
                     "--output-file",
                     str(tmp_path),
@@ -328,7 +327,7 @@ def check_uv_lock_fresh(root: Path) -> int:
     if _strip_header(exported) != _strip_header(checked_in.read_text()):
         print(
             "requirements_lock.txt:1:1-2: stale — out of sync with uv.lock + pyproject.toml. "
-            "Re-run `uv export --format requirements-txt --no-hashes --no-emit-project "
+            "Re-run `uv export --format requirements-txt --no-emit-project "
             "--output-file requirements_lock.txt` (or rely on the uv-lock-fresh pre-commit hook)."
         )
         return 1
