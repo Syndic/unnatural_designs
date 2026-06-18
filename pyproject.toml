@@ -5,10 +5,8 @@
 #      the repo resolve against a single shared lock graph.
 #   2. Hold repo-wide tool config (ruff, ty) — one canonical home, mirrored by
 #      per-project overrides only when needed.
-#   3. Carry deps that don't belong to a specific workspace member — currently
-#      just the temporary smoke target's third-party import, which exercises the
-#      pyproject → uv.lock → requirements_lock.txt → pip.parse → @pypi//...
-#      chain end-to-end. Removed with the smoke target once the chain is proven.
+#   3. Carry deps used by repo-level scripts (currently `packaging`, consumed by
+#      meta/scripts/ratify_renovate_proposals.py) and the temporary smoke target.
 #
 # `members = []` is intentional. The existing `tools/` subdirs are Go modules,
 # so a `tools/*` glob would error at lock time; members are added explicitly as
@@ -19,9 +17,15 @@ name = "unnatural-designs-workspace"
 version = "0.0.0"
 description = "Workspace root for the unnatural_designs monorepo. Not a published package."
 requires-python = ">=3.14"
-# TRANSIENT: third-party dep for the meta/scripts/smoke_py smoke target. Delete
-# along with the smoke target once the pip.parse chain has been verified end-to-end.
 dependencies = [
+    # pep440 version comparison for meta/scripts/ratify_renovate_proposals.py.
+    # The script ratifies Renovate's Python dep-bump proposals via uv; comparing
+    # resolved vs. proposed versions reliably needs proper pep440 semantics rather
+    # than lexical string compare.
+    "packaging>=24.0",
+    # TRANSIENT: third-party dep for the meta/scripts/smoke_py smoke target. Delete
+    # along with the smoke target once the pip.parse chain has been verified
+    # end-to-end.
     "requests>=2.32",
 ]
 
