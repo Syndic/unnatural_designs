@@ -20,7 +20,7 @@ go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LI
 
 # Install gopls (Go language server) for hover, jump-to-definition, refactor.
 # renovate: datasource=go depName=golang.org/x/tools/gopls
-GOPLS_VERSION=v0.20.0
+GOPLS_VERSION=v0.22.0
 go install "golang.org/x/tools/gopls@${GOPLS_VERSION}"
 
 # Install delve (Go debugger) — wires up the VS Code "Run & Debug" pane.
