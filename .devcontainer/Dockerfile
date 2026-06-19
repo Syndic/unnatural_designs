@@ -26,7 +26,7 @@ ARG RUFF_VERSION=0.15.18
 # binary lands on PATH for CI, pre-commit, and the `astral-sh.ty` editor
 # extension. UV_TOOL_{BIN_DIR,DIR} are shared across all uv tool installs.
 # renovate: datasource=pypi depName=ty
-ARG TY_VERSION=0.0.49
+ARG TY_VERSION=0.0.51
 # pre-commit: the hook runner. Installed via `uv tool install` (not pip) so
 # we have a single Python package manager in the devcontainer; the binary
 # lands at /usr/local/bin/pre-commit, so post-create.sh and any contributor
