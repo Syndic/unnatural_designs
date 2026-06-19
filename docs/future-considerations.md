@@ -127,10 +127,8 @@ work landing). That release is the prompt to (a) switch `pip.parse(..., requirem
 to whatever the new uv-native attribute is, (b) delete `requirements_lock.txt`, (c) drop the
 `uv-lock-fresh` hook's `requirements_lock.txt` re-export, (d) delete the
 `renovate-requirements-lock.yml` workflow (the helper app stays installed as long as any other
-workflow uses it — see "Auto-commit GitHub App" below), (e) remove the freshness check in
-`meta/scripts/check_modules.py`, and (f) drop the `requirements_lock.txt` entry from
-`ignorePaths` in `renovate.json` (it exists to stop Renovate's `pip_requirements` manager from
-text-editing the file in place — once the file is gone, the entry is moot).
+workflow uses it — see "Auto-commit GitHub App" below), and (e) remove the freshness check in
+`meta/scripts/check_modules.py`.
 
 ---
 
