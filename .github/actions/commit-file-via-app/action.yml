@@ -71,16 +71,26 @@ runs:
         # silent overwrite.
         OID=$(gh api "repos/${REPO}/git/ref/heads/${BRANCH}" --jq .object.sha)
 
-        # Build the FileAddition[] for the mutation: one {path, contents} object per
-        # changed file. jq -s slurps the per-file objects into the array.
-        ADDITIONS=$(
-          while IFS= read -r path; do
-            [ -z "${path}" ] && continue
-            contents=$(base64 -w0 < "${path}")
-            jq -n --arg path "${path}" --arg contents "${contents}" \
-              '{path: $path, contents: $contents}'
-          done <<< "${CHANGED_PATHS}" | jq -s '.'
-        )
+        # Build the FileAddition[] for the mutation as a stream of `{path, contents}`
+        # objects written to a tempfile. The final jq call below reads them back with
+        # --slurpfile, which puts them into an array.
+        #
+        # We pass the file contents to jq via `--rawfile` (which reads from disk) rather
+        # than as a `--arg` argv string. Both jq calls — the per-file one that builds an
+        # addition object, and the outer one that assembles the request body — need this:
+        # base64-encoded contents of a single ~150 KB file are large enough that argv
+        # passing blew through the kernel's ARG_MAX on a real MODULE.bazel.lock commit,
+        # surfacing as `jq: Argument list too long`. File-based passing has no such bound.
+        ADDITIONS_FILE=$(mktemp)
+        trap 'rm -f "${ADDITIONS_FILE}"' EXIT
+        while IFS= read -r path; do
+          [ -z "${path}" ] && continue
+          CONTENTS_FILE=$(mktemp)
+          base64 -w0 < "${path}" > "${CONTENTS_FILE}"
+          jq -n --arg path "${path}" --rawfile contents "${CONTENTS_FILE}" \
+            '{path: $path, contents: $contents}' >> "${ADDITIONS_FILE}"
+          rm -f "${CONTENTS_FILE}"
+        done <<< "${CHANGED_PATHS}"
 
         # `gh api graphql -F` does not parse JSON values for non-scalar GraphQL
         # variables, so build the full request body ourselves and POST it via
@@ -105,7 +115,7 @@ runs:
           --arg repo "${REPO}" \
           --arg branch "${BRANCH}" \
           --arg oid "${OID}" \
-          --argjson additions "${ADDITIONS}" \
+          --slurpfile additions "${ADDITIONS_FILE}" \
           --arg message "${MESSAGE}" \
           '{
             query: $query,
