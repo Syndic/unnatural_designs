@@ -40,7 +40,7 @@ go install "github.com/fatih/gomodifytags@${GOMODIFYTAGS_VERSION}"
 
 # Install impl — generates method stubs to satisfy an interface for a receiver.
 # renovate: datasource=go depName=github.com/josharian/impl
-IMPL_VERSION=v1.4.0
+IMPL_VERSION=v1.5.0
 go install "github.com/josharian/impl@${IMPL_VERSION}"
 
 # Wire up the pre-commit hooks. pre-commit itself is installed at image build
