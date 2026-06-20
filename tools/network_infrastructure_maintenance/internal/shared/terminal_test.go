@@ -182,22 +182,52 @@ func TestColorizer_Enabled(t *testing.T) {
 	}
 }
 
-func TestColorizer_Block_ReverseVideo(t *testing.T) {
+func TestColorizer_Block_BoldAnsi0FgOnColoredBg(t *testing.T) {
 	c, err := NewColorizer("always", nonTTY(t))
 	if err != nil {
 		t.Fatalf("NewColorizer: %v", err)
 	}
-	for name, got := range map[string]string{
-		"PassBlock": c.PassBlock("[PASS]"),
-		"WarnBlock": c.WarnBlock("[WARN]"),
-		"FailBlock": c.FailBlock("[FAIL]"),
-	} {
-		if !strings.HasPrefix(got, "\033[7m") {
-			t.Errorf("%s missing SGR 7 reverse-video prefix; got %q", name, got)
+	cases := []struct {
+		name  string
+		got   string
+		bg    string
+		glyph string
+	}{
+		{"PassBlock", c.PassBlock("✓"), "\033[42m", "✓"},
+		{"WarnBlock", c.WarnBlock("!"), "\033[43m", "!"},
+		{"FailBlock", c.FailBlock("✗"), "\033[41m", "✗"},
+	}
+	for _, tc := range cases {
+		if !strings.HasPrefix(tc.got, tc.bg) {
+			t.Errorf("%s missing bg code %q; got %q", tc.name, tc.bg, tc.got)
 		}
-		if !strings.HasSuffix(got, "\033[0m") {
-			t.Errorf("%s missing reset suffix; got %q", name, got)
+		if !strings.Contains(tc.got, "\033[30m") {
+			t.Errorf("%s missing ANSI 0 (black) fg code; got %q", tc.name, tc.got)
 		}
+		if !strings.Contains(tc.got, "\033[1m") {
+			t.Errorf("%s missing SGR 1 bold; got %q", tc.name, tc.got)
+		}
+		if !strings.HasSuffix(tc.got, "\033[0m") {
+			t.Errorf("%s missing reset suffix; got %q", tc.name, tc.got)
+		}
+		if !strings.Contains(tc.got, " "+tc.glyph+" ") {
+			t.Errorf("%s missing space-padded glyph; got %q", tc.name, tc.got)
+		}
+		// Reverse-video must NOT be in use — the earlier SGR 7 approach let
+		// bold land on the background in many terminals.
+		if strings.Contains(tc.got, "\033[7m") {
+			t.Errorf("%s still emits SGR 7 reverse-video; got %q", tc.name, tc.got)
+		}
+	}
+
+	// Disabled colorizer still returns the bare glyph (no padding) so
+	// NO_COLOR output width matches the pre-brand-alignment behavior.
+	disabled, err := NewColorizer("never", nonTTY(t))
+	if err != nil {
+		t.Fatalf("NewColorizer: %v", err)
+	}
+	if got := disabled.PassBlock("✓"); got != "✓" {
+		t.Errorf("disabled PassBlock(✓) = %q, want %q (no padding under NO_COLOR)", got, "✓")
 	}
 }
 
@@ -211,17 +241,33 @@ func TestColorizer_Tag(t *testing.T) {
 		t.Fatalf("NewColorizer: %v", err)
 	}
 
+	expectedBg := map[string]string{
+		StatusPass: "\033[42m",
+		StatusWarn: "\033[43m",
+		StatusFail: "\033[41m",
+	}
 	for _, status := range []string{StatusPass, StatusWarn, StatusFail} {
 		bracketed := "[" + status + "]"
 		if got := disabled.Tag(status); got != bracketed {
 			t.Errorf("disabled Tag(%s) = %q, want %q", status, got, bracketed)
 		}
 		got := enabled.Tag(status)
-		if !strings.HasPrefix(got, "\033[7m") {
-			t.Errorf("enabled Tag(%s) missing SGR 7; got %q", status, got)
+		if !strings.Contains(got, expectedBg[status]) {
+			t.Errorf("enabled Tag(%s) missing bg code %q; got %q", status, expectedBg[status], got)
 		}
-		if !strings.Contains(got, bracketed) {
-			t.Errorf("enabled Tag(%s) missing bracket text %q; got %q", status, bracketed, got)
+		if !strings.Contains(got, "\033[30m") {
+			t.Errorf("enabled Tag(%s) missing ANSI 0 fg; got %q", status, got)
+		}
+		if !strings.Contains(got, "\033[1m") {
+			t.Errorf("enabled Tag(%s) missing bold; got %q", status, got)
+		}
+		// Colored form is space-padded, not bracketed — brackets only ship
+		// on the NO_COLOR fallback so the pipe artifact stays readable.
+		if !strings.Contains(got, " "+status+" ") {
+			t.Errorf("enabled Tag(%s) missing space-padded label; got %q", status, got)
+		}
+		if strings.Contains(got, bracketed) {
+			t.Errorf("enabled Tag(%s) should not contain brackets; got %q", status, got)
 		}
 	}
 
