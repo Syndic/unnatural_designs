@@ -77,8 +77,9 @@ func writeTextReport(w io.Writer, rep report, colors shared.Colorizer) {
 		for _, drift := range check.Extra {
 			count += len(drift.Details)
 		}
-		// Direction A reverse-video tag (spec §05). Tag carries the bracket
-		// form internally, so the NO_COLOR pipe fallback is still `[PASS]`.
+		// Tag handles colored-vs-NO_COLOR internally: a padded saturated-bg
+		// block when colors are enabled, the bracket form `[PASS]` / `[WARN]`
+		// otherwise.
 		_, _ = fmt.Fprintf(w, "\n%s %s (%d)\n", colors.Tag(status), check.Name, count)
 		for _, finding := range check.Findings {
 			_, _ = fmt.Fprintf(w, "- %s\n", finding)

@@ -134,7 +134,7 @@ func TestColorizer_Disabled(t *testing.T) {
 		}
 	}
 	// Tag carries its bracket text even with colors disabled — that's the
-	// pipe-safe fallback the spec relies on.
+	// pipe-safe fallback.
 	if got := c.Tag(StatusPass); got != "[PASS]" {
 		t.Errorf("Tag(PASS) on disabled colorizer = %q, want %q", got, "[PASS]")
 	}
@@ -172,8 +172,8 @@ func TestColorizer_Enabled(t *testing.T) {
 		}
 		seen[got] = name
 	}
-	// Warn now tracks the user's theme via ANSI 3, not the old 256-color 214
-	// that the spec called out as competing with the accent.
+	// Warn uses ANSI 3 so it tracks the user's terminal theme, rather than a
+	// hardcoded 256-color value.
 	if !strings.Contains(c.Warn("ok"), "\033[33m") {
 		t.Errorf("Warn() should use ANSI 3 (\\033[33m); got %q", c.Warn("ok"))
 	}
@@ -214,8 +214,8 @@ func TestColorizer_Block_BoldAnsi0FgOnColoredBg(t *testing.T) {
 		}
 	}
 
-	// Disabled colorizer still returns the bare glyph (no padding) so
-	// NO_COLOR output width matches the pre-brand-alignment behavior.
+	// Disabled colorizer still returns the bare glyph (no padding) so the
+	// NO_COLOR output stays a single visible cell wide.
 	disabled, err := NewColorizer("never", nonTTY(t))
 	if err != nil {
 		t.Fatalf("NewColorizer: %v", err)

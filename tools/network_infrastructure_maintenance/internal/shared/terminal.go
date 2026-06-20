@@ -60,11 +60,10 @@ func IsTerminal(file *os.File) bool {
 	return (info.Mode() & os.ModeCharDevice) != 0
 }
 
-// ANSI escape codes used by Colorizer. Pass/Warn/Fail track the user's
-// terminal theme via ANSI 2/3/1 (spec §03). Accent is the brand wire-glow
-// (the single sanctioned 256-color value — no ANSI orange exists) and is
-// reserved for spinner frames, the progress-bar fill, the cursor block, and
-// the banner underscore (spec §04).
+// ANSI escape codes used by Colorizer. Pass/Warn/Fail use ANSI 2/3/1 so they
+// track the user's terminal theme. Accent and Track are 256-color values
+// reserved for the rich progress UI (spinner frames, progress-bar fill and
+// track, banner accent).
 const (
 	codeReset  = "\033[0m"
 	codePass   = "\033[32m"
@@ -72,19 +71,17 @@ const (
 	codeFail   = "\033[31m"
 	codeAccent = "\033[38;5;215m"
 	codeTrack  = "\033[38;5;240m"
-	// blockPrefix* combine the three SGR parameters that make up a Direction
-	// A status block — saturated ANSI bg, ANSI 0 fg, bold — into a single
-	// escape sequence per role. Packed form (`\033[42;30;1m`) is equivalent
-	// to the three-escape form (`\033[42m\033[30m\033[1m`) and reads more
-	// directly as "this is the prefix for a Pass/Warn/Fail block".
+	// blockPrefix* pack the three SGR parameters that make up a status block
+	// — saturated ANSI bg, ANSI 0 fg, bold — into a single escape sequence
+	// per role. Equivalent to emitting `\033[42m\033[30m\033[1m`, just terser.
 	blockPrefixPass = "\033[42;30;1m"
 	blockPrefixWarn = "\033[43;30;1m"
 	blockPrefixFail = "\033[41;30;1m"
 )
 
 // Enabled reports whether the colorizer will emit ANSI codes. Callers use it
-// to switch between brand-aligned color treatments and pipe-safe fallbacks
-// without poking at the unexported state.
+// to pick between colored treatments and pipe-safe fallbacks without poking
+// at the unexported state.
 func (c Colorizer) Enabled() bool { return c.enabled }
 
 func (c Colorizer) wrap(code, text string) string {
@@ -94,10 +91,10 @@ func (c Colorizer) wrap(code, text string) string {
 	return code + text + codeReset
 }
 
-// block renders text as a Direction A status block — saturated colored
-// background with bold ANSI-0 (black) foreground, padded with a leading and
-// trailing space so the colored region extends visibly wider than the glyph
-// or label inside it. Under NO_COLOR the bare text is returned unchanged.
+// block renders text as a status block — saturated colored background with
+// bold ANSI-0 (black) foreground, padded with a leading and trailing space
+// so the colored region extends visibly wider than the glyph or label
+// inside it. Under NO_COLOR the bare text is returned unchanged.
 func (c Colorizer) block(prefix, text string) string {
 	if !c.enabled {
 		return text
@@ -109,28 +106,26 @@ func (c Colorizer) Pass(text string) string { return c.wrap(codePass, text) }
 func (c Colorizer) Warn(text string) string { return c.wrap(codeWarn, text) }
 func (c Colorizer) Fail(text string) string { return c.wrap(codeFail, text) }
 
-// Accent wraps text in the brand wire-glow color. Reserved per spec §03 —
-// spinner frames, progress-bar fill/tip, cursor, banner underscore.
+// Accent wraps text in the warm-orange accent color. Used by the spinner,
+// progress-bar fill/tip, and the banner accent character.
 func (c Colorizer) Accent(text string) string { return c.wrap(codeAccent, text) }
 
-// Track wraps text in the brand line-2 dim grey, used for the unfilled
-// portion of progress bars (spec §06).
+// Track wraps text in the dim grey used for the unfilled portion of progress
+// bars.
 func (c Colorizer) Track(text string) string { return c.wrap(codeTrack, text) }
 
-// PassBlock / WarnBlock / FailBlock render their argument as a Direction A
-// status block — saturated role-colored background with a bold black glyph
-// inside, padded for visible width. When the colorizer is disabled they
-// return the bare text, so the caller's bracket/glyph form is the pipe-safe
-// fallback (spec §05).
+// PassBlock / WarnBlock / FailBlock render their argument as a status block —
+// saturated role-colored background with a bold black glyph inside, padded
+// for visible width. When the colorizer is disabled they return the bare
+// text, so the caller's bracket/glyph form is what survives on a pipe.
 func (c Colorizer) PassBlock(text string) string { return c.block(blockPrefixPass, text) }
 func (c Colorizer) WarnBlock(text string) string { return c.block(blockPrefixWarn, text) }
 func (c Colorizer) FailBlock(text string) string { return c.block(blockPrefixFail, text) }
 
-// Tag returns the Direction A report tag for status. When colors are enabled
-// it renders as a padded saturated-bg block with bold black text (e.g.
-// ` PASS ` on green). Under NO_COLOR it falls back to the bracket form
-// (`[PASS]`) — the durable-artifact form that ships in piped output and CI
-// logs.
+// Tag returns the report tag for status. When colors are enabled it renders
+// as a padded saturated-bg block with bold black text (e.g. ` PASS ` on
+// green). Under NO_COLOR it falls back to the bracket form (`[PASS]`) — the
+// durable form that ships in piped output and CI logs.
 func (c Colorizer) Tag(status string) string {
 	if !c.enabled {
 		return "[" + status + "]"

@@ -14,18 +14,16 @@ import (
 	"github.com/Syndic/unnatural_designs/tools/network_infrastructure_maintenance/internal/shared"
 )
 
-// brandTagline is the in-box tagline for the hairline banner (spec §07).
-// Baked into source per the alignment plan's scope decisions — not parameterised.
+// brandTagline is the second-row text inside the hairline startup banner.
 const brandTagline = "validates the netbox model for internal consistency"
 
-// spinnerFrames are mpb's default braille frames; we replicate the list here
-// so we can wrap each frame in the accent SGR when colors are enabled
-// (spec §04: spinner is accent).
+// spinnerFrames are mpb's default braille frames, replicated here so each
+// frame can be wrapped in the accent SGR when colors are enabled.
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
-// accentBarStyle returns the Direction B (Unicode block) bar style — accent
-// fill, dim-grey track. When colors are disabled the fallback is the
-// pipe-legible ASCII `[===>]` shape (spec §06).
+// accentBarStyle returns the Unicode-block bar style — accent fill, dim-grey
+// track. When colors are disabled it falls back to the pipe-legible ASCII
+// `[===>]` shape.
 func accentBarStyle(colors shared.Colorizer) mpb.BarStyleComposer {
 	if !colors.Enabled() {
 		return mpb.BarStyle().Lbound("[").Filler("=").Tip(">").Padding(" ").Rbound("]")
@@ -103,18 +101,18 @@ func newRichReporter(stderr *os.File, colors shared.Colorizer) *richReporter {
 func (r *richReporter) Startupf(format string, args ...any) {
 	// Startup banner is printed before any bars exist; write directly to
 	// stderr so it appears at the top of the run output. The hairline box
-	// (spec §07) only renders on a colorized stderr — under NO_COLOR /
-	// non-TTY / plain mode the original one-liner is the correct pipe-safe
-	// form and stays as it was.
+	// only renders on a colorized stderr — under NO_COLOR / non-TTY / plain
+	// mode the one-line `[netbox-audit] …` form is the correct pipe-safe
+	// shape.
 	if r.colors.Enabled() {
 		_, _ = fmt.Fprint(r.w, renderBannerBox(r.colors))
 	}
 	_, _ = fmt.Fprintf(r.w, "[netbox-audit] "+format+"\n", args...)
 }
 
-// renderBannerBox builds the brand banner — a hairline box with `netbox-audit`
-// accented on the left, `UNNATURAL_DESIGNS` on the right with an accent
-// underscore, and the tagline on the second row (spec §07).
+// renderBannerBox builds the startup banner — a hairline box with
+// `netbox-audit` accented on the left, `UNNATURAL_DESIGNS` on the right
+// with the underscore in accent color, and the tagline on the second row.
 func renderBannerBox(colors shared.Colorizer) string {
 	const (
 		left     = "netbox-audit"
