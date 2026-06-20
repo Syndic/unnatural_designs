@@ -67,16 +67,19 @@ func IsTerminal(file *os.File) bool {
 // the banner underscore (spec §04).
 const (
 	codeReset  = "\033[0m"
-	codeBold   = "\033[1m"
 	codePass   = "\033[32m"
 	codeWarn   = "\033[33m"
 	codeFail   = "\033[31m"
 	codeAccent = "\033[38;5;215m"
 	codeTrack  = "\033[38;5;240m"
-	codeBgPass = "\033[42m"
-	codeBgWarn = "\033[43m"
-	codeBgFail = "\033[41m"
-	codeFgOnBlock = "\033[30m" // ANSI 0, paired with SGR 1 for bold weight
+	// blockPrefix* combine the three SGR parameters that make up a Direction
+	// A status block — saturated ANSI bg, ANSI 0 fg, bold — into a single
+	// escape sequence per role. Packed form (`\033[42;30;1m`) is equivalent
+	// to the three-escape form (`\033[42m\033[30m\033[1m`) and reads more
+	// directly as "this is the prefix for a Pass/Warn/Fail block".
+	blockPrefixPass = "\033[42;30;1m"
+	blockPrefixWarn = "\033[43;30;1m"
+	blockPrefixFail = "\033[41;30;1m"
 )
 
 // Enabled reports whether the colorizer will emit ANSI codes. Callers use it
@@ -91,15 +94,15 @@ func (c Colorizer) wrap(code, text string) string {
 	return code + text + codeReset
 }
 
-// block renders text as a saturated colored background with bold ANSI-0
-// (black) foreground, padded with a leading and trailing space so the colored
-// region extends visibly wider than the glyph or label inside it. Under
-// NO_COLOR the bare text is returned unchanged.
-func (c Colorizer) block(bg, text string) string {
+// block renders text as a Direction A status block — saturated colored
+// background with bold ANSI-0 (black) foreground, padded with a leading and
+// trailing space so the colored region extends visibly wider than the glyph
+// or label inside it. Under NO_COLOR the bare text is returned unchanged.
+func (c Colorizer) block(prefix, text string) string {
 	if !c.enabled {
 		return text
 	}
-	return bg + codeFgOnBlock + codeBold + " " + text + " " + codeReset
+	return prefix + " " + text + " " + codeReset
 }
 
 func (c Colorizer) Pass(text string) string { return c.wrap(codePass, text) }
@@ -119,9 +122,9 @@ func (c Colorizer) Track(text string) string { return c.wrap(codeTrack, text) }
 // inside, padded for visible width. When the colorizer is disabled they
 // return the bare text, so the caller's bracket/glyph form is the pipe-safe
 // fallback (spec §05).
-func (c Colorizer) PassBlock(text string) string { return c.block(codeBgPass, text) }
-func (c Colorizer) WarnBlock(text string) string { return c.block(codeBgWarn, text) }
-func (c Colorizer) FailBlock(text string) string { return c.block(codeBgFail, text) }
+func (c Colorizer) PassBlock(text string) string { return c.block(blockPrefixPass, text) }
+func (c Colorizer) WarnBlock(text string) string { return c.block(blockPrefixWarn, text) }
+func (c Colorizer) FailBlock(text string) string { return c.block(blockPrefixFail, text) }
 
 // Tag returns the Direction A report tag for status. When colors are enabled
 // it renders as a padded saturated-bg block with bold black text (e.g.

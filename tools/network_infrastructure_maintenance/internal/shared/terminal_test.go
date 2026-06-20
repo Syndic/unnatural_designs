@@ -188,24 +188,18 @@ func TestColorizer_Block_BoldAnsi0FgOnColoredBg(t *testing.T) {
 		t.Fatalf("NewColorizer: %v", err)
 	}
 	cases := []struct {
-		name  string
-		got   string
-		bg    string
-		glyph string
+		name   string
+		got    string
+		prefix string
+		glyph  string
 	}{
-		{"PassBlock", c.PassBlock("✓"), "\033[42m", "✓"},
-		{"WarnBlock", c.WarnBlock("!"), "\033[43m", "!"},
-		{"FailBlock", c.FailBlock("✗"), "\033[41m", "✗"},
+		{"PassBlock", c.PassBlock("✓"), "\033[42;30;1m", "✓"},
+		{"WarnBlock", c.WarnBlock("!"), "\033[43;30;1m", "!"},
+		{"FailBlock", c.FailBlock("✗"), "\033[41;30;1m", "✗"},
 	}
 	for _, tc := range cases {
-		if !strings.HasPrefix(tc.got, tc.bg) {
-			t.Errorf("%s missing bg code %q; got %q", tc.name, tc.bg, tc.got)
-		}
-		if !strings.Contains(tc.got, "\033[30m") {
-			t.Errorf("%s missing ANSI 0 (black) fg code; got %q", tc.name, tc.got)
-		}
-		if !strings.Contains(tc.got, "\033[1m") {
-			t.Errorf("%s missing SGR 1 bold; got %q", tc.name, tc.got)
+		if !strings.HasPrefix(tc.got, tc.prefix) {
+			t.Errorf("%s missing packed SGR prefix %q; got %q", tc.name, tc.prefix, tc.got)
 		}
 		if !strings.HasSuffix(tc.got, "\033[0m") {
 			t.Errorf("%s missing reset suffix; got %q", tc.name, tc.got)
@@ -241,10 +235,10 @@ func TestColorizer_Tag(t *testing.T) {
 		t.Fatalf("NewColorizer: %v", err)
 	}
 
-	expectedBg := map[string]string{
-		StatusPass: "\033[42m",
-		StatusWarn: "\033[43m",
-		StatusFail: "\033[41m",
+	expectedPrefix := map[string]string{
+		StatusPass: "\033[42;30;1m",
+		StatusWarn: "\033[43;30;1m",
+		StatusFail: "\033[41;30;1m",
 	}
 	for _, status := range []string{StatusPass, StatusWarn, StatusFail} {
 		bracketed := "[" + status + "]"
@@ -252,14 +246,8 @@ func TestColorizer_Tag(t *testing.T) {
 			t.Errorf("disabled Tag(%s) = %q, want %q", status, got, bracketed)
 		}
 		got := enabled.Tag(status)
-		if !strings.Contains(got, expectedBg[status]) {
-			t.Errorf("enabled Tag(%s) missing bg code %q; got %q", status, expectedBg[status], got)
-		}
-		if !strings.Contains(got, "\033[30m") {
-			t.Errorf("enabled Tag(%s) missing ANSI 0 fg; got %q", status, got)
-		}
-		if !strings.Contains(got, "\033[1m") {
-			t.Errorf("enabled Tag(%s) missing bold; got %q", status, got)
+		if !strings.HasPrefix(got, expectedPrefix[status]) {
+			t.Errorf("enabled Tag(%s) missing packed SGR prefix %q; got %q", status, expectedPrefix[status], got)
 		}
 		// Colored form is space-padded, not bracketed — brackets only ship
 		// on the NO_COLOR fallback so the pipe artifact stays readable.
