@@ -1,0 +1,14 @@
+load("@rules_python//python:defs.bzl", "py_binary")
+
+package(default_visibility = ["//apps/theater:__subpackages__"])
+
+py_binary(
+    name = "pair",
+    srcs = ["main.py"],
+    main = "main.py",
+    deps = [
+        "//apps/theater/service:service",
+        # "@pip//aiowebostv",
+        # "@pip//pylutron_caseta",
+    ],
+)
