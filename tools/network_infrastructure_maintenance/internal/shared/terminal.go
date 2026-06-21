@@ -79,9 +79,9 @@ const (
 	// blockPrefix* pack the three SGR parameters that make up a status block
 	// — saturated ANSI bg, ANSI 0 fg, bold — into a single escape sequence
 	// per role. Equivalent to emitting `\033[42m\033[30m\033[1m`, just terser.
-	blockPrefixPass = "\033[42;30;1m"
-	blockPrefixWarn = "\033[43;30;1m"
-	blockPrefixFail = "\033[41;30;1m"
+	blockPrefixPass = "\033[42;30;1m" //nolint:gosec // ANSI SGR sequence, not credentials
+	blockPrefixWarn = "\033[43;30;1m" //nolint:gosec // ANSI SGR sequence, not credentials
+	blockPrefixFail = "\033[41;30;1m" //nolint:gosec // ANSI SGR sequence, not credentials
 )
 
 func (c Styler) wrap(code, text string) string {

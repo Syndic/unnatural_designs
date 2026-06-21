@@ -193,9 +193,9 @@ func TestStyler_Block_BoldAnsi0FgOnColoredBg(t *testing.T) {
 		prefix string
 		glyph  string
 	}{
-		{"PassBlock", c.PassBlock("✓"), "\033[42;30;1m", "✓"},
-		{"WarnBlock", c.WarnBlock("!"), "\033[43;30;1m", "!"},
-		{"FailBlock", c.FailBlock("✗"), "\033[41;30;1m", "✗"},
+		{"PassBlock", c.PassBlock("✓"), "\033[42;30;1m", "✓"}, //nolint:gosec // ANSI SGR sequence, not credentials
+		{"WarnBlock", c.WarnBlock("!"), "\033[43;30;1m", "!"}, //nolint:gosec // ANSI SGR sequence, not credentials
+		{"FailBlock", c.FailBlock("✗"), "\033[41;30;1m", "✗"}, //nolint:gosec // ANSI SGR sequence, not credentials
 	}
 	for _, tc := range cases {
 		if !strings.HasPrefix(tc.got, tc.prefix) {
@@ -285,9 +285,9 @@ func TestStyler_Tag(t *testing.T) {
 	}
 
 	expectedPrefix := map[string]string{
-		StatusPass: "\033[42;30;1m",
-		StatusWarn: "\033[43;30;1m",
-		StatusFail: "\033[41;30;1m",
+		StatusPass: "\033[42;30;1m", //nolint:gosec // ANSI SGR sequence, not credentials
+		StatusWarn: "\033[43;30;1m", //nolint:gosec // ANSI SGR sequence, not credentials
+		StatusFail: "\033[41;30;1m", //nolint:gosec // ANSI SGR sequence, not credentials
 	}
 	for _, status := range []string{StatusPass, StatusWarn, StatusFail} {
 		bracketed := "[" + status + "]"
