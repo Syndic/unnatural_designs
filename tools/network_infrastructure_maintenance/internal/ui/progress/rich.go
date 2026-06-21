@@ -21,16 +21,16 @@ const brandTagline = "validates the netbox model for internal consistency"
 // frame can be wrapped in the accent SGR when colors are enabled.
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
-// accentBarStyle builds an mpb bar style from the colorizer's rune set. The
-// colorizer chooses Unicode-block-with-accent or ASCII-without internally.
-func accentBarStyle(colors shared.Colorizer) mpb.BarStyleComposer {
+// accentBarStyle builds an mpb bar style from the styler's rune set. The
+// styler chooses Unicode-block-with-accent or ASCII-without internally.
+func accentBarStyle(colors shared.Styler) mpb.BarStyleComposer {
 	l, f, t, p, r := colors.BarRunes()
 	return mpb.BarStyle().Lbound(l).Filler(f).Tip(t).Padding(p).Rbound(r)
 }
 
-// accentSpinnerStyle wraps each braille frame in Accent. When the colorizer
+// accentSpinnerStyle wraps each braille frame in Accent. When the styler
 // is disabled, Accent is the identity, so the frames render plain.
-func accentSpinnerStyle(colors shared.Colorizer) mpb.BarFillerBuilder {
+func accentSpinnerStyle(colors shared.Styler) mpb.BarFillerBuilder {
 	colored := make([]string, len(spinnerFrames))
 	for i, f := range spinnerFrames {
 		colored[i] = colors.Accent(f)
@@ -63,7 +63,7 @@ const taskNameWidth = 30
 // checks phase typically completes in microseconds).
 type richReporter struct {
 	w      *os.File
-	colors shared.Colorizer
+	colors shared.Styler
 	p      *mpb.Progress
 
 	mu       sync.Mutex
@@ -74,7 +74,7 @@ type richReporter struct {
 	closeErr error
 }
 
-func newRichReporter(stderr *os.File, colors shared.Colorizer) *richReporter {
+func newRichReporter(stderr *os.File, colors shared.Styler) *richReporter {
 	return &richReporter{
 		w:      stderr,
 		colors: colors,
@@ -89,8 +89,10 @@ func newRichReporter(stderr *os.File, colors shared.Colorizer) *richReporter {
 
 func (r *richReporter) Startupf(format string, args ...any) {
 	// Startup banner is printed before any bars exist; write directly to
-	// stderr so it appears at the top of the run output. The accent
-	// decorations inside the box degrade to plain text under NO_COLOR.
+	// stderr so it appears at the top of the run output. renderBannerBox
+	// returns "" when the styler is disabled, so the box only appears on
+	// a colorized stream — the plain `[netbox-audit] …` line below is the
+	// pipe-safe form for NO_COLOR / non-TTY / -progress plain.
 	_, _ = fmt.Fprint(r.w, renderBannerBox(r.colors))
 	_, _ = fmt.Fprintf(r.w, "[netbox-audit] "+format+"\n", args...)
 }
@@ -98,7 +100,8 @@ func (r *richReporter) Startupf(format string, args ...any) {
 // renderBannerBox builds the startup banner — a hairline box with
 // `netbox-audit` accented on the left, `UNNATURAL_DESIGNS` on the right
 // with the underscore in accent color, and the tagline on the second row.
-func renderBannerBox(colors shared.Colorizer) string {
+// Returns "" when the styler is disabled (styler.Box handles that branch).
+func renderBannerBox(styler shared.Styler) string {
 	const (
 		left     = "netbox-audit"
 		rightL   = "UNNATURAL"
@@ -109,25 +112,20 @@ func renderBannerBox(colors shared.Colorizer) string {
 	)
 	right := rightL + rightU + rightR
 	titleVisible := len(left) + gap + len(right)
-	taglineVisible := len(brandTagline)
 	contentWidth := titleVisible
-	if taglineVisible > contentWidth {
-		contentWidth = taglineVisible
+	if len(brandTagline) > contentWidth {
+		contentWidth = len(brandTagline)
 	}
-	inner := contentWidth + 2*innerPad
-	hr := strings.Repeat("─", inner)
 
-	titleSpaces := strings.Repeat(" ", contentWidth-len(left)-len(right))
-	taglineSpaces := strings.Repeat(" ", contentWidth-taglineVisible)
 	pad := strings.Repeat(" ", innerPad)
-	rightColored := rightL + colors.Accent(rightU) + rightR
+	titleSpaces := strings.Repeat(" ", contentWidth-len(left)-len(right))
+	taglineSpaces := strings.Repeat(" ", contentWidth-len(brandTagline))
+	rightColored := rightL + styler.Accent(rightU) + rightR
 
-	var b strings.Builder
-	b.WriteString("┌" + hr + "┐\n")
-	b.WriteString("│" + pad + colors.Accent(left) + titleSpaces + rightColored + pad + "│\n")
-	b.WriteString("│" + pad + brandTagline + taglineSpaces + pad + "│\n")
-	b.WriteString("└" + hr + "┘\n")
-	return b.String()
+	return styler.Box(contentWidth+2*innerPad, []string{
+		pad + styler.Accent(left) + titleSpaces + rightColored + pad,
+		pad + brandTagline + taglineSpaces + pad,
+	})
 }
 
 func (r *richReporter) AnnounceChecks(ids []string) {

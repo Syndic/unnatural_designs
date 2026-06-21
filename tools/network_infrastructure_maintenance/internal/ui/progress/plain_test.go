@@ -11,9 +11,9 @@ import (
 )
 
 // newTestPlainReporter constructs a plainReporter that writes to buf with a
-// disabled colorizer (zero-value Colorizer has color disabled).
+// disabled styler (zero-value Styler has color disabled).
 func newTestPlainReporter(buf *bytes.Buffer) *plainReporter {
-	return &plainReporter{w: buf, colors: shared.Colorizer{}}
+	return &plainReporter{w: buf, colors: shared.Styler{}}
 }
 
 func TestPlainReporter_NoStartedLines(t *testing.T) {
@@ -85,7 +85,7 @@ func TestPlainReporter_NoColorWhenColorizerDisabled(t *testing.T) {
 	r.ChecksComplete(18, 3, 100*time.Millisecond)
 
 	if strings.Contains(buf.String(), "\x1b[") {
-		t.Errorf("output contains ANSI escape sequence with disabled colorizer:\n%s", buf.String())
+		t.Errorf("output contains ANSI escape sequence with disabled styler:\n%s", buf.String())
 	}
 }
 

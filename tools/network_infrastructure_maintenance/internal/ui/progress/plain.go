@@ -20,10 +20,10 @@ import (
 type plainReporter struct {
 	mu     sync.Mutex
 	w      io.Writer
-	colors shared.Colorizer
+	colors shared.Styler
 }
 
-func newPlainReporter(stderr *os.File, colors shared.Colorizer) *plainReporter {
+func newPlainReporter(stderr *os.File, colors shared.Styler) *plainReporter {
 	return &plainReporter{w: stderr, colors: colors}
 }
 

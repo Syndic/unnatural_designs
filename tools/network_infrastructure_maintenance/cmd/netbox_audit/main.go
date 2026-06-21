@@ -15,7 +15,7 @@ import (
 	"github.com/Syndic/unnatural_designs/tools/network_infrastructure_maintenance/internal/ui/progress"
 )
 
-var stderrColors shared.Colorizer
+var stderrColors shared.Styler
 
 func fatalf(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "%s %s\n", stderrColors.Fail(shared.StatusFail), fmt.Sprintf(format, args...))
@@ -51,12 +51,12 @@ func main() {
 		}
 	})
 
-	stdoutColors, err := shared.NewColorizer(*colorMode, os.Stdout)
+	stdoutColors, err := shared.NewStyler(*colorMode, os.Stdout)
 	if err != nil {
 		fatalf("Invalid color mode %q: %v", *colorMode, err)
 	}
 	stderrColors = stdoutColors
-	if colors, err := shared.NewColorizer(*colorMode, os.Stderr); err == nil {
+	if colors, err := shared.NewStyler(*colorMode, os.Stderr); err == nil {
 		stderrColors = colors
 	}
 

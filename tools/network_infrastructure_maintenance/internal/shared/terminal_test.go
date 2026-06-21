@@ -56,7 +56,7 @@ func TestIsTerminal_StatError(t *testing.T) {
 	}
 }
 
-func TestNewColorizer(t *testing.T) {
+func TestNewStyler(t *testing.T) {
 	t.Setenv(EnvNoColor, "")
 	t.Setenv("TERM", "xterm-256color")
 
@@ -76,9 +76,9 @@ func TestNewColorizer(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			c, err := NewColorizer(tc.mode, nonTTY(t))
+			c, err := NewStyler(tc.mode, nonTTY(t))
 			if (err != nil) != tc.wantErr {
-				t.Fatalf("NewColorizer err = %v, wantErr = %v", err, tc.wantErr)
+				t.Fatalf("NewStyler err = %v, wantErr = %v", err, tc.wantErr)
 			}
 			if tc.wantErr {
 				return
@@ -90,34 +90,34 @@ func TestNewColorizer(t *testing.T) {
 	}
 }
 
-func TestNewColorizer_AutoNoColorEnv(t *testing.T) {
+func TestNewStyler_AutoNoColorEnv(t *testing.T) {
 	t.Setenv(EnvNoColor, "1")
 	t.Setenv("TERM", "xterm-256color")
-	c, err := NewColorizer("auto", nonTTY(t))
+	c, err := NewStyler("auto", nonTTY(t))
 	if err != nil {
-		t.Fatalf("NewColorizer: %v", err)
+		t.Fatalf("NewStyler: %v", err)
 	}
 	if c.enabled {
 		t.Error("auto with NO_COLOR set: enabled = true, want false")
 	}
 }
 
-func TestNewColorizer_AutoDumbTerm(t *testing.T) {
+func TestNewStyler_AutoDumbTerm(t *testing.T) {
 	t.Setenv(EnvNoColor, "")
 	t.Setenv("TERM", TermDumb)
-	c, err := NewColorizer("auto", nonTTY(t))
+	c, err := NewStyler("auto", nonTTY(t))
 	if err != nil {
-		t.Fatalf("NewColorizer: %v", err)
+		t.Fatalf("NewStyler: %v", err)
 	}
 	if c.enabled {
 		t.Error("auto with TERM=dumb: enabled = true, want false")
 	}
 }
 
-func TestColorizer_Disabled(t *testing.T) {
-	c, err := NewColorizer("never", nonTTY(t))
+func TestStyler_Disabled(t *testing.T) {
+	c, err := NewStyler("never", nonTTY(t))
 	if err != nil {
-		t.Fatalf("NewColorizer: %v", err)
+		t.Fatalf("NewStyler: %v", err)
 	}
 	for name, got := range map[string]string{
 		"Pass":      c.Pass("ok"),
@@ -130,20 +130,20 @@ func TestColorizer_Disabled(t *testing.T) {
 		"FailBlock": c.FailBlock("ok"),
 	} {
 		if got != "ok" {
-			t.Errorf("%s on disabled colorizer = %q, want %q", name, got, "ok")
+			t.Errorf("%s on disabled styler = %q, want %q", name, got, "ok")
 		}
 	}
 	// Tag carries its bracket text even with colors disabled — that's the
 	// pipe-safe fallback.
 	if got := c.Tag(StatusPass); got != "[PASS]" {
-		t.Errorf("Tag(PASS) on disabled colorizer = %q, want %q", got, "[PASS]")
+		t.Errorf("Tag(PASS) on disabled styler = %q, want %q", got, "[PASS]")
 	}
 }
 
-func TestColorizer_Enabled(t *testing.T) {
-	c, err := NewColorizer("always", nonTTY(t))
+func TestStyler_Enabled(t *testing.T) {
+	c, err := NewStyler("always", nonTTY(t))
 	if err != nil {
-		t.Fatalf("NewColorizer: %v", err)
+		t.Fatalf("NewStyler: %v", err)
 	}
 	const reset = "\033[0m"
 	cases := map[string]string{
@@ -182,10 +182,10 @@ func TestColorizer_Enabled(t *testing.T) {
 	}
 }
 
-func TestColorizer_Block_BoldAnsi0FgOnColoredBg(t *testing.T) {
-	c, err := NewColorizer("always", nonTTY(t))
+func TestStyler_Block_BoldAnsi0FgOnColoredBg(t *testing.T) {
+	c, err := NewStyler("always", nonTTY(t))
 	if err != nil {
-		t.Fatalf("NewColorizer: %v", err)
+		t.Fatalf("NewStyler: %v", err)
 	}
 	cases := []struct {
 		name   string
@@ -214,30 +214,30 @@ func TestColorizer_Block_BoldAnsi0FgOnColoredBg(t *testing.T) {
 		}
 	}
 
-	// Disabled colorizer still returns the bare glyph (no padding) so the
+	// Disabled styler still returns the bare glyph (no padding) so the
 	// NO_COLOR output stays a single visible cell wide.
-	disabled, err := NewColorizer("never", nonTTY(t))
+	disabled, err := NewStyler("never", nonTTY(t))
 	if err != nil {
-		t.Fatalf("NewColorizer: %v", err)
+		t.Fatalf("NewStyler: %v", err)
 	}
 	if got := disabled.PassBlock("✓"); got != "✓" {
 		t.Errorf("disabled PassBlock(✓) = %q, want %q (no padding under NO_COLOR)", got, "✓")
 	}
 }
 
-func TestColorizer_BarRunes(t *testing.T) {
-	disabled, err := NewColorizer("never", nonTTY(t))
+func TestStyler_BarRunes(t *testing.T) {
+	disabled, err := NewStyler("never", nonTTY(t))
 	if err != nil {
-		t.Fatalf("NewColorizer: %v", err)
+		t.Fatalf("NewStyler: %v", err)
 	}
 	l, f, tip, p, r := disabled.BarRunes()
 	if l != "[" || f != "=" || tip != ">" || p != " " || r != "]" {
 		t.Errorf("disabled BarRunes = %q/%q/%q/%q/%q, want [/=/>/ /]", l, f, tip, p, r)
 	}
 
-	enabled, err := NewColorizer("always", nonTTY(t))
+	enabled, err := NewStyler("always", nonTTY(t))
 	if err != nil {
-		t.Fatalf("NewColorizer: %v", err)
+		t.Fatalf("NewStyler: %v", err)
 	}
 	l, f, tip, p, r = enabled.BarRunes()
 	if l != "" || r != "" {
@@ -254,14 +254,34 @@ func TestColorizer_BarRunes(t *testing.T) {
 	}
 }
 
-func TestColorizer_Tag(t *testing.T) {
-	enabled, err := NewColorizer("always", nonTTY(t))
+func TestStyler_Box(t *testing.T) {
+	disabled, err := NewStyler("never", nonTTY(t))
 	if err != nil {
-		t.Fatalf("NewColorizer: %v", err)
+		t.Fatalf("NewStyler: %v", err)
 	}
-	disabled, err := NewColorizer("never", nonTTY(t))
+	if got := disabled.Box(10, []string{"hello     "}); got != "" {
+		t.Errorf("disabled Box should be empty; got %q", got)
+	}
+
+	enabled, err := NewStyler("always", nonTTY(t))
 	if err != nil {
-		t.Fatalf("NewColorizer: %v", err)
+		t.Fatalf("NewStyler: %v", err)
+	}
+	got := enabled.Box(5, []string{"hello"})
+	want := "┌─────┐\n│hello│\n└─────┘\n"
+	if got != want {
+		t.Errorf("enabled Box = %q, want %q", got, want)
+	}
+}
+
+func TestStyler_Tag(t *testing.T) {
+	enabled, err := NewStyler("always", nonTTY(t))
+	if err != nil {
+		t.Fatalf("NewStyler: %v", err)
+	}
+	disabled, err := NewStyler("never", nonTTY(t))
+	if err != nil {
+		t.Fatalf("NewStyler: %v", err)
 	}
 
 	expectedPrefix := map[string]string{

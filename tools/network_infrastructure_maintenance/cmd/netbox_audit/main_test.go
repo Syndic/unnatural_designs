@@ -273,7 +273,7 @@ func TestTotalFindings(t *testing.T) {
 }
 
 func TestWriteTextReport(t *testing.T) {
-	colors, err := shared.NewColorizer(shared.ColorNever, os.Stdout)
+	colors, err := shared.NewStyler(shared.ColorNever, os.Stdout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -323,7 +323,7 @@ func TestWriteTextReport(t *testing.T) {
 }
 
 func TestRunAudit_Smoke(t *testing.T) {
-	reporter := progress.New(os.Stderr, progress.ModeOff, shared.Colorizer{})
+	reporter := progress.New(os.Stderr, progress.ModeOff, shared.Styler{})
 	defer func() { _ = reporter.Close() }()
 
 	called := false
@@ -350,7 +350,7 @@ func TestRunAudit_Smoke(t *testing.T) {
 }
 
 func TestRunAudit_RuledCheckReceivesRules(t *testing.T) {
-	reporter := progress.New(os.Stderr, progress.ModeOff, shared.Colorizer{})
+	reporter := progress.New(os.Stderr, progress.ModeOff, shared.Styler{})
 	defer func() { _ = reporter.Close() }()
 
 	var got audit.InterfaceVRFRules

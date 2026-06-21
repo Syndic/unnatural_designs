@@ -101,7 +101,7 @@ func stripANSI(s string) string {
 
 func TestRichReporter_StartupAndAnnounce(t *testing.T) {
 	pd := newPipeDrainer(t)
-	r := newRichReporter(pd.w, shared.Colorizer{})
+	r := newRichReporter(pd.w, shared.Styler{})
 
 	r.Startupf("hello %s", "world")
 	r.AnnounceChecks([]string{"a", "b", "c"})
@@ -120,7 +120,7 @@ func TestRichReporter_StartupAndAnnounce(t *testing.T) {
 
 func TestRichReporter_SnapshotLifecycle(t *testing.T) {
 	pd := newPipeDrainer(t)
-	r := newRichReporter(pd.w, shared.Colorizer{})
+	r := newRichReporter(pd.w, shared.Styler{})
 
 	r.SnapshotAttemptStart(1, 3, 2)
 
@@ -170,7 +170,7 @@ func TestRichReporter_SnapshotLifecycle(t *testing.T) {
 
 func TestRichReporter_RetryAttemptBanner(t *testing.T) {
 	pd := newPipeDrainer(t)
-	r := newRichReporter(pd.w, shared.Colorizer{})
+	r := newRichReporter(pd.w, shared.Styler{})
 
 	r.SnapshotAttemptStart(1, 3, 2)
 	cb := r.SnapshotTaskStart("devices")
@@ -208,7 +208,7 @@ func TestRichReporter_RetryAttemptBanner(t *testing.T) {
 
 func TestRichReporter_CloseIsIdempotent(t *testing.T) {
 	pd := newPipeDrainer(t)
-	r := newRichReporter(pd.w, shared.Colorizer{})
+	r := newRichReporter(pd.w, shared.Styler{})
 
 	r.Startupf("init")
 	if err := r.Close(); err != nil {
@@ -222,7 +222,7 @@ func TestRichReporter_CloseIsIdempotent(t *testing.T) {
 
 func TestRichReporter_ChecksCompleteWithoutFindingsUsesPassMarker(t *testing.T) {
 	pd := newPipeDrainer(t)
-	r := newRichReporter(pd.w, shared.Colorizer{})
+	r := newRichReporter(pd.w, shared.Styler{})
 
 	r.ChecksStart(2)
 	r.ChecksComplete(2, 0, 20*time.Millisecond)
@@ -241,9 +241,9 @@ func TestRichReporter_ChecksCompleteWithoutFindingsUsesPassMarker(t *testing.T) 
 
 func TestRichReporter_StartupBannerBox_ColorEnabled(t *testing.T) {
 	pd := newPipeDrainer(t)
-	enabled, err := shared.NewColorizer(shared.ColorAlways, pd.w)
+	enabled, err := shared.NewStyler(shared.ColorAlways, pd.w)
 	if err != nil {
-		t.Fatalf("NewColorizer: %v", err)
+		t.Fatalf("NewStyler: %v", err)
 	}
 	r := newRichReporter(pd.w, enabled)
 	r.Startupf("Starting NetBox audit against %s using %s", "https://nb", "cfg.json")
@@ -266,25 +266,19 @@ func TestRichReporter_StartupBannerBox_ColorEnabled(t *testing.T) {
 	}
 }
 
-func TestRichReporter_StartupBannerBox_ColorDisabled(t *testing.T) {
+func TestRichReporter_StartupBannerBox_ColorDisabledOmitsBox(t *testing.T) {
 	pd := newPipeDrainer(t)
-	r := newRichReporter(pd.w, shared.Colorizer{})
+	r := newRichReporter(pd.w, shared.Styler{})
 	r.Startupf("hello")
 	if err := r.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
-	rawOut := pd.Close(t)
-	// The box renders the same shape with or without color — accent
-	// decorations degrade to plain text — so the borders should still be
-	// there.
-	for _, want := range []string{"┌", "└", "netbox-audit", "UNNATURAL_DESIGNS", brandTagline, "[netbox-audit] hello"} {
-		if !strings.Contains(rawOut, want) {
-			t.Errorf("missing %q in uncolorized banner output:\n%s", want, rawOut)
-		}
+	out := stripANSI(pd.Close(t))
+	if strings.Contains(out, "┌") || strings.Contains(out, "└") {
+		t.Errorf("uncolorized startup should omit the hairline box; got:\n%s", out)
 	}
-	// No ANSI escapes should leak through when the colorizer is disabled.
-	if strings.Contains(rawOut, "\033[") {
-		t.Errorf("uncolorized startup should emit no ANSI escapes; got:\n%s", rawOut)
+	if !strings.Contains(out, "[netbox-audit] hello") {
+		t.Errorf("missing pipe-safe one-liner:\n%s", out)
 	}
 }
 

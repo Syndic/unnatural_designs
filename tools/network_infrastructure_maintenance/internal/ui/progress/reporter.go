@@ -77,7 +77,7 @@ type Reporter interface {
 
 // New returns a Reporter for the given mode. ModeAuto resolves against
 // stderr's TTY status and the NO_COLOR / TERM environment.
-func New(stderr *os.File, mode Mode, colors shared.Colorizer) Reporter {
+func New(stderr *os.File, mode Mode, colors shared.Styler) Reporter {
 	resolved := Resolve(mode, stderr)
 	switch resolved {
 	case ModeRich:

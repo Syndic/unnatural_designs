@@ -21,11 +21,11 @@ func totalFindings(rep report) int {
 	return total
 }
 
-func printTextReport(rep report, colors shared.Colorizer) {
+func printTextReport(rep report, colors shared.Styler) {
 	writeTextReport(os.Stdout, rep, colors)
 }
 
-func writeTextReport(w io.Writer, rep report, colors shared.Colorizer) {
+func writeTextReport(w io.Writer, rep report, colors shared.Styler) {
 	checksWithFindings := 0
 	for _, check := range rep.Checks {
 		if len(check.Findings) > 0 || len(check.Extra) > 0 {
