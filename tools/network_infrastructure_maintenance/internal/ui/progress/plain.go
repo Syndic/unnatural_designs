@@ -18,13 +18,12 @@ import (
 // lines are dropped, per-page progress callbacks return nil, and per-check
 // completions are coalesced into a single end-of-phase summary.
 type plainReporter struct {
-	mu     sync.Mutex
-	w      io.Writer
-	colors shared.Styler
+	mu sync.Mutex
+	w  io.Writer
 }
 
-func newPlainReporter(stderr *os.File, colors shared.Styler) *plainReporter {
-	return &plainReporter{w: stderr, colors: colors}
+func newPlainReporter(stderr *os.File) *plainReporter {
+	return &plainReporter{w: stderr}
 }
 
 func (p *plainReporter) printf(format string, args ...any) {

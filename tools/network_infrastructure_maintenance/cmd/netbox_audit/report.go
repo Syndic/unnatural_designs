@@ -21,11 +21,11 @@ func totalFindings(rep report) int {
 	return total
 }
 
-func printTextReport(rep report, colors shared.Styler) {
-	writeTextReport(os.Stdout, rep, colors)
+func printTextReport(rep report, styler shared.Styler) {
+	writeTextReport(os.Stdout, rep, styler)
 }
 
-func writeTextReport(w io.Writer, rep report, colors shared.Styler) {
+func writeTextReport(w io.Writer, rep report, styler shared.Styler) {
 	checksWithFindings := 0
 	for _, check := range rep.Checks {
 		if len(check.Findings) > 0 || len(check.Extra) > 0 {
@@ -80,7 +80,7 @@ func writeTextReport(w io.Writer, rep report, colors shared.Styler) {
 		// Tag handles colored-vs-NO_COLOR internally: a padded saturated-bg
 		// block when colors are enabled, the bracket form `[PASS]` / `[WARN]`
 		// otherwise.
-		_, _ = fmt.Fprintf(w, "\n%s %s (%d)\n", colors.Tag(status), check.Name, count)
+		_, _ = fmt.Fprintf(w, "\n%s %s (%d)\n", styler.Tag(status), check.Name, count)
 		for _, finding := range check.Findings {
 			_, _ = fmt.Fprintf(w, "- %s\n", finding)
 		}

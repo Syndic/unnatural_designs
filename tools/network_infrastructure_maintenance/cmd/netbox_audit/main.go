@@ -15,10 +15,10 @@ import (
 	"github.com/Syndic/unnatural_designs/tools/network_infrastructure_maintenance/internal/ui/progress"
 )
 
-var stderrColors shared.Styler
+var stderrStyler shared.Styler
 
 func fatalf(format string, args ...any) {
-	fmt.Fprintf(os.Stderr, "%s %s\n", stderrColors.Fail(shared.StatusFail), fmt.Sprintf(format, args...))
+	fmt.Fprintf(os.Stderr, "%s %s\n", stderrStyler.Fail(shared.StatusFail), fmt.Sprintf(format, args...))
 	os.Exit(1)
 }
 
@@ -51,13 +51,13 @@ func main() {
 		}
 	})
 
-	stdoutColors, err := shared.NewStyler(*colorMode, os.Stdout)
+	stdoutStyler, err := shared.NewStyler(*colorMode, os.Stdout)
 	if err != nil {
 		fatalf("Invalid color mode %q: %v", *colorMode, err)
 	}
-	stderrColors = stdoutColors
-	if colors, err := shared.NewStyler(*colorMode, os.Stderr); err == nil {
-		stderrColors = colors
+	stderrStyler = stdoutStyler
+	if styler, err := shared.NewStyler(*colorMode, os.Stderr); err == nil {
+		stderrStyler = styler
 	}
 
 	token := strings.TrimSpace(os.Getenv(shared.EnvNetBoxToken))
@@ -98,7 +98,7 @@ func main() {
 	if err != nil {
 		fatalf("Invalid progress mode %q: %v", *progressMode, err)
 	}
-	reporter := progress.New(os.Stderr, mode, stderrColors)
+	reporter := progress.New(os.Stderr, mode, stderrStyler)
 	defer func() { _ = reporter.Close() }()
 
 	configLabel := "built-in defaults"
@@ -134,7 +134,7 @@ func main() {
 			fatalf("Failed to write JSON report: %v", err)
 		}
 	default:
-		printTextReport(rep, stdoutColors)
+		printTextReport(rep, stdoutStyler)
 	}
 
 	if *failOnFindings && totalFindings(rep) > 0 {

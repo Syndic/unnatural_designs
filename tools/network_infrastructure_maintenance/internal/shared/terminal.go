@@ -84,8 +84,8 @@ const (
 	blockPrefixFail = "\033[41;30;1m" //nolint:gosec // ANSI SGR sequence, not credentials
 )
 
-func (c Styler) wrap(code, text string) string {
-	if !c.enabled {
+func (s Styler) wrap(code, text string) string {
+	if !s.enabled {
 		return text
 	}
 	return code + text + codeReset
@@ -95,24 +95,24 @@ func (c Styler) wrap(code, text string) string {
 // bold ANSI-0 (black) foreground, padded with a leading and trailing space
 // so the colored region extends visibly wider than the glyph or label
 // inside it. Under NO_COLOR the bare text is returned unchanged.
-func (c Styler) block(prefix, text string) string {
-	if !c.enabled {
+func (s Styler) block(prefix, text string) string {
+	if !s.enabled {
 		return text
 	}
 	return prefix + " " + text + " " + codeReset
 }
 
-func (c Styler) Pass(text string) string { return c.wrap(codePass, text) }
-func (c Styler) Warn(text string) string { return c.wrap(codeWarn, text) }
-func (c Styler) Fail(text string) string { return c.wrap(codeFail, text) }
+func (s Styler) Pass(text string) string { return s.wrap(codePass, text) }
+func (s Styler) Warn(text string) string { return s.wrap(codeWarn, text) }
+func (s Styler) Fail(text string) string { return s.wrap(codeFail, text) }
 
 // Accent wraps text in the warm-orange accent color. Used by the spinner,
 // progress-bar fill/tip, and the banner accent character.
-func (c Styler) Accent(text string) string { return c.wrap(codeAccent, text) }
+func (s Styler) Accent(text string) string { return s.wrap(codeAccent, text) }
 
 // Track wraps text in the dim grey used for the unfilled portion of progress
 // bars.
-func (c Styler) Track(text string) string { return c.wrap(codeTrack, text) }
+func (s Styler) Track(text string) string { return s.wrap(codeTrack, text) }
 
 // BarRunes returns the rune set for an mpb-style progress bar. When colors
 // are enabled it yields the accent-colored Unicode block fill / dim track;
@@ -120,19 +120,19 @@ func (c Styler) Track(text string) string { return c.wrap(codeTrack, text) }
 // rune set and the color treatment are inseparable (Unicode block without
 // color reads as a plain wall of solid characters), so they're chosen here
 // together rather than by the caller branching on color state.
-func (c Styler) BarRunes() (lbound, filler, tip, padding, rbound string) {
-	if !c.enabled {
+func (s Styler) BarRunes() (lbound, filler, tip, padding, rbound string) {
+	if !s.enabled {
 		return "[", "=", ">", " ", "]"
 	}
-	return "", c.Accent("█"), c.Accent("█"), c.Track("░"), ""
+	return "", s.Accent("█"), s.Accent("█"), s.Track("░"), ""
 }
 
 // Box wraps lines in a hairline box of the given inner width (the visible
 // cell count between the │ borders). Each line must already be padded to
 // width visible cells; Box doesn't strip ANSI to measure. Returns "" when
 // the styler is disabled, so callers don't need to branch on state.
-func (c Styler) Box(width int, lines []string) string {
-	if !c.enabled {
+func (s Styler) Box(width int, lines []string) string {
+	if !s.enabled {
 		return ""
 	}
 	hr := strings.Repeat("─", width)
@@ -149,25 +149,25 @@ func (c Styler) Box(width int, lines []string) string {
 // saturated role-colored background with a bold black glyph inside, padded
 // for visible width. When the styler is disabled they return the bare
 // text, so the caller's bracket/glyph form is what survives on a pipe.
-func (c Styler) PassBlock(text string) string { return c.block(blockPrefixPass, text) }
-func (c Styler) WarnBlock(text string) string { return c.block(blockPrefixWarn, text) }
-func (c Styler) FailBlock(text string) string { return c.block(blockPrefixFail, text) }
+func (s Styler) PassBlock(text string) string { return s.block(blockPrefixPass, text) }
+func (s Styler) WarnBlock(text string) string { return s.block(blockPrefixWarn, text) }
+func (s Styler) FailBlock(text string) string { return s.block(blockPrefixFail, text) }
 
 // Tag returns the report tag for status. When colors are enabled it renders
 // as a padded saturated-bg block with bold black text (e.g. ` PASS ` on
 // green). Under NO_COLOR it falls back to the bracket form (`[PASS]`) — the
 // durable form that ships in piped output and CI logs.
-func (c Styler) Tag(status string) string {
-	if !c.enabled {
+func (s Styler) Tag(status string) string {
+	if !s.enabled {
 		return "[" + status + "]"
 	}
 	switch status {
 	case StatusPass:
-		return c.PassBlock(status)
+		return s.PassBlock(status)
 	case StatusWarn:
-		return c.WarnBlock(status)
+		return s.WarnBlock(status)
 	case StatusFail:
-		return c.FailBlock(status)
+		return s.FailBlock(status)
 	default:
 		return "[" + status + "]"
 	}

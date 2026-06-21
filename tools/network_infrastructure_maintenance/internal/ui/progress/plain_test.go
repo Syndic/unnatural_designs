@@ -7,13 +7,11 @@ import (
 	"time"
 
 	netbox "github.com/Syndic/unnatural_designs/tools/network_infrastructure_maintenance/internal/netbox"
-	"github.com/Syndic/unnatural_designs/tools/network_infrastructure_maintenance/internal/shared"
 )
 
-// newTestPlainReporter constructs a plainReporter that writes to buf with a
-// disabled styler (zero-value Styler has color disabled).
+// newTestPlainReporter constructs a plainReporter that writes to buf.
 func newTestPlainReporter(buf *bytes.Buffer) *plainReporter {
-	return &plainReporter{w: buf, colors: shared.Styler{}}
+	return &plainReporter{w: buf}
 }
 
 func TestPlainReporter_NoStartedLines(t *testing.T) {

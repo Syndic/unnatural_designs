@@ -273,7 +273,7 @@ func TestTotalFindings(t *testing.T) {
 }
 
 func TestWriteTextReport(t *testing.T) {
-	colors, err := shared.NewStyler(shared.ColorNever, os.Stdout)
+	styler, err := shared.NewStyler(shared.ColorNever, os.Stdout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -301,7 +301,7 @@ func TestWriteTextReport(t *testing.T) {
 		},
 	}
 	var buf bytes.Buffer
-	writeTextReport(&buf, rep, colors)
+	writeTextReport(&buf, rep, styler)
 	out := buf.String()
 	wants := []string{
 		"Snapshot: 2 attempt(s), latest change #42",

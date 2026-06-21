@@ -1,7 +1,16 @@
 // Package progress renders snapshot-fetch and check-execution progress to
-// the user during a netbox_audit run. It exposes two implementations of
-// Reporter: a rich, mpb-driven sticky-panel renderer for interactive
-// terminals, and a plain line-oriented logger for CI / piped output.
+// the user during a netbox_audit run.
+//
+// Two orthogonal axes govern the output; keep them distinct:
+//   - Layout (this package, via Mode/Resolve): how progress is laid out over
+//     time — rich (an mpb sticky panel that redraws bars in place; needs a
+//     TTY), plain (append-only log lines for CI/pipes), or off (silent).
+//   - Color (shared.Styler): whether spans are painted with ANSI codes,
+//     resolved per stream so the stdout report and stderr progress UI decide
+//     independently.
+//
+// The rich reporter composes a Styler; the plain reporter emits no color at
+// all, which is why it needs none.
 package progress
 
 import (
@@ -77,15 +86,15 @@ type Reporter interface {
 
 // New returns a Reporter for the given mode. ModeAuto resolves against
 // stderr's TTY status and the NO_COLOR / TERM environment.
-func New(stderr *os.File, mode Mode, colors shared.Styler) Reporter {
+func New(stderr *os.File, mode Mode, styler shared.Styler) Reporter {
 	resolved := Resolve(mode, stderr)
 	switch resolved {
 	case ModeRich:
-		return newRichReporter(stderr, colors)
+		return newRichReporter(stderr, styler)
 	case ModeOff:
 		return offReporter{}
 	default:
-		return newPlainReporter(stderr, colors)
+		return newPlainReporter(stderr)
 	}
 }
 
