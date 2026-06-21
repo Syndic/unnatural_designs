@@ -79,11 +79,6 @@ const (
 	blockPrefixFail = "\033[41;30;1m"
 )
 
-// Enabled reports whether the colorizer will emit ANSI codes. Callers use it
-// to pick between colored treatments and pipe-safe fallbacks without poking
-// at the unexported state.
-func (c Colorizer) Enabled() bool { return c.enabled }
-
 func (c Colorizer) wrap(code, text string) string {
 	if !c.enabled {
 		return text
@@ -113,6 +108,19 @@ func (c Colorizer) Accent(text string) string { return c.wrap(codeAccent, text) 
 // Track wraps text in the dim grey used for the unfilled portion of progress
 // bars.
 func (c Colorizer) Track(text string) string { return c.wrap(codeTrack, text) }
+
+// BarRunes returns the rune set for an mpb-style progress bar. When colors
+// are enabled it yields the accent-colored Unicode block fill / dim track;
+// without color it falls back to the pipe-legible ASCII `[===>]` shape. The
+// rune set and the color treatment are inseparable (Unicode block without
+// color reads as a plain wall of solid characters), so they're chosen here
+// together rather than by the caller branching on color state.
+func (c Colorizer) BarRunes() (lbound, filler, tip, padding, rbound string) {
+	if !c.enabled {
+		return "[", "=", ">", " ", "]"
+	}
+	return "", c.Accent("█"), c.Accent("█"), c.Track("░"), ""
+}
 
 // PassBlock / WarnBlock / FailBlock render their argument as a status block —
 // saturated role-colored background with a bold black glyph inside, padded

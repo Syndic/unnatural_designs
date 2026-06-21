@@ -225,6 +225,35 @@ func TestColorizer_Block_BoldAnsi0FgOnColoredBg(t *testing.T) {
 	}
 }
 
+func TestColorizer_BarRunes(t *testing.T) {
+	disabled, err := NewColorizer("never", nonTTY(t))
+	if err != nil {
+		t.Fatalf("NewColorizer: %v", err)
+	}
+	l, f, tip, p, r := disabled.BarRunes()
+	if l != "[" || f != "=" || tip != ">" || p != " " || r != "]" {
+		t.Errorf("disabled BarRunes = %q/%q/%q/%q/%q, want [/=/>/ /]", l, f, tip, p, r)
+	}
+
+	enabled, err := NewColorizer("always", nonTTY(t))
+	if err != nil {
+		t.Fatalf("NewColorizer: %v", err)
+	}
+	l, f, tip, p, r = enabled.BarRunes()
+	if l != "" || r != "" {
+		t.Errorf("enabled BarRunes should have empty lbound/rbound; got %q/%q", l, r)
+	}
+	if !strings.Contains(f, "█") || !strings.Contains(f, "\033[") {
+		t.Errorf("enabled filler should be a colored block char; got %q", f)
+	}
+	if !strings.Contains(p, "░") || !strings.Contains(p, "\033[") {
+		t.Errorf("enabled padding should be a colored track char; got %q", p)
+	}
+	if !strings.Contains(tip, "█") {
+		t.Errorf("enabled tip should be a block char; got %q", tip)
+	}
+}
+
 func TestColorizer_Tag(t *testing.T) {
 	enabled, err := NewColorizer("always", nonTTY(t))
 	if err != nil {

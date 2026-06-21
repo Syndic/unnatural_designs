@@ -266,19 +266,25 @@ func TestRichReporter_StartupBannerBox_ColorEnabled(t *testing.T) {
 	}
 }
 
-func TestRichReporter_StartupBannerBox_ColorDisabledOmitsBox(t *testing.T) {
+func TestRichReporter_StartupBannerBox_ColorDisabled(t *testing.T) {
 	pd := newPipeDrainer(t)
 	r := newRichReporter(pd.w, shared.Colorizer{})
 	r.Startupf("hello")
 	if err := r.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
-	out := stripANSI(pd.Close(t))
-	if strings.Contains(out, "┌") || strings.Contains(out, "└") {
-		t.Errorf("uncolorized startup should omit the hairline box; got:\n%s", out)
+	rawOut := pd.Close(t)
+	// The box renders the same shape with or without color — accent
+	// decorations degrade to plain text — so the borders should still be
+	// there.
+	for _, want := range []string{"┌", "└", "netbox-audit", "UNNATURAL_DESIGNS", brandTagline, "[netbox-audit] hello"} {
+		if !strings.Contains(rawOut, want) {
+			t.Errorf("missing %q in uncolorized banner output:\n%s", want, rawOut)
+		}
 	}
-	if !strings.Contains(out, "[netbox-audit] hello") {
-		t.Errorf("missing pipe-safe one-liner:\n%s", out)
+	// No ANSI escapes should leak through when the colorizer is disabled.
+	if strings.Contains(rawOut, "\033[") {
+		t.Errorf("uncolorized startup should emit no ANSI escapes; got:\n%s", rawOut)
 	}
 }
 

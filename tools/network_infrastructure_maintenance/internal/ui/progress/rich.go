@@ -21,27 +21,16 @@ const brandTagline = "validates the netbox model for internal consistency"
 // frame can be wrapped in the accent SGR when colors are enabled.
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
-// accentBarStyle returns the Unicode-block bar style — accent fill, dim-grey
-// track. When colors are disabled it falls back to the pipe-legible ASCII
-// `[===>]` shape.
+// accentBarStyle builds an mpb bar style from the colorizer's rune set. The
+// colorizer chooses Unicode-block-with-accent or ASCII-without internally.
 func accentBarStyle(colors shared.Colorizer) mpb.BarStyleComposer {
-	if !colors.Enabled() {
-		return mpb.BarStyle().Lbound("[").Filler("=").Tip(">").Padding(" ").Rbound("]")
-	}
-	return mpb.BarStyle().
-		Lbound("").
-		Filler(colors.Accent("█")).
-		Tip(colors.Accent("█")).
-		Padding(colors.Track("░")).
-		Rbound("")
+	l, f, t, p, r := colors.BarRunes()
+	return mpb.BarStyle().Lbound(l).Filler(f).Tip(t).Padding(p).Rbound(r)
 }
 
-// accentSpinnerStyle wraps mpb's default braille frames in the accent SGR
-// when colors are enabled, falling back to plain frames otherwise.
+// accentSpinnerStyle wraps each braille frame in Accent. When the colorizer
+// is disabled, Accent is the identity, so the frames render plain.
 func accentSpinnerStyle(colors shared.Colorizer) mpb.BarFillerBuilder {
-	if !colors.Enabled() {
-		return mpb.SpinnerStyle().PositionLeft()
-	}
 	colored := make([]string, len(spinnerFrames))
 	for i, f := range spinnerFrames {
 		colored[i] = colors.Accent(f)
@@ -100,13 +89,9 @@ func newRichReporter(stderr *os.File, colors shared.Colorizer) *richReporter {
 
 func (r *richReporter) Startupf(format string, args ...any) {
 	// Startup banner is printed before any bars exist; write directly to
-	// stderr so it appears at the top of the run output. The hairline box
-	// only renders on a colorized stderr — under NO_COLOR / non-TTY / plain
-	// mode the one-line `[netbox-audit] …` form is the correct pipe-safe
-	// shape.
-	if r.colors.Enabled() {
-		_, _ = fmt.Fprint(r.w, renderBannerBox(r.colors))
-	}
+	// stderr so it appears at the top of the run output. The accent
+	// decorations inside the box degrade to plain text under NO_COLOR.
+	_, _ = fmt.Fprint(r.w, renderBannerBox(r.colors))
 	_, _ = fmt.Fprintf(r.w, "[netbox-audit] "+format+"\n", args...)
 }
 
