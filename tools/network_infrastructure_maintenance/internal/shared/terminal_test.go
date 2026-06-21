@@ -284,10 +284,10 @@ func TestStyler_Tag(t *testing.T) {
 		t.Fatalf("NewStyler: %v", err)
 	}
 
-	expectedPrefix := map[string]string{
-		StatusPass: "\033[42;30;1m", //nolint:gosec // ANSI SGR sequence, not credentials
-		StatusWarn: "\033[43;30;1m", //nolint:gosec // ANSI SGR sequence, not credentials
-		StatusFail: "\033[41;30;1m", //nolint:gosec // ANSI SGR sequence, not credentials
+	expectedPrefix := map[string]string{ //nolint:gosec // ANSI SGR sequences, not credentials
+		StatusPass: "\033[42;30;1m",
+		StatusWarn: "\033[43;30;1m",
+		StatusFail: "\033[41;30;1m",
 	}
 	for _, status := range []string{StatusPass, StatusWarn, StatusFail} {
 		bracketed := "[" + status + "]"
