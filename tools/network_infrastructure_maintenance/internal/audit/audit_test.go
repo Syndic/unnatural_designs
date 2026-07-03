@@ -549,13 +549,13 @@ func TestWirelessNormalization(t *testing.T) {
 			{ID: 4, Name: "host-with-wired"},
 		},
 		Interfaces: []netbox.Iface{
-			// host: wireless, missing all -> finding.
+			// host - wireless, missing all -> finding.
 			{ID: 10, Name: "wlan0", Device: namedRef(1, "host"), Type: choice(WirelessTypePrefix + "ac"), Enabled: true},
-			// AP: skipped (role).
+			// AP - skipped (role).
 			{ID: 11, Name: "wlan0", Device: namedRef(2, "ap"), Type: choice(WirelessTypePrefix + "ac"), Enabled: true},
-			// planned: skipped.
+			// planned - skipped.
 			{ID: 12, Name: "wlan0", Device: namedRef(3, "planned"), Type: choice(WirelessTypePrefix + "ac"), Enabled: true},
-			// host-with-wired: has a complete wired iface, so wireless suppressed.
+			// host-with-wired - has a complete wired iface, so wireless suppressed.
 			{ID: 13, Name: "eth0", Device: namedRef(4, "host-with-wired"), Type: choice("1000base-t"), Enabled: true, MACAddress: "aa:bb:cc:dd:ee:ff", ConnectedEndpoints: []netbox.ConnectedEndpoint{{ID: 1}}},
 			{ID: 14, Name: "wlan0", Device: namedRef(4, "host-with-wired"), Type: choice(WirelessTypePrefix + "ac"), Enabled: true},
 		},

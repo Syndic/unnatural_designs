@@ -1,17 +1,17 @@
 load("@pypi//:requirements.bzl", "requirement")
 load("@rules_python//python:py_test.bzl", "py_test")
 
-# TRANSIENT — proves the end-to-end Python plumbing chain:
+# Proves the end-to-end Python plumbing chain:
 #   pyproject.toml  →  uv.lock  →  requirements_lock.txt  →  pip.parse  →  @pypi//...
 #
-# It imports `requests` (declared in the root pyproject.toml's transient smoke
-# dep) and asserts the module loads. Also gives check_modules.py's Python
-# invariants real input to validate against until project pyprojects land.
+# It imports `requests` (declared in the root pyproject.toml's smoke dep) and
+# asserts the module loads. Also gives check_modules.py's Python invariants real
+# input to validate against until project pyprojects land.
 #
-# DELETE TRIGGER: when gazelle_python is wired (B4 of the Python tooling bootstrap;
-# canonical pointer in docs/future-considerations.md "Python BUILD Generation"),
-# delete this directory and the `requests` dep in pyproject.toml, then re-export
-# the lockfiles. The chain has its own coverage in the gazelle plugin by then.
+# TODO: when gazelle_python is wired (B4 of the Python tooling bootstrap; canonical
+# pointer in docs/future-considerations.md "Python BUILD Generation"), delete this
+# directory and the `requests` dep in pyproject.toml, then re-export the lockfiles.
+# The chain has its own coverage in the gazelle plugin by then.
 
 py_test(
     name = "smoke_test",

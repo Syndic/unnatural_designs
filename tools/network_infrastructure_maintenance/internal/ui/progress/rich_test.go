@@ -242,7 +242,7 @@ func TestRichReporter_ChecksCompleteWithoutFindingsUsesPassMarker(t *testing.T) 
 // Compile-time interface assertion: richReporter implements Reporter.
 var _ Reporter = (*richReporter)(nil)
 
-// Sanity: the drainer reads everything written. Guards against the test
+// NOTE: sanity check — the drainer reads everything written. Guards against the test
 // helper silently swallowing writes if mpb's writer ever changes.
 func TestPipeDrainer_RoundTrip(t *testing.T) {
 	pd := newPipeDrainer(t)
