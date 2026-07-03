@@ -126,7 +126,7 @@ jobs:
       - uses: astral-sh/ruff-action@0ce1b0bf8b818ef400413f810f8a11cdbda0034b # v4.0.0
         with:
           # renovate: datasource=pypi depName=ruff
-          version: "0.15.18"
+          version: "0.15.20"
           args: format --check
       - run: ruff check
 
