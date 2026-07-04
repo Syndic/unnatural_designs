@@ -23,9 +23,8 @@ dependencies = [
     # resolved vs. proposed versions reliably needs proper pep440 semantics rather
     # than lexical string compare.
     "packaging>=24.0",
-    # TRANSIENT: third-party dep for the meta/scripts/smoke_py smoke target. Delete
-    # along with the smoke target once the pip.parse chain has been verified
-    # end-to-end.
+    # TODO: delete this dep along with the meta/scripts/smoke_py smoke target once the
+    # pip.parse chain has been verified end-to-end.
     "requests>=2.32",
 ]
 

@@ -19,7 +19,7 @@ name: Renovate — re-derive Python lock files
 #
 # Prior bot REQUEST_CHANGES reviews are dismissed after the new state lands (commit OR
 # new review filed) so the PR's review status reflects the latest evaluation. Order is
-# deliberate: commit/file first, then dismiss — so a partial workflow failure leaves the
+# deliberate (commit/file first, then dismiss) so a partial workflow failure leaves the
 # stale review intact rather than briefly clearing the gate.
 #
 # All the data-manipulation logic is in the Python script under tests

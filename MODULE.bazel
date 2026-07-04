@@ -91,7 +91,7 @@ pip.parse(
 )
 use_repo(pip, "pypi")
 
-# DEFERRED: rules_python_gazelle_plugin (a.k.a. gazelle_python) is not wired
+# TEND(tooling): rules_python_gazelle_plugin (a.k.a. gazelle_python) is not wired
 # here. The plugin's gazelle binary pulls in smacker/go-tree-sitter via CGO,
 # which does not compile under our Go 1.26.4 SDK (upstream issue
 # bazel-contrib/rules_python#3416; the migration to a pure-Go binding is in
