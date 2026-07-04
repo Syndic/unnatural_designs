@@ -28,6 +28,16 @@ as part of the change is welcome and doesn't need a separate task. Leave the loa
 cut the prose around them. If you're unsure whether a comment is load-bearing, surface the proposed
 cut before applying it.
 
+## Reminder tags — use only the documented set
+
+Reminder tags (`TODO`, `FIXME`, `HACK`, `NOTE`, `TEND(<task-type>)`) are a closed, greppable
+vocabulary defined in `docs/reminder-tags.md`. Don't invent new ones — an ad-hoc tag like
+`TRANSIENT:` or `DEFERRED:` is invisible to the per-category grep the system exists for. Pick the
+closest documented tag (context/rationale → `NOTE`; correct-now-but-will-change → `TEND`); if none
+fits, add the tag to `docs/reminder-tags.md` first, then use it. Watch for accidental tag shapes
+too: a leading `Word:` in a comment reads like a tag even when it's just prose — reword it (e.g. to
+a parenthetical) so a tag sweep doesn't trip on it.
+
 ## .devcontainer worktree + timezone plumbing
 
 The devcontainer is brought up by Claude agents via the `devcontainer` CLI (humans use VS Code's
