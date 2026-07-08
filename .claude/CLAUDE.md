@@ -38,6 +38,12 @@ fits, add the tag to `docs/reminder-tags.md` first, then use it. Watch for accid
 too: a leading `Word:` in a comment reads like a tag even when it's just prose — reword it (e.g. to
 a parenthetical) so a tag sweep doesn't trip on it.
 
+## commit-file-via-app is a public contract
+
+`.github/actions/commit-file-via-app/` has external consumers referencing it at `@main` — read
+[its README](../.github/actions/commit-file-via-app/README.md) before changing its inputs or its
+no-op-when-no-diff behavior.
+
 ## .devcontainer worktree + timezone plumbing
 
 The devcontainer is brought up by Claude agents via the `devcontainer` CLI (humans use VS Code's

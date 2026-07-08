@@ -272,3 +272,6 @@ an installation token from a dedicated GitHub App rather than the default `GITHU
 required status checks retrigger on the new head. See
 [`docs/future-considerations.md`](docs/future-considerations.md) "Auto-commit GitHub App" for
 the rationale, the app's required permissions, and the triggers that would retire each workflow.
+The action also has consumers outside this repo; its
+[README](.github/actions/commit-file-via-app/README.md) documents the compatibility contract,
+the consumer list, and the self-test workflow that exercises it on PRs.

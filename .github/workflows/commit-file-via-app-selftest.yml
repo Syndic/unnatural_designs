@@ -1,0 +1,138 @@
+name: Self-test — commit-file-via-app
+
+# The commit-file-via-app composite action has consumers outside this repo that reference it at
+# `@main` (see the action's README for the contract and consumer list), so a breaking change here
+# ships to them with no review gate. This workflow exercises the action end-to-end on every PR
+# that touches it: commit a real change to a scratch branch via the action, assert the commit is
+# web-flow signed with the expected content, then assert the no-diff path leaves the branch tip
+# untouched. The scratch branch is deleted even on failure.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+    paths:
+      - ".github/actions/commit-file-via-app/**"
+      - ".github/workflows/commit-file-via-app-selftest.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  selftest:
+    name: Action self-test
+    # Fork PRs can't read the app credentials; skip rather than fail confusingly.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    env:
+      # run_attempt guards against a leftover branch from a prior attempt whose cleanup failed.
+      SCRATCH_BRANCH: action-selftest/${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.head_ref }}
+          persist-credentials: false
+
+      # The action mints its own token from these credentials; this one is for the scratch-branch
+      # setup, assertions, and cleanup around it.
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          app-id: ${{ vars.RENOVATE_HELPER_APP_ID }}
+          private-key: ${{ secrets.RENOVATE_HELPER_PRIVATE_KEY }}
+
+      # Branch from the local HEAD (not the PR head SHA from the event payload) so the remote
+      # scratch branch is guaranteed to match the working tree the action diffs against.
+      - name: Create scratch branch at the checked-out commit
+        id: scratch
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          BASE_SHA=$(git rev-parse HEAD)
+          gh api "repos/${REPO}/git/refs" \
+            -f ref="refs/heads/${SCRATCH_BRANCH}" \
+            -f sha="${BASE_SHA}"
+          echo "base-sha=${BASE_SHA}" >> "${GITHUB_OUTPUT}"
+
+      # Must touch a *tracked* file — the action's diff check is `git diff`, which is blind to
+      # untracked paths.
+      - name: Modify a tracked file in the working tree
+        run: echo "commit-file-via-app selftest ${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> README.md
+
+      - name: Commit the change via the action
+        uses: ./.github/actions/commit-file-via-app
+        with:
+          app-id: ${{ vars.RENOVATE_HELPER_APP_ID }}
+          private-key: ${{ secrets.RENOVATE_HELPER_PRIVATE_KEY }}
+          branch: ${{ env.SCRATCH_BRANCH }}
+          file-paths: |
+            README.md
+          commit-message: "test: commit-file-via-app self-test"
+
+      - name: Assert a signed commit landed with the expected content
+        id: assert-commit
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          BASE_SHA: ${{ steps.scratch.outputs.base-sha }}
+        run: |
+          set -euo pipefail
+          TIP=$(gh api "repos/${REPO}/git/ref/heads/${SCRATCH_BRANCH}" --jq .object.sha)
+          if [ "${TIP}" = "${BASE_SHA}" ]; then
+            echo "FAIL: branch tip did not move — the action committed nothing"
+            exit 1
+          fi
+          COMMIT=$(gh api "repos/${REPO}/commits/${TIP}")
+          PARENT=$(jq -r '.parents[0].sha' <<< "${COMMIT}")
+          if [ "${PARENT}" != "${BASE_SHA}" ]; then
+            echo "FAIL: tip's parent is ${PARENT}, expected the scratch base ${BASE_SHA}"
+            exit 1
+          fi
+          VERIFIED=$(jq -r '.commit.verification.verified' <<< "${COMMIT}")
+          if [ "${VERIFIED}" != "true" ]; then
+            echo "FAIL: commit is not web-flow signed (verification.verified=${VERIFIED})"
+            exit 1
+          fi
+          MARKER="commit-file-via-app selftest ${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          if ! gh api "repos/${REPO}/contents/README.md?ref=${SCRATCH_BRANCH}" --jq .content \
+              | base64 -d | grep -qF "${MARKER}"; then
+            echo "FAIL: committed README.md is missing the selftest marker"
+            exit 1
+          fi
+          echo "tip=${TIP}" >> "${GITHUB_OUTPUT}"
+
+      # Restore the working tree so the second action run sees no diff.
+      - name: Revert the working-tree change
+        run: git checkout -- README.md
+
+      - name: Run the action again with no diff
+        uses: ./.github/actions/commit-file-via-app
+        with:
+          app-id: ${{ vars.RENOVATE_HELPER_APP_ID }}
+          private-key: ${{ secrets.RENOVATE_HELPER_PRIVATE_KEY }}
+          branch: ${{ env.SCRATCH_BRANCH }}
+          file-paths: |
+            README.md
+          commit-message: "test: this commit must never land (no-diff no-op)"
+
+      - name: Assert the no-diff run was a no-op
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          EXPECTED_TIP: ${{ steps.assert-commit.outputs.tip }}
+        run: |
+          set -euo pipefail
+          TIP=$(gh api "repos/${REPO}/git/ref/heads/${SCRATCH_BRANCH}" --jq .object.sha)
+          if [ "${TIP}" != "${EXPECTED_TIP}" ]; then
+            echo "FAIL: branch tip moved on a no-diff run (${EXPECTED_TIP} -> ${TIP})"
+            exit 1
+          fi
+
+      - name: Delete scratch branch
+        if: always() && steps.scratch.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+        run: gh api -X DELETE "repos/${REPO}/git/refs/heads/${SCRATCH_BRANCH}"
