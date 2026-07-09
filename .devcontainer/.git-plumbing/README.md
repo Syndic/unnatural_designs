@@ -24,6 +24,13 @@ image. The files are gitignored and written on every `devcontainer up` by
   launched container doesn't trip "Host key verification failed" on first
   contact with github.com. Same VS-Code-wins behaviour as the gitconfig
   copy.
+- `host-allowed-signers` — snapshot of the file named by the host's
+  `gpg.ssh.allowedSignersFile` (public keys and principal emails only).
+  `post-start.sh` installs it at `~/.ssh/allowed_signers` and repoints the
+  container's `gpg.ssh.allowedSignersFile` at that copy, so `git
+  verify-commit` trusts our own SSH-signed commits instead of reporting
+  them untrusted. The repoint also runs under VS Code, which bridges the
+  gitconfig but not the file it names.
 
 This directory exists in git (via this README) so the Dockerfile's
 `COPY .devcontainer/.git-plumbing/ …` step always finds a source — buildx

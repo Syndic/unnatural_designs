@@ -59,6 +59,7 @@ pathfile="$here/.git-plumbing/host-git-common-path"
 tzfile="$here/.git-plumbing/host-timezone"
 gitconfigfile="$here/.git-plumbing/host-gitconfig"
 knownhostsfile="$here/.git-plumbing/host-known-hosts"
+signersfile="$here/.git-plumbing/host-allowed-signers"
 
 # The .git-plumbing dir is tracked (via its README), so it normally exists
 # already; mkdir -p covers stray cases like a manual deletion without
@@ -131,6 +132,18 @@ if [ -r "$HOME/.ssh/known_hosts" ]; then
   cp "$HOME/.ssh/known_hosts" "$knownhostsfile"
 else
   : >"$knownhostsfile"
+fi
+
+# Snapshot the host's SSH allowed-signers file — the trust set `git
+# verify-commit` needs, absent which a locally signed commit reads back as
+# untrusted ("U"). Contents are public keys and principal emails only, no
+# secret material. `--type=path` so a `~/` in the config value is expanded.
+# Empty file when the setting is unset or its target is unreadable, keeping
+# post-start.sh's `[ -s ... ]` guard a clean no-op.
+: >"$signersfile"
+if signers="$(git config --type=path --get gpg.ssh.allowedSignersFile 2>/dev/null)" \
+  && [ -r "$signers" ]; then
+  cp "$signers" "$signersfile"
 fi
 
 # Pre-create the magic ssh-agent socket placeholder on hosts where Docker
