@@ -184,7 +184,7 @@ five additive pieces:
   the Dockerfile does for `host-git-common-path`? That trick buys path *fidelity*, and the
   git-common-dir case needs it: the worktree's `.git` file contains an absolute pointer git
   will follow no matter what we'd prefer. Nothing here has that constraint — the only
-  reference to the allowed-signers path is the config setting itself, which we already own a
-  copy of. Rewriting it keeps the file out of the image layers, out of the build entirely
-  (so `devcontainer build`, which skips `initializeCommand`, stays a clean no-op), and off
-  the `$HOME`-shaped path that differs between host and container anyway.
+  reference to the allowed-signers path is the config setting itself, and we own the copy of
+  the gitconfig that carries it. Rewriting keeps the whole mechanism in `post-start.sh`
+  beside its two sibling snapshots, where a rotated key or a moved host file takes effect on
+  the next `up` rather than on an image rebuild.
