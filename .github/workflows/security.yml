@@ -67,7 +67,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: [modules-check]
     permissions:
-      security-events: write
       contents: read
     strategy:
       fail-fast: false
@@ -79,18 +78,23 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: golang/govulncheck-action@b625fbe08f3bccbe446d94fbf87fcc875a4f50ee # v1.0.4
+      # The setup/install/run trio below is what golang/govulncheck-action wraps. We inline it:
+      # the action is a thin composite, and its own pinned actions/checkout + actions/setup-go
+      # trail current releases far enough to emit Node runtime deprecation warnings in every
+      # consuming workflow. If this ever outgrows install-and-run, check whether that action has
+      # started keeping its dependencies current and switch back.
+      - uses: actions/setup-go@v6
         with:
-          work-dir: ${{ matrix.go_module }}
-          # Pin Go to the workspace toolchain so workspace-level `go X.Y.Z`
-          # directives don't trip GOTOOLCHAIN=local. The action forwards both
-          # go-version-input and go-version-file to setup-go; setup-go gives
-          # go-version precedence when non-empty, so go-version-input must be
-          # cleared here for go-version-file to take effect. Otherwise it
-          # defaults to "stable", which lags behind patch bumps in the runner
-          # tool cache.
-          go-version-input: ''
+          # go.work pins the toolchain so a workspace-level `go X.Y.Z` directive doesn't trip
+          # GOTOOLCHAIN=local.
           go-version-file: go.work
+          cache-dependency-path: |
+            go.work.sum
+            ${{ matrix.go_module }}/go.sum
+
+      - run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - run: govulncheck -C ${{ matrix.go_module }} ./...
 
   govulncheck-all:
     name: govulncheck (all modules)
