@@ -1,21 +1,39 @@
-name: Renovate — re-derive Python lock files
+name: Renovate — re-derive lock files
 
-# Renovate's pep621 manager cannot run `uv lock` on Mend-hosted Renovate (gated by
-# allowedUnsafeExecutions), so it falls back to the pip_requirements manager which edits
-# `requirements_lock.txt` in place. That edit alone is not authoritative — `uv.lock` is the
-# resolution source of truth, and `requirements_lock.txt` is its `uv export` projection.
+# Renovate bumps the manifests (MODULE.bazel, pyproject.toml) but cannot regenerate the
+# lock files they derive: both refreshes shell out to a build tool, and Mend-hosted
+# Renovate gates those behind its `allowedUnsafeExecutions` allowlist (`bazelModDeps` is
+# not allowed; `uv lock` likewise, so the pep621 manager falls back to `pip_requirements`
+# text-editing `requirements_lock.txt` in place — an upgrade *signal*, not an
+# authoritative resolution). Without this workflow every Renovate PR lands with stale
+# derived files, and the committed copies drift further out of date over time.
 #
-# This workflow ratifies Renovate's edits via uv:
-#   1. `meta/scripts/ratify_renovate_proposals.py` extracts the proposed bumps from the
-#      diff, runs `uv lock --upgrade-package <each>`, re-exports `requirements_lock.txt`,
-#      and reports which (if any) proposed bumps uv refused to advance.
-#   2. If the script's `conflicts` output is empty: commit `uv.lock` +
-#      `requirements_lock.txt` via the composite action.
-#   3. Otherwise: reset the working tree (we won't silently revert Renovate's edit) and
-#      file a REQUEST_CHANGES review with the diagnosis. The review blocks merge until
-#      dismissed; dismissal is the deliberate ack that the PR is unactionable (close it)
-#      or that the conflicting constraint will be relaxed (push to the branch — the
-#      workflow re-evaluates).
+# The two refreshes live in one workflow because they are *ordered*, not merely
+# concurrent: `pip.parse` reads `requirements_lock.txt`, and the artifact hashes it
+# resolves are recorded in MODULE.bazel.lock's `facts`. So uv has to settle
+# `requirements_lock.txt` before `bazel mod deps` regenerates the lock, or the two
+# committed files disagree. Two path-triggered workflows cannot express that ordering —
+# GitHub queues runs by arrival, not by dependency. Merging them also collapses the two
+# `createCommitOnBranch` mutations into one, which removes the `expectedHeadOid` race
+# they would otherwise run whenever a single PR touched both manifests. Renovate's
+# `all non-major dependencies` group (see renovate.json) makes that the common case.
+#
+# The steps run in this order:
+#   1. Classify which manifests the PR touched, so a Bazel-only PR skips uv setup and a
+#      Python-only PR still refreshes the lock (its pip facts just went stale).
+#   2. Python: `meta/scripts/ratify_renovate_proposals.py` extracts Renovate's proposed
+#      bumps from the diff, runs `uv lock --upgrade-package <each>`, re-exports
+#      `requirements_lock.txt`, and reports which (if any) proposed bumps uv refused to
+#      advance.
+#   3. Bazel: `bazel mod deps --lockfile_mode=update`, gated on the Python step finding
+#      no conflicts — regenerating the lock against a half-resolved tree is worse than
+#      leaving it stale for one more round-trip.
+#   4. No conflicts: commit all three derived files in a single commit. Otherwise: reset
+#      nothing (we won't silently revert Renovate's edit — the commit step is simply
+#      skipped) and file a REQUEST_CHANGES review with the diagnosis. The review blocks
+#      merge until dismissed; dismissal is the deliberate ack that the PR is unactionable
+#      (close it) or that the conflicting constraint will be relaxed (push to the branch —
+#      the workflow re-evaluates).
 #
 # Prior bot REQUEST_CHANGES reviews are dismissed after the new state lands (commit OR
 # new review filed) so the PR's review status reflects the latest evaluation. Order is
@@ -34,8 +52,10 @@ on:
     types: [opened, synchronize, reopened]
     branches: [main]
     paths:
-      - "uv.lock"
+      - "MODULE.bazel"
+      - "MODULE.bazel.lock"
       - "pyproject.toml"
+      - "uv.lock"
       - "requirements_lock.txt"
 
 permissions:
@@ -43,25 +63,74 @@ permissions:
 
 jobs:
   re-derive:
-    name: Re-derive Python lock files
+    name: Re-derive lock files
     if: github.actor == 'renovate[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.head_ref }}
-          # Need the base ref reachable so the ratify script can diff against it.
-          # Shallow checkout (the default) only fetches the head commit.
+          # Need the base ref reachable so the classify step and the ratify script can
+          # diff against it. Shallow checkout (the default) only fetches the head commit.
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Classify changed manifests
+        id: changed
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          FILES=$(git diff --name-only "origin/${BASE_REF}" --)
+          echo "Changed vs base:"
+          sed 's/^/  /' <<< "${FILES}"
+
+          # Herestrings, not `echo | grep -q`: `grep -q` exits on first match, which can
+          # SIGPIPE the writer and trip `pipefail` into a false negative.
+          python=false
+          bazel=false
+          if grep -qE '(^|/)(pyproject\.toml|uv\.lock|requirements_lock\.txt)$' <<< "${FILES}"; then
+            python=true
+            # requirements_lock.txt feeds pip.parse, whose resolved artifact hashes land
+            # in MODULE.bazel.lock's `facts` — a Python bump restales the Bazel lock even
+            # when MODULE.bazel itself is untouched.
+            bazel=true
+          fi
+          if grep -qxE 'MODULE\.bazel' <<< "${FILES}"; then
+            bazel=true
+          fi
+
+          echo "python=${python}" >> "${GITHUB_OUTPUT}"
+          echo "bazel=${bazel}" >> "${GITHUB_OUTPUT}"
+
+      # ── Python: ratify Renovate's proposals via uv ────────────────────────────────
+      # A skipped step's outputs are empty, so `steps.ratify.outputs.conflicts == ''`
+      # reads as "no conflicts" on Bazel-only PRs — which is what the gates below want.
+
       - uses: astral-sh/setup-uv@v8.3.0
+        if: steps.changed.outputs.python == 'true'
 
       - name: Ratify Renovate's proposals via uv
+        if: steps.changed.outputs.python == 'true'
         id: ratify
         env:
           BASE_REF: ${{ github.base_ref }}
         run: uv run python3 meta/scripts/ratify_renovate_proposals.py
+
+      # ── Bazel: regenerate MODULE.bazel.lock against the settled requirements ──────
+
+      # Plain bazelisk install — no remote cache needed for `bazel mod deps`, which only
+      # resolves module versions and writes the lock file. Avoids the BuildBuddy key
+      # plumbing the main `setup-bazel-remote` composite action requires.
+      - uses: bazel-contrib/setup-bazel@0.19.0
+        if: steps.changed.outputs.bazel == 'true' && steps.ratify.outputs.conflicts == ''
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+
+      - name: Re-update MODULE.bazel.lock
+        if: steps.changed.outputs.bazel == 'true' && steps.ratify.outputs.conflicts == ''
+        run: bazel mod deps --lockfile_mode=update
 
       - uses: actions/create-github-app-token@v3
         id: app-token
@@ -111,8 +180,10 @@ jobs:
           echo "review-id=${NEW_ID}" >> "${GITHUB_OUTPUT}"
 
       # ── Success path ─────────────────────────────────────────────────────────────
-      # Commit both files via the composite action; the action no-ops cleanly if neither
-      # changed (e.g. a re-run on an already-honored PR).
+      # One commit for every derived file. The composite action diff-checks each path
+      # independently and skips the unchanged ones, so a Bazel-only PR commits only
+      # MODULE.bazel.lock; if nothing changed at all (e.g. a re-run on an already-honored
+      # PR) the whole step is a clean no-op.
 
       - name: Commit re-derived lock files
         if: steps.ratify.outputs.conflicts == ''
@@ -124,7 +195,8 @@ jobs:
           file-paths: |
             uv.lock
             requirements_lock.txt
-          commit-message: "chore(deps): re-derive uv.lock + requirements_lock.txt"
+            MODULE.bazel.lock
+          commit-message: "chore(deps): re-derive lock files"
 
       # ── Dismiss prior bot reviews ───────────────────────────────────────────────
       # Runs after the success or conflict path so we never briefly clear the gate

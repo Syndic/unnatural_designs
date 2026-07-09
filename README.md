@@ -240,38 +240,57 @@ lives at `bazel-out/_coverage/_coverage_report.dat`; the extension is pre-config
 [`.vscode/settings.json`](.vscode/settings.json) to find it there. CI uploads the same file to
 Codecov, so local gutters and the Codecov dashboard reflect the same data.
 
-**Dependency updates** are managed automatically by [Renovate](https://docs.renovatebot.com). PRs
-are grouped where it's useful — Bazel toolchains and rulesets, Go modules, GitHub Actions, language
-toolchain SDKs (Go and Python version pins, tracked across `MODULE.bazel` / `go.work` / per-module
-`go.mod` / workflow `setup-python` / Dockerfile), Python workspace dependencies (`pyproject.toml`
-plus the `uv.lock` it derives), and a dedicated group for `ruff`. Other tracked dependencies
-(`ty`, `pip-audit`, `pre-commit`, `buildifier`, `bazelisk`, the `uv` container-image tag) land as
-their own PRs. The full set of managers and groups lives in [`renovate.json`](renovate.json).
+**Dependency updates** are managed automatically by [Renovate](https://docs.renovatebot.com).
+Everything non-major — minor, patch, pin, and digest bumps, across every manager — lands in a
+single recurring `all non-major dependencies` PR. Major bumps stay on their own, one per
+dependency, so they get individual review.
 
-Two workflows handle derived lock files Renovate cannot update itself (each shells out to a
-build tool whose execution is blocked by Mend-hosted Renovate's `allowedUnsafeExecutions`
+Two grouping exceptions sit *above* the catch-all in [`renovate.json`](renovate.json)'s
+`packageRules`. The ordering is load-bearing and reads backwards at first glance. Renovate merges
+every matching rule in order, last writer wins. For a *minor* bump both the exception and the
+catch-all match, and the catch-all must be last so it wins — otherwise these two dependencies
+split back out into their own PRs. For a *major* bump the catch-all doesn't match at all
+(`matchUpdateTypes` excludes it), so the exception governs uncontested and gets its own atomic
+PR. That atomicity is why both exceptions exist: each spans several files that have to move in
+one commit or the tree is broken.
+
+The catch-all is written out rather than pulled in as the stock `group:allNonMajor` preset, for
+two reasons: it deliberately also sweeps up `pin` and `digest` updates (the preset covers only
+`minor` and `patch`), and a preset's `packageRules` merge in *ahead* of the repo's own — which
+would put the catch-all first and let the two exceptions override it, splitting them back out.
+
+- **Language toolchain SDKs** — the Go and Python version pins, tracked across `MODULE.bazel`,
+  `go.work`, per-module `go.mod`, the workflow `setup-python` steps, and `devcontainer.json`.
+- **`ruff`** — pinned in both `pyproject.toml` and the CI workflow.
+
+One workflow handles the derived lock files Renovate cannot update itself (both refreshes shell
+out to a build tool whose execution is blocked by Mend-hosted Renovate's `allowedUnsafeExecutions`
 allowlist):
 
 | Workflow | Trigger paths | Re-runs | Commits |
 | --- | --- | --- | --- |
-| [`renovate-requirements-lock.yml`](.github/workflows/renovate-requirements-lock.yml) | `pyproject.toml`, `uv.lock`, `requirements_lock.txt` | [`meta/scripts/ratify_renovate_proposals.py`](meta/scripts/ratify_renovate_proposals.py) (`uv lock --upgrade-package <each>` + `uv export`) | `uv.lock`, `requirements_lock.txt` |
-| [`renovate-module-bazel-lock.yml`](.github/workflows/renovate-module-bazel-lock.yml) | `MODULE.bazel` | `bazel mod deps --lockfile_mode=update` | `MODULE.bazel.lock` |
+| [`renovate-derived-files.yml`](.github/workflows/renovate-derived-files.yml) | `pyproject.toml`, `uv.lock`, `requirements_lock.txt`, `MODULE.bazel`, `MODULE.bazel.lock` | [`meta/scripts/ratify_renovate_proposals.py`](meta/scripts/ratify_renovate_proposals.py) (`uv lock --upgrade-package <each>` + `uv export`), then `bazel mod deps --lockfile_mode=update` | `uv.lock`, `requirements_lock.txt`, `MODULE.bazel.lock` |
 
-The Python workflow ratifies Renovate's `requirements_lock.txt` edits via uv: it extracts the
-proposed package names, asks uv to re-resolve with those packages flagged for upgrade, and either
-commits the result or files a `REQUEST_CHANGES` review on the PR (with the script's diagnosis)
-if uv refuses to advance a proposed bump. The diff parsing and pep440 comparison live in
+The uv step runs before the Bazel step, and a Python-only change still triggers the Bazel step:
+`pip.parse` reads `requirements_lock.txt`, and the artifact hashes it resolves are recorded in
+`MODULE.bazel.lock`'s `facts`, so a Python bump restales the Bazel lock. Both refreshes land in a
+single commit.
+
+The uv step ratifies Renovate's `requirements_lock.txt` edits: it extracts the proposed package
+names, asks uv to re-resolve with those packages flagged for upgrade, and either commits the result
+or files a `REQUEST_CHANGES` review on the PR (with the script's diagnosis) if uv refuses to
+advance a proposed bump. The diff parsing and pep440 comparison live in
 [`meta/scripts/ratify_renovate_proposals.py`](meta/scripts/ratify_renovate_proposals.py) under
 unit tests (`bazel test //meta/scripts:test_ratify_renovate_proposals`); the workflow handles
 only the Actions-context side effects (commit, file/dismiss reviews).
 
-Both workflows delegate the actual commit to the shared composite action
+The workflow delegates the actual commit to the shared composite action
 [`.github/actions/commit-file-via-app/`](.github/actions/commit-file-via-app/action.yml), which
 calls the GitHub GraphQL `createCommitOnBranch` mutation (signed by GitHub's web-flow key) using
 an installation token from a dedicated GitHub App rather than the default `GITHUB_TOKEN` — so
 required status checks retrigger on the new head. See
 [`docs/future-considerations.md`](docs/future-considerations.md) "Auto-commit GitHub App" for
-the rationale, the app's required permissions, and the triggers that would retire each workflow.
+the rationale, the app's required permissions, and the triggers that would retire the workflow.
 The action also has consumers outside this repo; its
 [README](.github/actions/commit-file-via-app/README.md) documents the compatibility contract,
 the consumer list, and the self-test workflow that exercises it on PRs.
