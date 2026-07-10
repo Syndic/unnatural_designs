@@ -241,9 +241,15 @@ lives at `bazel-out/_coverage/_coverage_report.dat`; the extension is pre-config
 Codecov, so local gutters and the Codecov dashboard reflect the same data.
 
 **Dependency updates** are managed automatically by [Renovate](https://docs.renovatebot.com).
-Everything non-major — minor, patch, pin, and digest bumps, across every manager — lands in a
-single recurring `all non-major dependencies` PR. Major bumps stay on their own, one per
-dependency, so they get individual review.
+Minor and patch bumps, across every manager, land in a single recurring `all non-major
+dependencies` PR. Every other update type gets its own PR, so it is reviewed on its own terms:
+`major` (breaking), `replacement` (a package renamed out from under us — `config:recommended`
+pulls in `replacements:all`), `rollback`, and `digest`.
+
+`digest` is the one worth calling out. Renovate raises it when a SHA-pinned reference's version
+tag resolves to a *different* commit — same version string, different content, i.e. the author
+force-moved the tag. That is the single event this repo's SHA pinning exists to catch, so it is
+deliberately kept out of the batch where it would be one line of a fifteen-dependency diff.
 
 Two grouping exceptions sit *above* the catch-all in [`renovate.json`](renovate.json)'s
 `packageRules`. The ordering is load-bearing and reads backwards at first glance. Renovate merges
@@ -254,10 +260,9 @@ split back out into their own PRs. For a *major* bump the catch-all doesn't matc
 PR. That atomicity is why both exceptions exist: each spans several files that have to move in
 one commit or the tree is broken.
 
-The catch-all is written out rather than pulled in as the stock `group:allNonMajor` preset, for
-two reasons: it deliberately also sweeps up `pin` and `digest` updates (the preset covers only
-`minor` and `patch`), and a preset's `packageRules` merge in *ahead* of the repo's own — which
-would put the catch-all first and let the two exceptions override it, splitting them back out.
+The catch-all matches the stock `group:allNonMajor` preset, but is written out rather than pulled
+in via `extends`: a preset's `packageRules` merge in *ahead* of the repo's own, which would put
+the catch-all first and let the two exceptions override it, splitting them back out.
 
 - **Language toolchain SDKs** — the Go and Python version pins, tracked across `MODULE.bazel`,
   `go.work`, per-module `go.mod`, the workflow `setup-python` steps, and `devcontainer.json`.
