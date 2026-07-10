@@ -58,12 +58,19 @@
     {
       "matchManagers": [ "custom.regex", "devcontainer" ],
       "matchDepNames": [ "go", "python" ],
+      "matchUpdateTypes": [ "major" ],
       "groupName": "Language toolchain SDKs"
     },
     {
       "matchDatasources": [ "pypi" ],
       "matchDepNames": [ "ruff" ],
+      "matchUpdateTypes": [ "major" ],
       "groupName": "ruff"
+    },
+    {
+      "matchManagers": [ "bazel-module" ],
+      "matchUpdateTypes": [ "major" ],
+      "groupName": "Bazel toolchains and rulesets"
     },
     {
       "matchUpdateTypes": [ "minor", "patch" ],

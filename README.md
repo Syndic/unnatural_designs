@@ -251,22 +251,22 @@ tag resolves to a *different* commit — same version string, different content,
 force-moved the tag. That is the single event this repo's SHA pinning exists to catch, so it is
 deliberately kept out of the batch where it would be one line of a fifteen-dependency diff.
 
-Two grouping exceptions sit *above* the catch-all in [`renovate.json`](renovate.json)'s
-`packageRules`. The ordering is load-bearing and reads backwards at first glance. Renovate merges
-every matching rule in order, last writer wins. For a *minor* bump both the exception and the
-catch-all match, and the catch-all must be last so it wins — otherwise these two dependencies
-split back out into their own PRs. For a *major* bump the catch-all doesn't match at all
-(`matchUpdateTypes` excludes it), so the exception governs uncontested and gets its own atomic
-PR. That atomicity is why both exceptions exist: each spans several files that have to move in
-one commit or the tree is broken.
-
-The catch-all matches the stock `group:allNonMajor` preset, but is written out rather than pulled
-in via `extends`: a preset's `packageRules` merge in *ahead* of the repo's own, which would put
-the catch-all first and let the two exceptions override it, splitting them back out.
+Three grouping exceptions in [`renovate.json`](renovate.json)'s `packageRules` keep *major* bumps
+atomic. Each is scoped with `matchUpdateTypes: ["major"]` so it cannot overlap the minor/patch
+catch-all — every rule matches a disjoint set of updates, and the order they appear in does not
+matter. (Renovate merges every matching rule in order and the last writer wins, so overlapping
+rules would be order-dependent. Don't introduce an overlap.)
 
 - **Language toolchain SDKs** — the Go and Python version pins, tracked across `MODULE.bazel`,
   `go.work`, per-module `go.mod`, the workflow `setup-python` steps, and `devcontainer.json`.
 - **`ruff`** — pinned in both `pyproject.toml` and the CI workflow.
+- **Bazel toolchains and rulesets** — `bazel_dep` majors. Rulesets that must advance in lockstep
+  (`rules_go` with `bazel-gazelle`, say) resolve against one another, so splitting their majors
+  into separate PRs yields a `MODULE.bazel.lock` that cannot be regenerated until both land.
+
+The catch-all matches the stock `group:allNonMajor` preset, but is written out rather than pulled
+in via `extends`, because a preset's `packageRules` merge in *ahead* of the repo's own and the
+grouping should not depend on that detail.
 
 One workflow handles the derived lock files Renovate cannot update itself (both refreshes shell
 out to a build tool whose execution is blocked by Mend-hosted Renovate's `allowedUnsafeExecutions`
@@ -274,7 +274,7 @@ allowlist):
 
 | Workflow | Trigger paths | Re-runs | Commits |
 | --- | --- | --- | --- |
-| [`renovate-derived-files.yml`](.github/workflows/renovate-derived-files.yml) | `pyproject.toml`, `uv.lock`, `requirements_lock.txt`, `MODULE.bazel`, `MODULE.bazel.lock` | [`meta/scripts/ratify_renovate_proposals.py`](meta/scripts/ratify_renovate_proposals.py) (`uv lock --upgrade-package <each>` + `uv export`), then `bazel mod deps --lockfile_mode=update` | `uv.lock`, `requirements_lock.txt`, `MODULE.bazel.lock` |
+| [`renovate-derived-files.yml`](.github/workflows/renovate-derived-files.yml) | `pyproject.toml`, `uv.lock`, `requirements_lock.txt`, `MODULE.bazel` | [`meta/scripts/ratify_renovate_proposals.py`](meta/scripts/ratify_renovate_proposals.py) (`uv lock --upgrade-package <each>` + `uv export`), then `bazel mod deps --lockfile_mode=update` | `uv.lock`, `requirements_lock.txt`, `MODULE.bazel.lock` |
 
 The uv step runs before the Bazel step, and a Python-only change still triggers the Bazel step:
 `pip.parse` reads `requirements_lock.txt`, and the artifact hashes it resolves are recorded in

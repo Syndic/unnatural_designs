@@ -52,8 +52,9 @@ on:
     types: [opened, synchronize, reopened]
     branches: [main]
     paths:
+      # Manifests only. `MODULE.bazel.lock` is absent deliberately: it is derived, nothing
+      # but this workflow writes it, and a lock-only diff has nothing to regenerate.
       - "MODULE.bazel"
-      - "MODULE.bazel.lock"
       - "pyproject.toml"
       - "uv.lock"
       - "requirements_lock.txt"
@@ -81,7 +82,11 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
         run: |
           set -euo pipefail
-          FILES=$(git diff --name-only "origin/${BASE_REF}" --)
+          # Three-dot: diff the merge base against HEAD, so a base that advanced under an
+          # open PR does not read as this PR's changes. Two-dot would classify a Bazel-only
+          # PR as Python the moment `main` picked up a dep bump, and ratify would then
+          # commit unrelated lock upgrades onto it.
+          FILES=$(git diff --name-only "origin/${BASE_REF}...HEAD" --)
           echo "Changed vs base:"
           sed 's/^/  /' <<< "${FILES}"
 
@@ -96,7 +101,9 @@ jobs:
             # when MODULE.bazel itself is untouched.
             bazel=true
           fi
-          if grep -qxE 'MODULE\.bazel' <<< "${FILES}"; then
+          # `$` anchor, not `grep -x`: matches a nested MODULE.bazel too, and still excludes
+          # the derived `MODULE.bazel.lock` (regenerating from a lock-only change is a no-op).
+          if grep -qE '(^|/)MODULE\.bazel$' <<< "${FILES}"; then
             bazel=true
           fi
 
@@ -122,6 +129,11 @@ jobs:
       # Plain bazelisk install — no remote cache needed for `bazel mod deps`, which only
       # resolves module versions and writes the lock file. Avoids the BuildBuddy key
       # plumbing the main `setup-bazel-remote` composite action requires.
+      #
+      # These two cache flags are the only safe ones here. `bazel mod deps` refreshes the
+      # pip extension's `facts` only when it re-evaluates the extension, which needs a cold
+      # output base. Adding `disk-cache` or an output-base cache would make the refresh a
+      # silent no-op: no diff to commit, job still green, MODULE.bazel.lock left stale.
       - uses: bazel-contrib/setup-bazel@0.19.0
         if: steps.changed.outputs.bazel == 'true' && steps.ratify.outputs.conflicts == ''
         with:
