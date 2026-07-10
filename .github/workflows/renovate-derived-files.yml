@@ -40,8 +40,9 @@ name: Renovate — re-derive lock files
 # deliberate (commit/file first, then dismiss) so a partial workflow failure leaves the
 # stale review intact rather than briefly clearing the gate.
 #
-# All the data-manipulation logic is in the Python script under tests
-# (`//meta/scripts:test_ratify_renovate_proposals`). The workflow handles only the
+# The data-manipulation logic is in Python scripts under tests — path classification in
+# `//meta/scripts:test_classify_changed_paths`, proposal ratification in
+# `//meta/scripts:test_ratify_renovate_proposals`. The workflow handles only the
 # side-effecting steps that depend on Actions context — minting the app token, the GitHub
 # API calls (review file + dismiss), and the composite action invocation for the commit.
 #
@@ -76,39 +77,21 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      # Classify what this PR changed into `python` / `bazel` outputs (three-dot diff and
+      # the tested regexes live in the script). `--imply python=bazel` because
+      # requirements_lock.txt feeds pip.parse, whose resolved hashes land in
+      # MODULE.bazel.lock's `facts` — a Python bump restales the Bazel lock even when
+      # MODULE.bazel itself is untouched.
       - name: Classify changed manifests
         id: changed
         env:
           BASE_REF: ${{ github.base_ref }}
         run: |
-          set -euo pipefail
-          # Three-dot: diff the merge base against HEAD, so a base that advanced under an
-          # open PR does not read as this PR's changes. Two-dot would classify a Bazel-only
-          # PR as Python the moment `main` picked up a dep bump, and ratify would then
-          # commit unrelated lock upgrades onto it.
-          FILES=$(git diff --name-only "origin/${BASE_REF}...HEAD" --)
-          echo "Changed vs base:"
-          sed 's/^/  /' <<< "${FILES}"
-
-          # Herestrings, not `echo | grep -q`: `grep -q` exits on first match, which can
-          # SIGPIPE the writer and trip `pipefail` into a false negative.
-          python=false
-          bazel=false
-          if grep -qE '(^|/)(pyproject\.toml|uv\.lock|requirements_lock\.txt)$' <<< "${FILES}"; then
-            python=true
-            # requirements_lock.txt feeds pip.parse, whose resolved artifact hashes land
-            # in MODULE.bazel.lock's `facts` — a Python bump restales the Bazel lock even
-            # when MODULE.bazel itself is untouched.
-            bazel=true
-          fi
-          # `$` anchor, not `grep -x`: matches a nested MODULE.bazel too, and still excludes
-          # the derived `MODULE.bazel.lock` (regenerating from a lock-only change is a no-op).
-          if grep -qE '(^|/)MODULE\.bazel$' <<< "${FILES}"; then
-            bazel=true
-          fi
-
-          echo "python=${python}" >> "${GITHUB_OUTPUT}"
-          echo "bazel=${bazel}" >> "${GITHUB_OUTPUT}"
+          python3 meta/scripts/classify_changed_paths.py \
+            --base "origin/${BASE_REF}" \
+            --rule 'python=(^|/)(pyproject\.toml|uv\.lock|requirements_lock\.txt)$' \
+            --rule 'bazel=(^|/)MODULE\.bazel$' \
+            --imply 'python=bazel'
 
       # ── Python: ratify Renovate's proposals via uv ────────────────────────────────
       # A skipped step's outputs are empty, so `steps.ratify.outputs.conflicts == ''`

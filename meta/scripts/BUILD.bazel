@@ -63,6 +63,25 @@ py_test(
 )
 
 py_library(
+    name = "classify_changed_paths_lib",
+    srcs = ["classify_changed_paths.py"],
+)
+
+py_binary(
+    name = "classify_changed_paths",
+    srcs = ["classify_changed_paths.py"],
+    main = "classify_changed_paths.py",
+)
+
+py_test(
+    name = "test_classify_changed_paths",
+    size = "small",
+    srcs = ["test_classify_changed_paths.py"],
+    main = "test_classify_changed_paths.py",
+    deps = [":classify_changed_paths_lib"],
+)
+
+py_library(
     name = "check_secrets_dir_lib",
     srcs = ["check_secrets_dir.py"],
 )
