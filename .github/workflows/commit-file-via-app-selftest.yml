@@ -90,9 +90,17 @@ jobs:
           BASE_SHA: ${{ steps.scratch.outputs.base-sha }}
         run: |
           set -euo pipefail
+          # The REST refs read is eventually consistent with the GraphQL mutation the action just
+          # made: a read milliseconds later can still return the pre-commit tip. Poll rather than
+          # assert on the first response, or this races and fails for the wrong reason.
           TIP=$(gh api "repos/${REPO}/git/ref/heads/${SCRATCH_BRANCH}" --jq .object.sha)
+          for _ in $(seq 30); do
+            if [ "${TIP}" != "${BASE_SHA}" ]; then break; fi
+            sleep 1
+            TIP=$(gh api "repos/${REPO}/git/ref/heads/${SCRATCH_BRANCH}" --jq .object.sha)
+          done
           if [ "${TIP}" = "${BASE_SHA}" ]; then
-            echo "FAIL: branch tip did not move — the action committed nothing"
+            echo "FAIL: branch tip did not move after 30s — the action committed nothing"
             exit 1
           fi
           COMMIT=$(gh api "repos/${REPO}/commits/${TIP}")
@@ -134,6 +142,9 @@ jobs:
           EXPECTED_TIP: ${{ steps.assert-commit.outputs.tip }}
         run: |
           set -euo pipefail
+          # Polling can't help a negative assertion, and the same read-after-write lag would hide
+          # a wrongly-created commit behind a stale tip. Settle so a regression has time to show.
+          sleep 10
           TIP=$(gh api "repos/${REPO}/git/ref/heads/${SCRATCH_BRANCH}" --jq .object.sha)
           if [ "${TIP}" != "${EXPECTED_TIP}" ]; then
             echo "FAIL: branch tip moved on a no-diff run (${EXPECTED_TIP} -> ${TIP})"
@@ -163,9 +174,15 @@ jobs:
           EXPECTED_PARENT: ${{ steps.assert-commit.outputs.tip }}
         run: |
           set -euo pipefail
+          # Poll for the same read-after-write lag as the first assertion.
           TIP=$(gh api "repos/${REPO}/git/ref/heads/${SCRATCH_BRANCH}" --jq .object.sha)
+          for _ in $(seq 30); do
+            if [ "${TIP}" != "${EXPECTED_PARENT}" ]; then break; fi
+            sleep 1
+            TIP=$(gh api "repos/${REPO}/git/ref/heads/${SCRATCH_BRANCH}" --jq .object.sha)
+          done
           if [ "${TIP}" = "${EXPECTED_PARENT}" ]; then
-            echo "FAIL: branch tip did not move — the action skipped a changed file"
+            echo "FAIL: branch tip did not move after 30s — the action skipped a changed file"
             exit 1
           fi
           COMMIT=$(gh api "repos/${REPO}/commits/${TIP}")
