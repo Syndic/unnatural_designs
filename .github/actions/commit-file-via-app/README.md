@@ -21,8 +21,8 @@ Breaking either requires preserving compatibility or updating all consumers in l
 
 ## Known consumers (all `@main`)
 
-- [`renovate-module-bazel-lock.yml`](../../workflows/renovate-module-bazel-lock.yml) (this repo)
-- [`renovate-requirements-lock.yml`](../../workflows/renovate-requirements-lock.yml) (this repo)
+- [`renovate-derived-files.yml`](../../workflows/renovate-derived-files.yml) (this repo) — commits
+  `uv.lock`, `requirements_lock.txt`, and `MODULE.bazel.lock` in a single invocation
 - `Syndic/.dotfiles` — `.github/workflows/renovate-devcontainer-lock.yml`
 
 ## Self-test
