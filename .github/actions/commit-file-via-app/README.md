@@ -28,6 +28,7 @@ Breaking either requires preserving compatibility or updating all consumers in l
 ## Self-test
 
 [`commit-file-via-app-selftest.yml`](../../workflows/commit-file-via-app-selftest.yml) exercises
-the action end-to-end on every PR that touches this directory: it commits a real change to a
-scratch branch, asserts the commit is web-flow signed with the expected content, and asserts the
-no-diff path leaves the branch tip untouched.
+the action end-to-end against a scratch branch on every PR that touches this directory, asserting
+each clause of the contract above: a changed file is committed and web-flow signed with the
+expected content; no changed files leaves the branch tip untouched; and given several paths of
+which only some changed, only the changed ones are committed.

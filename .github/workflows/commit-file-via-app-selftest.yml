@@ -3,9 +3,14 @@ name: Self-test — commit-file-via-app
 # The commit-file-via-app composite action has consumers outside this repo that reference it at
 # `@main` (see the action's README for the contract and consumer list), so a breaking change here
 # ships to them with no review gate. This workflow exercises the action end-to-end on every PR
-# that touches it: commit a real change to a scratch branch via the action, assert the commit is
-# web-flow signed with the expected content, then assert the no-diff path leaves the branch tip
-# untouched. The scratch branch is deleted even on failure.
+# that touches it, against a scratch branch, covering each clause of that contract in turn:
+#
+#   1. a changed file is committed, web-flow signed, with the expected content;
+#   2. no changed files is a clean no-op — the branch tip does not move;
+#   3. given several paths of which only some changed, only the changed ones are committed.
+#
+# Case 3 is the shape `renovate-requirements-lock.yml` hits whenever `uv.lock` and
+# `requirements_lock.txt` don't both move. The scratch branch is deleted even on failure.
 
 on:
   pull_request:
@@ -27,6 +32,12 @@ jobs:
     env:
       # run_attempt guards against a leftover branch from a prior attempt whose cleanup failed.
       SCRATCH_BRANCH: action-selftest/${{ github.run_id }}-${{ github.run_attempt }}
+      # Second path for the partial-diff case: tracked, and deliberately never modified.
+      UNCHANGED_PATH: docs/future-considerations.md
+      # Written into README.md, then grepped back out of the committed blob to prove the commit
+      # carries the content we staged; run_id + run_attempt keep them unique per run.
+      COMMIT_MARKER: selftest commit ${{ github.run_id }}-${{ github.run_attempt }}
+      PARTIAL_MARKER: selftest partial-diff ${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -59,7 +70,7 @@ jobs:
       # Must touch a *tracked* file — the action's diff check is `git diff`, which is blind to
       # untracked paths.
       - name: Modify a tracked file in the working tree
-        run: echo "commit-file-via-app selftest ${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> README.md
+        run: echo "${COMMIT_MARKER}" >> README.md
 
       - name: Commit the change via the action
         uses: ./.github/actions/commit-file-via-app
@@ -95,9 +106,8 @@ jobs:
             echo "FAIL: commit is not web-flow signed (verification.verified=${VERIFIED})"
             exit 1
           fi
-          MARKER="commit-file-via-app selftest ${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           if ! gh api "repos/${REPO}/contents/README.md?ref=${SCRATCH_BRANCH}" --jq .content \
-              | base64 -d | grep -qF "${MARKER}"; then
+              | base64 -d | grep -qF "${COMMIT_MARKER}"; then
             echo "FAIL: committed README.md is missing the selftest marker"
             exit 1
           fi
@@ -127,6 +137,52 @@ jobs:
           TIP=$(gh api "repos/${REPO}/git/ref/heads/${SCRATCH_BRANCH}" --jq .object.sha)
           if [ "${TIP}" != "${EXPECTED_TIP}" ]; then
             echo "FAIL: branch tip moved on a no-diff run (${EXPECTED_TIP} -> ${TIP})"
+            exit 1
+          fi
+
+      - name: Modify only one of the two tracked files
+        run: echo "${PARTIAL_MARKER}" >> README.md
+
+      - name: Commit both paths via the action, only one of them changed
+        uses: ./.github/actions/commit-file-via-app
+        with:
+          app-id: ${{ vars.RENOVATE_HELPER_APP_ID }}
+          private-key: ${{ secrets.RENOVATE_HELPER_PRIVATE_KEY }}
+          branch: ${{ env.SCRATCH_BRANCH }}
+          file-paths: |
+            README.md
+            ${{ env.UNCHANGED_PATH }}
+          commit-message: "test: commit-file-via-app partial-diff self-test"
+
+      # An unchanged file wrongly included in `additions` yields an identical tree, so that stays
+      # invisible here; what this catches is no commit at all, wrong content, or a rewritten path.
+      - name: Assert only the changed path was committed
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          EXPECTED_PARENT: ${{ steps.assert-commit.outputs.tip }}
+        run: |
+          set -euo pipefail
+          TIP=$(gh api "repos/${REPO}/git/ref/heads/${SCRATCH_BRANCH}" --jq .object.sha)
+          if [ "${TIP}" = "${EXPECTED_PARENT}" ]; then
+            echo "FAIL: branch tip did not move — the action skipped a changed file"
+            exit 1
+          fi
+          COMMIT=$(gh api "repos/${REPO}/commits/${TIP}")
+          PARENT=$(jq -r '.parents[0].sha' <<< "${COMMIT}")
+          if [ "${PARENT}" != "${EXPECTED_PARENT}" ]; then
+            echo "FAIL: tip's parent is ${PARENT}, expected ${EXPECTED_PARENT}"
+            exit 1
+          fi
+          TOUCHED=$(jq -r '[.files[].filename] | sort | join(",")' <<< "${COMMIT}")
+          if [ "${TOUCHED}" != "README.md" ]; then
+            echo "FAIL: commit touched [${TOUCHED}], expected only README.md"
+            echo "      (${UNCHANGED_PATH} had no diff and must not be rewritten)"
+            exit 1
+          fi
+          if ! gh api "repos/${REPO}/contents/README.md?ref=${SCRATCH_BRANCH}" --jq .content \
+              | base64 -d | grep -qF "${PARTIAL_MARKER}"; then
+            echo "FAIL: committed README.md is missing the partial-diff marker"
             exit 1
           fi
 
