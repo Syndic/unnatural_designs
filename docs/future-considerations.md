@@ -167,6 +167,10 @@ Both workflows delegate the actual commit to a shared composite action
   protection; the app-token actor identity makes the resulting push event retrigger downstream
   required status checks — `GITHUB_TOKEN` would suppress them).
 
+The action's inputs and no-op behavior are a public contract with consumers outside this repo —
+see [its README](../.github/actions/commit-file-via-app/README.md) for the contract, consumer
+list, and self-test workflow.
+
 ### App permissions
 
 The helper app needs `Contents: read & write` (to commit) **and `Pull requests: read & write`**
