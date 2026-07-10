@@ -12,7 +12,7 @@ ARG BUILDIFIER_VERSION=v8.5.1
 # later layers can layer `uv tool install ruff ty pre-commit` on top of it.
 # Pinned tag bumped by Renovate's docker manager (matches the pattern used in
 # ~/.dotfiles/.devcontainer/Dockerfile).
-COPY --from=ghcr.io/astral-sh/uv:0.11.26 /uv /uvx /usr/local/bin/
+COPY --from=ghcr.io/astral-sh/uv:0.11.28 /uv /uvx /usr/local/bin/
 
 # ruff: format + lint. Installed via `uv tool install` so the binary lives in
 # /usr/local/bin and `ruff` is on PATH for the pre-commit hooks and the VS Code
