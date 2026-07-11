@@ -39,7 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v8.3.0
+      - uses: astral-sh/setup-uv@v8.3.2
       - uses: actions/setup-python@v6
         with:
           # renovate: datasource=python-version depName=python
@@ -126,7 +126,7 @@ jobs:
       - uses: astral-sh/ruff-action@278981a28ce3188b1e39527901f38254bf3aac89 # v4.1.0
         with:
           # renovate: datasource=pypi depName=ruff
-          version: "0.15.20"
+          version: "0.15.21"
           args: format --check
       - run: ruff check
 
@@ -143,7 +143,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v8.3.0
+      - uses: astral-sh/setup-uv@v8.3.2
       # `uv sync` materializes `.venv` from uv.lock so ty can resolve
       # third-party imports (e.g. the smoke target's `requests`). Without it,
       # ty's only search paths are first-party + stdlib and any non-stdlib
