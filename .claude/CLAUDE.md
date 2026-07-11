@@ -113,6 +113,27 @@ build` doesn't run `initializeCommand`, so the runtime files are absent there. T
 `[ -s ... ]` guards in the Dockerfile make that case a clean no-op (CI keeps default UTC and skips
 the git path symlink).
 
+## .devcontainer shared git index
+
+A consequence of the shared-common-dir design above: host git and in-container git read and write
+the **same index file**, but they sit in different stat domains — the bind mount reports different
+uid/gid, inode, ctime, and sub-second mtime for the same files. Under git's default
+`core.checkStat`, an index written on one side reads as "everything modified" on the other without
+any content comparison (`diff-index` flags every tracked file), so checkout-type operations —
+rebase, merge, branch switch — refuse with "your local changes would be overwritten" on a clean
+tree. Plain commits never hit this (no checkout involved), which is why the breakage only surfaced
+on an in-container rebase.
+
+`initialize.sh` therefore sets `core.checkstat = minimal` and `core.trustctime = false` in the
+repo-local config. That config lives in the common dir, so one write covers both sides and every
+worktree. `minimal` reduces the stat check to whole-second mtime + file size — the two fields the
+bind mount preserves — making the index portable in both directions; `trustctime = false` guards
+against ctime-only divergence from metadata changes (chmod/chown) one side doesn't observe. Known
+trade-off: a same-size edit landing in the same second as the last index refresh can evade stat
+detection; git's racy-index protection (entries at least as new as the index itself get
+content-checked) covers the realistic window. CI's smoke job asserts the setting landed, which
+also pins the fact that `devcontainers/ci` runs `initializeCommand`.
+
 ## .devcontainer signed commits under CLI
 
 The host signs with **SSH** (`gpg.format = ssh`, `commit.gpgsign = true`, no explicit

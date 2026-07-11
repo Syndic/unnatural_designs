@@ -73,6 +73,11 @@ if common="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
   # an old one) so re-runs after the main repo moves point at the new location.
   ln -sfn "$common" "$link"
   printf '%s\n' "$common" >"$pathfile"
+  # Host and container share this index but see different stat metadata for the
+  # same files; restrict git's stat checks to fields the bind mount preserves —
+  # see ".devcontainer shared git index" in .claude/CLAUDE.md.
+  git config core.checkstat minimal
+  git config core.trustctime false
 else
   # Not a git checkout (shouldn't happen for this repo, but stay safe): make the
   # mount source a real-but-empty dir so Docker doesn't auto-create a stray path,
