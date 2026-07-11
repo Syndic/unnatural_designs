@@ -1,8 +1,8 @@
 """Tests for classify_changed_paths.py.
 
-The pure functions (parse_rule, parse_implication, is_branch_creation, classify,
-format_outputs) carry all the non-I/O logic; tests focus there. The git diff and
-$GITHUB_OUTPUT wiring is exercised end-to-end by the caller workflows on real PRs.
+The pure functions (parse_rule, is_branch_creation, classify, format_outputs) carry all the
+non-I/O logic; tests focus there. The git diff and $GITHUB_OUTPUT wiring is exercised
+end-to-end by the caller workflows on real PRs.
 
 The two `RULES_*` fixtures below mirror the exact rules the workflows pass, so a regex
 or coupling change in a workflow that isn't reflected here shows up as a test failure.
@@ -14,16 +14,16 @@ from meta.scripts.classify_changed_paths import (
     classify,
     format_outputs,
     is_branch_creation,
-    parse_implication,
     parse_rule,
 )
 
-# Mirrors renovate-derived-files.yml (which explains the python→bazel coupling).
+# Mirrors renovate-derived-files.yml. `python` and `bazel` are independent here: the
+# python→bazel refresh is conditional (on requirements_lock.txt actually moving) and lives
+# in the workflow, not in classification.
 RULES_RENOVATE = {
     "python": r"(^|/)(pyproject\.toml|uv\.lock|requirements_lock\.txt)$",
     "bazel": r"(^|/)MODULE\.bazel$",
 }
-IMPLY_RENOVATE = [("python", "bazel")]
 
 # Mirrors devcontainer.yml.
 RULES_DEVCONTAINER = {
@@ -48,19 +48,6 @@ class TestParseRule(unittest.TestCase):
             parse_rule("=pattern")
 
 
-class TestParseImplication(unittest.TestCase):
-    def test_basic(self):
-        self.assertEqual(parse_implication("python=bazel"), ("python", "bazel"))
-
-    def test_missing_target(self):
-        with self.assertRaises(ValueError):
-            parse_implication("python=")
-
-    def test_missing_source(self):
-        with self.assertRaises(ValueError):
-            parse_implication("=bazel")
-
-
 class TestIsBranchCreation(unittest.TestCase):
     def test_all_zeros_short(self):
         self.assertTrue(is_branch_creation("0000000"))
@@ -81,7 +68,7 @@ class TestIsBranchCreation(unittest.TestCase):
 
 class TestClassifyRenovate(unittest.TestCase):
     def _run(self, files):
-        return classify(files, RULES_RENOVATE, IMPLY_RENOVATE)
+        return classify(files, RULES_RENOVATE)
 
     def test_module_bazel_only(self):
         self.assertEqual(self._run(["MODULE.bazel"]), {"python": False, "bazel": True})
@@ -94,11 +81,13 @@ class TestClassifyRenovate(unittest.TestCase):
         # The derived lock must NOT trigger a regen (nothing to regenerate from it).
         self.assertEqual(self._run(["MODULE.bazel.lock"]), {"python": False, "bazel": False})
 
-    def test_requirements_lock_implies_bazel(self):
-        self.assertEqual(self._run(["requirements_lock.txt"]), {"python": True, "bazel": True})
+    def test_requirements_lock_is_python_not_bazel(self):
+        # Classification is independent: whether a Python change refreshes the Bazel lock
+        # is decided later, on whether requirements_lock.txt actually moved.
+        self.assertEqual(self._run(["requirements_lock.txt"]), {"python": True, "bazel": False})
 
-    def test_nested_pyproject_implies_bazel(self):
-        self.assertEqual(self._run(["apps/foo/pyproject.toml"]), {"python": True, "bazel": True})
+    def test_nested_pyproject(self):
+        self.assertEqual(self._run(["apps/foo/pyproject.toml"]), {"python": True, "bazel": False})
 
     def test_combined(self):
         self.assertEqual(self._run(["MODULE.bazel", "uv.lock"]), {"python": True, "bazel": True})
@@ -118,7 +107,7 @@ class TestClassifyRenovate(unittest.TestCase):
 
 class TestClassifyDevcontainer(unittest.TestCase):
     def _run(self, files):
-        return classify(files, RULES_DEVCONTAINER, [])
+        return classify(files, RULES_DEVCONTAINER)
 
     def test_devcontainer_dir(self):
         self.assertEqual(self._run([".devcontainer/Dockerfile"]), {"changed": True})
@@ -132,19 +121,6 @@ class TestClassifyDevcontainer(unittest.TestCase):
 
     def test_unrelated(self):
         self.assertEqual(self._run(["README.md"]), {"changed": False})
-
-
-class TestClassifyImplications(unittest.TestCase):
-    def test_no_implication_leaves_groups_independent(self):
-        # Without the coupling, a Python-only change does not set bazel.
-        self.assertEqual(
-            classify(["uv.lock"], RULES_RENOVATE, []), {"python": True, "bazel": False}
-        )
-
-    def test_implication_reaches_fixpoint_through_a_chain(self):
-        rules = {"a": r"^a$", "b": r"^b$", "c": r"^c$"}
-        result = classify(["a"], rules, [("a", "b"), ("b", "c")])
-        self.assertEqual(result, {"a": True, "b": True, "c": True})
 
 
 class TestFormatOutputs(unittest.TestCase):

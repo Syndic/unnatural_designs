@@ -160,7 +160,9 @@ It refreshes both sets of derived lock files, in a fixed order, and commits them
 The order is load-bearing. `pip.parse` reads `requirements_lock.txt`, and the artifact hashes it
 resolves are recorded in `MODULE.bazel.lock`'s `facts` — so uv must settle `requirements_lock.txt`
 before `bazel mod deps` regenerates the lock, or the two committed files disagree. That is also why
-a Python-only PR still triggers the Bazel refresh. These were two path-triggered workflows until
+a Python PR triggers the Bazel refresh whenever it moves `requirements_lock.txt` from the base (a
+pyproject-only edit that re-resolves the same versions leaves the facts valid and skips it). These
+were two path-triggered workflows until
 Renovate's `all non-major dependencies` group made the both-manifests PR the common case: separate
 workflows cannot express the ordering (GitHub queues runs by arrival), and their two
 `createCommitOnBranch` mutations raced on `expectedHeadOid`. One workflow, one commit, no race.

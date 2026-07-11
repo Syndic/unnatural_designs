@@ -18,7 +18,7 @@ environment — the same split as ratify_renovate_proposals.py.
 
 Usage:
   python3 meta/scripts/classify_changed_paths.py --base <ref-or-sha> \\
-    --rule '<name>=<regex>' [--rule ...] [--imply <source>=<target> ...]
+    --rule '<name>=<regex>' [--rule ...]
 """
 
 from __future__ import annotations
@@ -45,38 +45,14 @@ def parse_rule(spec: str) -> tuple[str, str]:
     return name, pattern
 
 
-def parse_implication(spec: str) -> tuple[str, str]:
-    """Split a `source=target` implication spec into (source, target) group names."""
-    source, sep, target = spec.partition("=")
-    if not sep or not source or not target:
-        raise ValueError(f"implication must be 'source=target', got: {spec!r}")
-    return source, target
-
-
 def is_branch_creation(base: str) -> bool:
     """True if `base` is git's all-zero null oid (a branch-creating push has no real base)."""
     return bool(_NULL_OID_RE.match(base))
 
 
-def classify(
-    files: list[str],
-    rules: dict[str, str],
-    implications: list[tuple[str, str]],
-) -> dict[str, bool]:
-    """Map each rule name to whether any changed file matches its regex, then apply implications.
-
-    Patterns carry their own anchors. Implications run to a fixpoint, so chains (a→b, b→c)
-    propagate: whenever the source group is true, the target is forced true.
-    """
-    result = {name: any(re.search(pattern, f) for f in files) for name, pattern in rules.items()}
-    changed = True
-    while changed:
-        changed = False
-        for source, target in implications:
-            if result.get(source) and not result.get(target):
-                result[target] = True
-                changed = True
-    return result
+def classify(files: list[str], rules: dict[str, str]) -> dict[str, bool]:
+    """Map each rule name to whether any changed file matches its regex (patterns self-anchor)."""
+    return {name: any(re.search(pattern, f) for f in files) for name, pattern in rules.items()}
 
 
 def format_outputs(result: dict[str, bool]) -> str:
@@ -122,23 +98,9 @@ def main(argv: list[str] | None = None) -> int:
         metavar="NAME=REGEX",
         help="A named path group; repeatable. Emits NAME=true if any changed path matches REGEX.",
     )
-    parser.add_argument(
-        "--imply",
-        action="append",
-        default=[],
-        metavar="SOURCE=TARGET",
-        help="Force TARGET true whenever SOURCE is true; repeatable.",
-    )
     args = parser.parse_args(argv)
 
     rules = dict(parse_rule(r) for r in args.rule)
-    implications = [parse_implication(i) for i in args.imply]
-
-    # Every implication endpoint must be a declared rule, or its output is never emitted.
-    for source, target in implications:
-        for name in (source, target):
-            if name not in rules:
-                parser.error(f"--imply references undeclared rule {name!r}")
 
     if is_branch_creation(args.base):
         print(f"Base {args.base} is the null oid (branch creation); all groups treated as changed.")
@@ -147,7 +109,7 @@ def main(argv: list[str] | None = None) -> int:
         files = _git_changed_files(args.base)
         print(f"Changed vs {args.base}:")
         print("".join(f"  {f}\n" for f in files) or "  (none)\n", end="")
-        result = classify(files, rules, implications)
+        result = classify(files, rules)
 
     output = format_outputs(result)
     print("Classification:")

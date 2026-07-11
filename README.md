@@ -276,10 +276,10 @@ allowlist):
 | --- | --- | --- | --- |
 | [`renovate-derived-files.yml`](.github/workflows/renovate-derived-files.yml) | `pyproject.toml`, `uv.lock`, `requirements_lock.txt`, `MODULE.bazel` | [`meta/scripts/ratify_renovate_proposals.py`](meta/scripts/ratify_renovate_proposals.py) (`uv lock --upgrade-package <each>` + `uv export`), then `bazel mod deps --lockfile_mode=update` | `uv.lock`, `requirements_lock.txt`, `MODULE.bazel.lock` |
 
-The uv step runs before the Bazel step, and a Python-only change still triggers the Bazel step:
-`pip.parse` reads `requirements_lock.txt`, and the artifact hashes it resolves are recorded in
-`MODULE.bazel.lock`'s `facts`, so a Python bump restales the Bazel lock. Both refreshes land in a
-single commit.
+The uv step runs before the Bazel step, and a Python change triggers the Bazel step when it moves
+`requirements_lock.txt`: `pip.parse` reads that file, and the artifact hashes it resolves are
+recorded in `MODULE.bazel.lock`'s `facts`, so moving it restales the Bazel lock. A pyproject-only
+edit that re-resolves the same versions skips the Bazel step. Both refreshes land in a single commit.
 
 The uv step ratifies Renovate's `requirements_lock.txt` edits: it extracts the proposed package
 names, asks uv to re-resolve with those packages flagged for upgrade, and either commits the result
