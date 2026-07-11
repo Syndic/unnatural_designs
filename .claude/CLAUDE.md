@@ -113,18 +113,42 @@ build` doesn't run `initializeCommand`, so the runtime files are absent there. T
 `[ -s ... ]` guards in the Dockerfile make that case a clean no-op (CI keeps default UTC and skips
 the git path symlink).
 
+## .devcontainer shared git index
+
+A consequence of the shared-common-dir design above: host git and in-container git read and write
+the **same index file**, but they sit in different stat domains — the bind mount reports different
+uid/gid, inode, ctime, and sub-second mtime for the same files. Under git's default
+`core.checkStat`, an index written on one side reads as "everything modified" on the other without
+any content comparison (`diff-index` flags every tracked file), so checkout-type operations —
+rebase, merge, branch switch — refuse with "your local changes would be overwritten" on a clean
+tree. Plain commits never hit this (no checkout involved), which is why the breakage only surfaced
+on an in-container rebase.
+
+`initialize.sh` therefore sets `core.checkstat = minimal` and `core.trustctime = false` in the
+repo-local config. That config lives in the common dir, so one write covers both sides and every
+worktree. `minimal` reduces the stat check to whole-second mtime + file size — the two fields the
+bind mount preserves — making the index portable in both directions; `trustctime = false` guards
+against ctime-only divergence from metadata changes (chmod/chown) one side doesn't observe. Known
+trade-off: a same-size edit landing in the same second as the last index refresh can evade stat
+detection; git's racy-index protection (entries at least as new as the index itself get
+content-checked) covers the realistic window. CI's smoke job asserts the setting landed, which
+also pins the fact that `devcontainers/ci` runs `initializeCommand`.
+
 ## .devcontainer signed commits under CLI
 
 The host signs with **SSH** (`gpg.format = ssh`, `commit.gpgsign = true`, no explicit
 `user.signingkey` — `gpg.ssh.defaultKeyCommand` shells out to `ssh-add -L`). That makes two
 things load-bearing inside the container: a usable ssh-agent socket the in-container `git` can
 reach, and the host's `~/.gitconfig`. Pushing the resulting signed commit then needs a third —
-the host's `~/.ssh/known_hosts`, or SSH refuses the unknown github.com fingerprint. VS Code's
-Dev Containers extension supplies all three automatically — it forwards the host ssh-agent
+the host's `~/.ssh/known_hosts`, or SSH refuses the unknown github.com fingerprint. *Verifying*
+it locally needs a fourth — the allowed-signers file named by `gpg.ssh.allowedSignersFile`, or
+`git verify-commit` reports a good-but-untrusted signature (`%G?` → `U`). VS Code's Dev
+Containers extension supplies the first three automatically — it forwards the host ssh-agent
 through the VS Code Server's own SSH tunnel (a per-user socket published by the server process,
 *not* Docker Desktop's magic socket — that mount isn't even present in extension-launched
 containers), and bridges the host gitconfig + known_hosts between `postCreate` and `postStart`.
-The `devcontainer` CLI does none of that. The fix is four additive pieces:
+It does not bridge the allowed-signers file. The `devcontainer` CLI does none of it. The fix is
+five additive pieces:
 
 - **SSH agent** — `devcontainer.json` binds Docker Desktop's magic socket
   `/run/host-services/ssh-auth.sock` (Desktop's documented mechanism for exposing the host's
@@ -160,8 +184,28 @@ The `devcontainer` CLI does none of that. The fix is four additive pieces:
   `~/.ssh` is empty and SSH refuses unknown fingerprints by default. VS Code
   bridges known_hosts itself, so the empty-check leaves that path alone.
   Same gitignored / regenerated-every-`up` lifecycle as the gitconfig snapshot.
+- **`~/.ssh/allowed_signers`** — the trust set `git verify-commit` checks a signature against.
+  Git reads it only for verification, never for signing, which is why commits signed fine
+  before this piece existed while `git log --show-signature` printed "Unable to open allowed
+  keys file…" / "No principal matched". `initialize.sh` snapshots the file *named by* `git
+  config --type=path --get gpg.ssh.allowedSignersFile` (the setting is authoritative; don't
+  hardcode `~/.ssh/allowed_signers`) to `.git-plumbing/host-allowed-signers`, and
+  `post-start.sh` installs it under the same missing-or-empty guard as the two copies above.
+  Contents are public keys and principal emails — no secret material, so the gitignored build
+  context is an appropriate home.
 
-`gpg.ssh.allowedSignersFile` in the copied gitconfig points to a host-only path that doesn't
-exist in the container. Irrelevant: git only reads it for `git verify-commit`, not for
-signing — `git log --show-signature` prints "Unable to open allowed keys file…" / "No
-principal matched" and the commit is still validly signed.
+  The extra step the other snapshots don't need: the copied gitconfig still points
+  `gpg.ssh.allowedSignersFile` at the host-absolute path, so `post-start.sh` rewrites it
+  (`git config --global`) to the installed copy whenever that copy is non-empty. Keying the
+  rewrite on the *destination* rather than on "did we just copy" makes it fire under VS Code
+  too — the extension bridges the gitconfig, stale path and all, but not the file it names —
+  and honours an allowed_signers a user provisioned some other way.
+
+  Why rewrite the config instead of recreating the host-absolute path in the image, the way
+  the Dockerfile does for `host-git-common-path`? That trick buys path *fidelity*, and the
+  git-common-dir case needs it: the worktree's `.git` file contains an absolute pointer git
+  will follow no matter what we'd prefer. Nothing here has that constraint — the only
+  reference to the allowed-signers path is the config setting itself, and we own the copy of
+  the gitconfig that carries it. Rewriting keeps the whole mechanism in `post-start.sh`
+  beside its two sibling snapshots, where a rotated key or a moved host file takes effect on
+  the next `up` rather than on an image rebuild.

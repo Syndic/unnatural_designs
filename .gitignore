@@ -65,6 +65,7 @@ target/
 /.devcontainer/.git-plumbing/host-timezone
 /.devcontainer/.git-plumbing/host-gitconfig
 /.devcontainer/.git-plumbing/host-known-hosts
+/.devcontainer/.git-plumbing/host-allowed-signers
 
 # ── Claude Code ───────────────────────────────────────────────────────────────────────────────────
 # settings.local.json holds per-developer overrides — never shared

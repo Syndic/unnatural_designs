@@ -51,12 +51,17 @@ jobs:
           # `bazel --version` exercises the full Bazelisk chain: download from the URL
           # baked into BAZELISK_VERSION, then bootstrap Bazel per .bazelversion. The
           # toolchain feature smoke tests (`go version`, `python3 --version`) confirm
-          # the `features` block landed both interpreters on PATH.
+          # the `features` block landed both interpreters on PATH. The checkstat
+          # assertion confirms initializeCommand ran and wrote the shared-index
+          # setting (see ".devcontainer shared git index" in .claude/CLAUDE.md);
+          # `--file` skips repo discovery, which would trip git's dubious-ownership
+          # check (runner uid != container uid).
           runCmd: |
             set -euo pipefail
             bazel --version
             go version
             python3 --version
+            test "$(git config --file .git/config --get core.checkstat)" = "minimal"
 
       - if: steps.changes.outputs.changed != 'true'
         run: echo "No devcontainer changes in this PR; skipping build."
