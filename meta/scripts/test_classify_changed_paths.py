@@ -18,16 +18,14 @@ from meta.scripts.classify_changed_paths import (
     parse_rule,
 )
 
-# The renovate-derived-files.yml rule set: Python manifests + MODULE.bazel, with the
-# python→bazel coupling (requirements_lock.txt feeds pip.parse, whose hashes land in
-# MODULE.bazel.lock's facts).
+# Mirrors renovate-derived-files.yml (which explains the python→bazel coupling).
 RULES_RENOVATE = {
     "python": r"(^|/)(pyproject\.toml|uv\.lock|requirements_lock\.txt)$",
     "bazel": r"(^|/)MODULE\.bazel$",
 }
 IMPLY_RENOVATE = [("python", "bazel")]
 
-# The devcontainer.yml rule set: one group over .devcontainer/ and the workflow file.
+# Mirrors devcontainer.yml.
 RULES_DEVCONTAINER = {
     "changed": r"^\.devcontainer/|^\.github/workflows/devcontainer\.yml$",
 }

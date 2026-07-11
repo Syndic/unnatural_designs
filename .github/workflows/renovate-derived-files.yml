@@ -8,15 +8,10 @@ name: Renovate — re-derive lock files
 # authoritative resolution). Without this workflow every Renovate PR lands with stale
 # derived files, and the committed copies drift further out of date over time.
 #
-# The two refreshes live in one workflow because they are *ordered*, not merely
-# concurrent: `pip.parse` reads `requirements_lock.txt`, and the artifact hashes it
-# resolves are recorded in MODULE.bazel.lock's `facts`. So uv has to settle
-# `requirements_lock.txt` before `bazel mod deps` regenerates the lock, or the two
-# committed files disagree. Two path-triggered workflows cannot express that ordering —
-# GitHub queues runs by arrival, not by dependency. Merging them also collapses the two
-# `createCommitOnBranch` mutations into one, which removes the `expectedHeadOid` race
-# they would otherwise run whenever a single PR touched both manifests. Renovate's
-# `all non-major dependencies` group (see renovate.json) makes that the common case.
+# The two refreshes live in one workflow because they are *ordered*: uv must settle
+# `requirements_lock.txt` before `bazel mod deps` regenerates MODULE.bazel.lock (whose pip
+# `facts` derive from it), and one commit avoids the `expectedHeadOid` race two separate
+# workflows would run on a PR touching both manifests. Full rationale in the doc pointer below.
 #
 # The steps run in this order:
 #   1. Classify which manifests the PR touched, so a Bazel-only PR skips uv setup and a

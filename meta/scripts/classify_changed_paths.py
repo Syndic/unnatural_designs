@@ -1,31 +1,20 @@
 #!/usr/bin/env python3
 """Classify a PR/push's changed files into named boolean outputs for GitHub Actions.
 
-Two workflows need the same primitive: diff the changes a branch introduced, test each
-changed path against a set of named regexes, and emit one `<name>=true|false` per group to
-`$GITHUB_OUTPUT` so later steps can gate on it. This script is that primitive; the callers
-supply the rules.
+Diff the changes a branch introduced, test each changed path against a set of named regexes,
+and emit one `<name>=true|false` per group to `$GITHUB_OUTPUT` so later steps can gate on it.
+The callers supply the rules; used by renovate-derived-files.yml and devcontainer.yml.
 
-  - `.github/workflows/renovate-derived-files.yml` — two coupled groups: `python`
-    (pyproject/uv.lock/requirements_lock.txt) and `bazel` (MODULE.bazel). A Python bump
-    restales MODULE.bazel.lock's pip `facts`, so `--imply python=bazel` forces `bazel` true
-    whenever `python` is.
-  - `.github/workflows/devcontainer.yml` — one group, `changed`, over `.devcontainer/` and
-    the workflow file itself.
-
-Two decisions are load-bearing and live here so both callers inherit them:
+Two decisions live here so every caller inherits them:
 
   - **Three-dot diff.** `git diff <base>...HEAD` compares the merge base to HEAD, so a base
-    that advanced under an open PR does not read as the branch's own changes. Two-dot
-    (`git diff <base>`) would classify a Bazel-only PR as Python the moment `main` picked up
-    a dep bump — and the renovate workflow would then commit unrelated lock upgrades onto it.
-  - **Branch-creation short-circuit.** A push that creates a branch has an all-zero base SHA
-    (`github.event.before`), which no diff can resolve. Treat it as "everything changed" so a
-    first push still runs the gated work rather than silently skipping it.
+    that advanced under an open PR does not read as the branch's own changes. Two-dot would
+    misclassify a PR the moment `main` picked up an unrelated change.
+  - **Branch-creation short-circuit.** A branch-creating push has an all-zero base SHA that no
+    diff can resolve; treat it as "everything changed" rather than silently skipping.
 
-The pure functions (`parse_rule`, `parse_implication`, `is_branch_creation`, `classify`,
-`format_outputs`) carry all the non-I/O logic so the test suite exercises the moving parts
-without git or the Actions environment — the same split as ratify_renovate_proposals.py.
+Pure functions carry the logic and the tests exercise them without git or the Actions
+environment — the same split as ratify_renovate_proposals.py.
 
 Usage:
   python3 meta/scripts/classify_changed_paths.py --base <ref-or-sha> \\
@@ -76,9 +65,8 @@ def classify(
 ) -> dict[str, bool]:
     """Map each rule name to whether any changed file matches its regex, then apply implications.
 
-    A rule matches if `re.search(pattern, path)` hits any path — the caller's patterns carry
-    their own anchors. Implications run to a fixpoint (so chains like a→b, b→c all propagate):
-    whenever the source group is true, the target is forced true.
+    Patterns carry their own anchors. Implications run to a fixpoint, so chains (a→b, b→c)
+    propagate: whenever the source group is true, the target is forced true.
     """
     result = {name: any(re.search(pattern, f) for f in files) for name, pattern in rules.items()}
     changed = True
