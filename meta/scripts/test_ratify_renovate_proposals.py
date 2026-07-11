@@ -1,9 +1,9 @@
 """Tests for ratify_renovate_proposals.py.
 
-The pure functions (extract_proposals, parse_resolved, find_conflicts) carry all the
-non-I/O logic; tests focus there. main()'s driver wiring is exercised end-to-end by the
-caller workflow on a real Renovate PR — covering it here would mean mocking subprocess
-heavily for low marginal value.
+The pure functions (extract_proposals, parse_resolved, find_conflicts, git_diff_args)
+carry all the non-I/O logic; tests focus there. main()'s driver wiring is exercised
+end-to-end by the caller workflow on a real Renovate PR — covering it here would mean
+mocking subprocess heavily for low marginal value.
 """
 
 import textwrap
@@ -13,6 +13,7 @@ from meta.scripts.ratify_renovate_proposals import (
     Proposal,
     extract_proposals,
     find_conflicts,
+    git_diff_args,
     parse_resolved,
 )
 
@@ -251,6 +252,23 @@ class TestFindConflicts(unittest.TestCase):
         proposals = [Proposal(name="pkg", target="9999.0.0")]
         resolved = {"pkg": "1!0.0.1"}  # epoch 1 > epoch 0 (no epoch)
         self.assertEqual(find_conflicts(proposals, resolved), [])
+
+
+class TestGitDiffArgs(unittest.TestCase):
+    def test_uses_three_dot_range(self):
+        # Two-dot (`origin/main`) diffs the base tip, so a base that advanced under an open
+        # PR reads as if the PR reverted it — the `+` lines become the branch's older pins
+        # and extract_proposals mistakes them for Renovate's proposals.
+        args = git_diff_args("main", "requirements_lock.txt")
+        self.assertEqual(args, ["git", "diff", "origin/main...HEAD", "--", "requirements_lock.txt"])
+
+    def test_path_is_passed_after_separator(self):
+        # The `--` matters: a lockfile whose name collides with a ref would otherwise be
+        # ambiguous to git.
+        args = git_diff_args("release/2.x", "sub/dir/requirements_lock.txt")
+        self.assertEqual(args[-2], "--")
+        self.assertEqual(args[-1], "sub/dir/requirements_lock.txt")
+        self.assertEqual(args[2], "origin/release/2.x...HEAD")
 
 
 if __name__ == "__main__":

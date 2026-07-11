@@ -56,30 +56,26 @@
   ],
   "packageRules": [
     {
-      "matchManagers": [ "bazel-module" ],
-      "groupName": "Bazel toolchains and rulesets"
-    },
-    {
-      "matchManagers": [ "gomod" ],
-      "groupName": "Go dependencies"
-    },
-    {
-      "matchManagers": [ "github-actions" ],
-      "groupName": "GitHub Actions"
-    },
-    {
       "matchManagers": [ "custom.regex", "devcontainer" ],
       "matchDepNames": [ "go", "python" ],
+      "matchUpdateTypes": [ "major" ],
       "groupName": "Language toolchain SDKs"
     },
     {
       "matchDatasources": [ "pypi" ],
       "matchDepNames": [ "ruff" ],
+      "matchUpdateTypes": [ "major" ],
       "groupName": "ruff"
     },
     {
-      "matchManagers": [ "pep621" ],
-      "groupName": "Python dependencies"
+      "matchManagers": [ "bazel-module" ],
+      "matchUpdateTypes": [ "major" ],
+      "groupName": "Bazel toolchains and rulesets"
+    },
+    {
+      "matchUpdateTypes": [ "minor", "patch" ],
+      "groupName": "all non-major dependencies",
+      "groupSlug": "all-minor-patch"
     }
   ]
 }

@@ -22,7 +22,7 @@ or surface a constraint conflict:
 I/O contract:
   - Reads BASE_REF from env (the base ref name, typically `main`).
   - Reads GITHUB_OUTPUT from env (the output file path GitHub Actions provides).
-  - Runs `git diff origin/{BASE_REF} -- <requirements-lock>` to discover proposals.
+  - Runs `git diff origin/{BASE_REF}...HEAD -- <requirements-lock>` to discover proposals.
   - Runs `uv lock ...` and `uv export ...` as side effects on the working tree.
   - Writes the `conflicts` step output as a multiline value (GitHub Actions heredoc
     syntax — `conflicts<<EOF\\n...\\nEOF\\n`).
@@ -32,8 +32,8 @@ I/O contract:
 Pure functions (`extract_proposals`, `parse_resolved`, `find_conflicts`) carry all the
 non-I/O logic so the test suite can exercise the moving parts without git or uv.
 
-See docs/future-considerations.md "Auto-commit GitHub App" for the broader flow and
-.github/workflows/renovate-requirements-lock.yml for the caller workflow.
+See .claude/CLAUDE.md "Renovate auto-commit helper" for the broader flow and
+.github/workflows/renovate-derived-files.yml for the caller workflow.
 
 Usage: python3 meta/scripts/ratify_renovate_proposals.py
 """
@@ -147,9 +147,21 @@ def find_conflicts(proposals: list[Proposal], resolved: dict[str, str]) -> list[
 # ── I/O wrappers (thin shells around subprocess + file I/O) ───────────────────
 
 
+def git_diff_args(base_ref: str, path: str) -> list[str]:
+    """Build the `git diff` argv that yields this PR's own changes to `path`.
+
+    Three-dot (merge base → HEAD), not two-dot. Two-dot diffs the base *tip*, so a base
+    that advanced under an open PR reads as if the PR reverted it: the `+` lines become
+    the branch's older pins, `extract_proposals` reads them as targets, and uv happily
+    resolves something newer — a conflict that never surfaces and a lockfile the PR never
+    meant to touch.
+    """
+    return ["git", "diff", f"origin/{base_ref}...HEAD", "--", path]
+
+
 def _git_diff_base(base_ref: str, path: str) -> str:
     return subprocess.run(
-        ["git", "diff", f"origin/{base_ref}", "--", path],
+        git_diff_args(base_ref, path),
         capture_output=True,
         text=True,
         check=True,

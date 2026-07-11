@@ -9,8 +9,9 @@ name: Self-test — commit-file-via-app
 #   2. no changed files is a clean no-op — the branch tip does not move;
 #   3. given several paths of which only some changed, only the changed ones are committed.
 #
-# Case 3 is the shape `renovate-requirements-lock.yml` hits whenever `uv.lock` and
-# `requirements_lock.txt` don't both move. The scratch branch is deleted even on failure.
+# Case 3 is the shape `renovate-derived-files.yml` hits on most runs: it passes `uv.lock`,
+# `requirements_lock.txt`, and `MODULE.bazel.lock` in one invocation, and a Bazel-only PR moves
+# only the last of them. The scratch branch is deleted even on failure.
 
 on:
   pull_request:

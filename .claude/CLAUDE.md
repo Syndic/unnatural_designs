@@ -44,6 +44,41 @@ a parenthetical) so a tag sweep doesn't trip on it.
 [its README](../.github/actions/commit-file-via-app/README.md) before changing its inputs or its
 no-op-when-no-diff behavior.
 
+## Renovate auto-commit helper (`Renovate helper` app)
+
+`.github/workflows/renovate-derived-files.yml` regenerates the lock files Renovate can't
+(Mend-hosted Renovate can't run `uv lock` or `bazel mod deps` — the `allowedUnsafeExecutions`
+gate) and commits them back to the PR via a dedicated GitHub App, the `Renovate helper`.
+Load-bearing facts:
+
+- **Why an app, not `GITHUB_TOKEN`.** The commit goes through the `commit-file-via-app` action
+  (see the section above), whose `createCommitOnBranch` mutation is web-flow-signed — satisfying
+  branch protection — and is attributed to the app, so the push retriggers required status checks.
+  A `GITHUB_TOKEN`-authored push suppresses downstream check runs; don't switch to it.
+- **uv before Bazel, one commit.** `pip.parse` reads `requirements_lock.txt`, and the artifact
+  hashes it resolves are recorded in `MODULE.bazel.lock`'s `facts`. So the workflow settles
+  `requirements_lock.txt` (uv) before regenerating `MODULE.bazel.lock` (`bazel mod deps`), and
+  commits both in one mutation — two separate workflows couldn't order the steps and would race two
+  mutations on `expectedHeadOid`. A Python PR triggers the Bazel refresh only when it actually moves
+  `requirements_lock.txt` from the merge base (a pyproject-only edit that re-resolves the same is a
+  no-op). The Bazel refresh only rewrites the pip `facts` on a cold Bazel output base, so the
+  workflow's `setup-bazel` sets only `bazelisk-cache`/`repository-cache` — adding `disk-cache` would
+  make it a silent no-op.
+- **App permissions.** `Contents: read & write` (commit) and `Pull requests: read & write` (to file
+  and dismiss the `REQUEST_CHANGES` reviews the ratify step raises on an unresolvable bump). Set in
+  the app's GitHub settings; no code.
+- **`gitIgnoredAuthors` is an exact-string match.** `renovate.json` lists the helper bot's
+  commit-author email so Renovate doesn't treat the auto-commit as a user edit — which would
+  suppress its own follow-up rebases/bumps on that branch. Renovate matches by exact string (a
+  `Set.delete`, no wildcard); the email is `<numeric-id>+<app-slug>[bot]@users.noreply.github.com`,
+  and both halves change if the app is recreated.
+
+**If the app is recreated:** wait for the next Renovate PR where the auto-commit fires, read the new
+author email
+(`gh api repos/Syndic/unnatural_designs/pulls/<n>/commits --jq '.[].commit.author.email'`), update
+`gitIgnoredAuthors` in `renovate.json`, and re-grant the two permissions above. Until that lands
+Renovate reacts to the helper's commits as user edits — visible, not load-bearing.
+
 ## .devcontainer worktree + timezone plumbing
 
 The devcontainer is brought up by Claude agents via the `devcontainer` CLI (humans use VS Code's
