@@ -32,7 +32,7 @@ I/O contract:
 Pure functions (`extract_proposals`, `parse_resolved`, `find_conflicts`) carry all the
 non-I/O logic so the test suite can exercise the moving parts without git or uv.
 
-See docs/future-considerations.md "Auto-commit GitHub App" for the broader flow and
+See .claude/CLAUDE.md "Renovate auto-commit helper" for the broader flow and
 .github/workflows/renovate-derived-files.yml for the caller workflow.
 
 Usage: python3 meta/scripts/ratify_renovate_proposals.py

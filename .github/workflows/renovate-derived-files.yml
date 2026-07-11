@@ -41,7 +41,7 @@ name: Renovate — re-derive lock files
 # side-effecting steps that depend on Actions context — minting the app token, the GitHub
 # API calls (review file + dismiss), and the composite action invocation for the commit.
 #
-# See docs/future-considerations.md "Auto-commit GitHub App" for the broader rationale.
+# See .claude/CLAUDE.md "Renovate auto-commit helper" for the broader rationale.
 
 on:
   pull_request:
@@ -222,7 +222,7 @@ jobs:
       #
       # The bot login string is the same one tracked by `gitIgnoredAuthors` in
       # renovate.json; if the helper app is recreated, both values need to be updated
-      # together (see docs/future-considerations.md "Auto-commit GitHub App").
+      # together (see .claude/CLAUDE.md "Renovate auto-commit helper").
 
       - name: Dismiss prior bot CHANGES_REQUESTED reviews
         env:

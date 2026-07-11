@@ -127,91 +127,24 @@ work landing). That release is the prompt to (a) switch `pip.parse(..., requirem
 to whatever the new uv-native attribute is, (b) delete `requirements_lock.txt`, (c) drop the
 `uv-lock-fresh` hook's `requirements_lock.txt` re-export, (d) strip the Python half of the
 `renovate-derived-files.yml` workflow (the helper app stays installed as long as the Bazel half
-still commits — see "Auto-commit GitHub App" below), and (e) remove the freshness check in
+still commits — see "Retire the Renovate auto-commit helper" below), and (e) remove the freshness
+check in
 `meta/scripts/check_modules.py`.
 
 ---
 
-## Auto-commit GitHub App (`Renovate helper`)
+## Retire the Renovate auto-commit helper
 
-One workflow uses the helper bot on Renovate PRs: `.github/workflows/renovate-derived-files.yml`.
-It refreshes both sets of derived lock files, in a fixed order, and commits them together.
+`.github/workflows/renovate-derived-files.yml` commits regenerated lock files back to Renovate PRs
+via the `Renovate helper` GitHub App — it exists only because Mend-hosted Renovate can't run
+`uv lock` or `bazel mod deps` itself. The app mechanism, permissions, `gitIgnoredAuthors` gotcha,
+and recovery procedure live in [`.claude/CLAUDE.md`](../.claude/CLAUDE.md) "Renovate auto-commit
+helper".
 
-- **Python** — **ratifies Renovate's dep proposals via uv** and re-derives both `uv.lock` and
-  `requirements_lock.txt`. Renovate's `pep621` cannot run `uv lock` on Mend hosted
-  (`allowedUnsafeExecutions` allowlist gate), so it falls back to `pip_requirements` editing
-  `requirements_lock.txt` in place. The workflow runs
-  [`meta/scripts/ratify_renovate_proposals.py`](../meta/scripts/ratify_renovate_proposals.py),
-  which extracts the proposed package names from the diff, runs `uv lock --upgrade-package <each>`
-  so uv is the actual resolver, re-exports `requirements_lock.txt`, and reports any packages uv
-  refused to advance (workspace constraint conflicts). On conflict the workflow files a
-  `REQUEST_CHANGES` review with the script's per-package diagnosis rather than silently reverting
-  Renovate's signal. Dismissing the review is the deliberate ack that the bump is impossible
-  (close the PR) or that the constraint will be relaxed (push to the branch to re-evaluate).
-  Prior bot `REQUEST_CHANGES` reviews are dismissed after the new state lands so the PR's review
-  status always reflects the latest evaluation. The data manipulation (diff parsing, pep440
-  comparison) is in the Python script under tests
-  (`//meta/scripts:test_ratify_renovate_proposals`); the workflow handles only Actions-context
-  side effects (token mint, GitHub API calls, composite action invocation).
-- **Bazel** — re-updates `MODULE.bazel.lock` via `bazel mod deps --lockfile_mode=update` (same
-  allowlist story), skipped if the Python half reported conflicts. Mechanical: there is no
-  equivalent of uv's "constraint refuses to advance" failure mode.
-
-The order is load-bearing. `pip.parse` reads `requirements_lock.txt`, and the artifact hashes it
-resolves are recorded in `MODULE.bazel.lock`'s `facts` — so uv must settle `requirements_lock.txt`
-before `bazel mod deps` regenerates the lock, or the two committed files disagree. That is also why
-a Python PR triggers the Bazel refresh whenever it moves `requirements_lock.txt` from the base (a
-pyproject-only edit that re-resolves the same versions leaves the facts valid and skips it). These
-were two path-triggered workflows until
-Renovate's `all non-major dependencies` group made the both-manifests PR the common case: separate
-workflows cannot express the ordering (GitHub queues runs by arrival), and their two
-`createCommitOnBranch` mutations raced on `expectedHeadOid`. One workflow, one commit, no race.
-
-The workflow delegates the actual commit to a shared composite action
-`.github/actions/commit-file-via-app/`, which wraps:
-
-- minting an installation token from the helper app (`actions/create-github-app-token`),
-- diff-checking each requested file (no-op if Renovate's update was already complete),
-- calling the GraphQL `createCommitOnBranch` mutation (web-flow signing satisfies branch
-  protection; the app-token actor identity makes the resulting push event retrigger downstream
-  required status checks — `GITHUB_TOKEN` would suppress them).
-
-The action's inputs and no-op behavior are a public contract with consumers outside this repo —
-see [its README](../.github/actions/commit-file-via-app/README.md) for the contract, consumer
-list, and self-test workflow.
-
-### App permissions
-
-The helper app needs `Contents: read & write` (to commit) **and `Pull requests: read & write`**
-(to file and dismiss `REQUEST_CHANGES` reviews on conflict). Both are configured in the app's
-settings on GitHub; no code change.
-
-### App identity in `gitIgnoredAuthors`
-
-`renovate.json` lists the helper bot's commit-author email under `gitIgnoredAuthors` so Renovate
-does not treat the auto-commit as "user modified this branch" — without it, Renovate suppresses
-its own follow-up actions (rebase, additional dep bumps within the same group) on any branch we
-have touched.
-
-The match is exact-string only ([renovate/lib/util/git/index.ts:885](https://github.com/renovatebot/renovate/blob/main/lib/util/git/index.ts#L885)
-is a `Set.delete(value)` call — no wildcard, no regex). The email shape is
-`<numeric-id>+<app-slug>[bot]@users.noreply.github.com`; both halves change if the app is recreated.
-
-**If the app is ever recreated, recovery is:**
-
-1. Wait for the next Renovate PR where our auto-commit fires.
-2. Read the new author email off it:
-   `gh api repos/Syndic/unnatural_designs/pulls/<n>/commits --jq '.[].commit.author.email'`
-3. Update `gitIgnoredAuthors` in `renovate.json` with the new value.
-
-Until that update lands, Renovate will react to the helper's commits as if they were user
-edits — the same state we were in before this entry existed. Visible but not load-bearing.
-
-**Trigger to revisit:** if every workflow that uses the helper bot goes away (e.g. `rules_python`
-lands uv-native lockfile support per the entry above, AND `MODULE.bazel.lock` is either
-auto-managed by Bazel or by a Mend allowlist change that lets Renovate update it directly),
-the app can be uninstalled from the repo and its key destroyed (and the `gitIgnoredAuthors`
-entry removed in the same change).
+**Trigger to revisit:** if every workflow that uses the helper goes away — `rules_python` lands
+uv-native lockfile support (see the entry above) AND `MODULE.bazel.lock` becomes auto-managed by
+Bazel or a Mend allowlist change lets Renovate update it directly — uninstall the app, destroy its
+key, and remove the `gitIgnoredAuthors` entry from `renovate.json` in the same change.
 
 ---
 

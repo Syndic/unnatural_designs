@@ -294,8 +294,8 @@ The workflow delegates the actual commit to the shared composite action
 calls the GitHub GraphQL `createCommitOnBranch` mutation (signed by GitHub's web-flow key) using
 an installation token from a dedicated GitHub App rather than the default `GITHUB_TOKEN` — so
 required status checks retrigger on the new head. See
-[`docs/future-considerations.md`](docs/future-considerations.md) "Auto-commit GitHub App" for
-the rationale, the app's required permissions, and the triggers that would retire the workflow.
+[`.claude/CLAUDE.md`](.claude/CLAUDE.md) "Renovate auto-commit helper" for the app mechanism,
+its required permissions, and the recovery procedure if the app is recreated.
 The action also has consumers outside this repo; its
 [README](.github/actions/commit-file-via-app/README.md) documents the compatibility contract,
 the consumer list, and the self-test workflow that exercises it on PRs.
