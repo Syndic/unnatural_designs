@@ -32,25 +32,26 @@ jobs:
 
   # ── Static Application Security Testing (SAST) ───────────────────────────────
   # Analyses source code for security vulnerabilities — injection flaws, insecure API usage,
-  # hardcoded secrets — without running or building the code. Semgrep uses per-language rule packs;
-  # add one per adopted language.
-  # TEND(lang-expand): add p/<language> for each adopted language (semgrep.dev/r lists available
-  #   packs, e.g. p/java, p/typescript, p/rust).
+  # hardcoded secrets — without running or building the code. Semgrep uses per-language rule packs,
+  # passed via SEMGREP_RULES; add one per adopted language. The deprecated semgrep/semgrep-action is
+  # replaced by the upstream-recommended semgrep/semgrep container image running `semgrep ci`, so
+  # the tool version is SHA-pinned like everything else (the action froze at v0.58.0 — see README's
+  # "Dependency updates").
+  # TEND(lang-expand): add p/<language> to SEMGREP_RULES for each adopted language (semgrep.dev/r
+  #   lists available packs, e.g. p/java, p/typescript, p/rust).
   semgrep:
     name: Semgrep
     runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep:1.169.0@sha256:2b33f46ba66cf8cc2ad59ccfa7d22951fd00c632c38f1339e84ec8e6e641a942
     permissions:
-      security-events: write
       contents: read
     steps:
       - uses: actions/checkout@v7
 
-      - uses: semgrep/semgrep-action@713efdd345f3035192eaa63f56867b88e63e4e5d # v1
-        with:
-          config: >-
-            p/golang
-            p/python
-            p/secrets
+      - run: semgrep ci
+        env:
+          SEMGREP_RULES: p/golang p/python p/secrets
 
   # ── Dependency CVE Scanning ───────────────────────────────────────────────────
   # Per-language scanners that flag known-vulnerable third-party dependencies. The signal model

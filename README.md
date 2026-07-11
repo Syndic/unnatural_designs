@@ -251,6 +251,17 @@ tag resolves to a *different* commit — same version string, different content,
 force-moved the tag. That is the single event this repo's SHA pinning exists to catch, so it is
 deliberately kept out of the batch where it would be one line of a fifteen-dependency diff.
 
+Every GitHub Action is SHA-pinned, via the `helpers:pinGitHubActionDigestsToSemver` preset in
+`extends`. It pins each `uses:` reference to a commit SHA annotated with the full-semver tag that
+SHA resolves to (e.g. `actions/checkout@<sha> # v7.0.1`). The *full* version in the comment is what
+makes routine upgrades land as `minor`/`patch` and batch: Renovate advances the SHA and rewrites the
+version. A bare-major comment like `# v7` would instead track the floating `v7` tag, so every `v7.x`
+release would move the SHA under a fixed version string — a `digest` update on its own PR. The
+preset's `extractVersion`/`versioning` rules resolve to the precise release so that doesn't happen.
+Semgrep is the one action that could not join this scheme: `semgrep/semgrep-action` was deprecated
+and frozen at `v0.58.0`, so the SAST job runs the SHA-pinned `semgrep/semgrep` container image
+directly instead.
+
 Three grouping exceptions in [`renovate.json`](renovate.json)'s `packageRules` keep *major* bumps
 atomic. Each is scoped with `matchUpdateTypes: ["major"]` so it cannot overlap the minor/patch
 catch-all — every rule matches a disjoint set of updates, and the order they appear in does not
