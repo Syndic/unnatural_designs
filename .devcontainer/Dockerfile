@@ -34,20 +34,33 @@ ARG TY_VERSION=0.0.58
 # renovate: datasource=pypi depName=pre-commit
 ARG PRE_COMMIT_VERSION=4.6.0
 # UV_TOOL_DIR holds the per-tool venvs; UV_PYTHON_INSTALL_DIR is where uv
-# downloads its managed Python interpreters. Both must be world-readable
-# because tools install as root but run as the vscode user. The Python path
-# matters for *pure-Python* tools (pre-commit): the venv's `bin/python`
-# symlinks into UV_PYTHON_INSTALL_DIR, and a pre-commit shebang to a path
-# under root-owned /root/.local (uv's default) makes `pre-commit` fail with
-# "bad interpreter: Permission denied" for vscode. ruff and ty are standalone
-# binaries and don't actually invoke the symlinked Python, which is why this
-# only surfaces with pre-commit.
+# downloads its managed Python interpreters (both the pre-commit tool venv's
+# interpreter and the interactive `python3` installed below). Both must be
+# world-readable because tools install as root but run as the vscode user. The
+# Python path matters for *pure-Python* tools (pre-commit): the venv's
+# `bin/python` symlinks into UV_PYTHON_INSTALL_DIR, and a pre-commit shebang to
+# a path under root-owned /root/.local (uv's default) makes `pre-commit` fail
+# with "bad interpreter: Permission denied" for vscode. ruff and ty are
+# standalone binaries and don't actually invoke the symlinked Python, which is
+# why this only surfaces with pre-commit.
 ENV UV_TOOL_BIN_DIR=/usr/local/bin \
     UV_TOOL_DIR=/usr/local/share/uv-tools \
     UV_PYTHON_INSTALL_DIR=/usr/local/share/uv-python
 RUN uv tool install --no-cache "ruff==${RUFF_VERSION}" \
     && uv tool install --no-cache "ty==${TY_VERSION}" \
     && uv tool install --no-cache "pre-commit==${PRE_COMMIT_VERSION}"
+
+# Interactive Python for the devcontainer: a prebuilt uv-managed CPython, not the
+# `python` devcontainer feature (which compiles from source, ~2 min/build). uv drops
+# it into UV_PYTHON_INSTALL_DIR (world-readable, above); the symlinks put `python3`/
+# `python` on PATH for the smoke test, the ms-python extension, and interactive use.
+# `--no-project` ignores any workspace .venv; `--managed-python` resolves the uv copy.
+# Kept level with the setup-python/MODULE.bazel pins by Renovate (Language toolchain SDKs).
+# renovate: datasource=python-version depName=python
+ARG PYTHON_VERSION=3.14
+RUN uv python install "${PYTHON_VERSION}" \
+    && ln -sfn "$(uv python find --no-project --managed-python "${PYTHON_VERSION}")" /usr/local/bin/python3 \
+    && ln -sfn /usr/local/bin/python3 /usr/local/bin/python
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         build-essential \

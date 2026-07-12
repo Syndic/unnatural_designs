@@ -13,10 +13,9 @@
     "ghcr.io/devcontainers/features/go:1": {
       "version": "1.26.5"
     },
-    "ghcr.io/devcontainers/features/python:1": {
-      "version": "3.14",
-      "installTools": false
-    },
+    // Python is NOT a devcontainer feature: that feature compiles CPython from source
+    // (~2 min/build). The Dockerfile installs a prebuilt uv-managed interpreter instead
+    // (PYTHON_VERSION there, Renovate-tracked in lockstep with MODULE.bazel / setup-python).
     "ghcr.io/devcontainers/features/github-cli:1": {},
     "ghcr.io/devcontainers/features/git:1": {}
   },

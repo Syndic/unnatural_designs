@@ -103,9 +103,17 @@ per-step rationale lives at each site, not here:
   `host-timezone` and points `/etc/localtime` at it.
 
 `.devcontainer/devcontainer-lock.json` pins the digests of the `ghcr.io/devcontainers/features/*`
-features referenced from `devcontainer.json` (common-utils, git, github-cli, go, python). It is
+features referenced from `devcontainer.json` (common-utils, git, github-cli, go). It is
 maintained by the `devcontainer` CLI (`devcontainer features upgrade`) and bumped by Renovate's
 `devcontainer` manager; nothing else writes it.
+
+Python is deliberately **not** a devcontainer feature: that feature compiles CPython from source
+(~2 min per build). The Dockerfile installs a prebuilt uv-managed interpreter instead — `ARG
+PYTHON_VERSION` (Renovate-tracked via the Dockerfile custom manager, `depName=python`, so it stays
+in the "Language toolchain SDKs" group alongside the `MODULE.bazel` and `setup-python` pins) — and
+symlinks `python3`/`python` onto PATH. The CI `Devcontainer` job caches the built image in GHCR
+(`imageName`/`cacheFrom`, `push: filter` seeds it on pushes to main), so the feature layers are
+reused across runs rather than rebuilt cold; this needs the workflow's `packages: write`.
 
 `.git-plumbing/` is a tracked directory anchored by its README so the Dockerfile's `COPY` always
 has a source — buildx errors on a `COPY` whose glob matches zero files, and CI's `devcontainer

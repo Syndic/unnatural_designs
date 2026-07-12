@@ -274,7 +274,8 @@ matter. (Renovate merges every matching rule in order and the last writer wins, 
 rules would be order-dependent. Don't introduce an overlap.)
 
 - **Language toolchain SDKs** — the Go and Python version pins, tracked across `MODULE.bazel`,
-  `go.work`, per-module `go.mod`, the workflow `setup-python` steps, and `devcontainer.json`.
+  `go.work`, per-module `go.mod`, the workflow `setup-python` steps, the `go` feature in
+  `devcontainer.json`, and the devcontainer Dockerfile's `PYTHON_VERSION` arg.
 - **`ruff`** — pinned in both `pyproject.toml` and the CI workflow.
 - **Bazel toolchains and rulesets** — `bazel_dep` majors. Rulesets that must advance in lockstep
   (`rules_go` with `bazel-gazelle`, say) resolve against one another, so splitting their majors
