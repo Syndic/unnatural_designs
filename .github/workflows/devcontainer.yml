@@ -20,7 +20,7 @@ jobs:
     name: Build devcontainer and smoke test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           # Need history back to the PR base / previous push so we can diff for changed paths.
           fetch-depth: 0
@@ -45,7 +45,7 @@ jobs:
       # not just the Dockerfile) and runs the smoke command inside the resulting container.
       # `push: never` keeps this self-contained — no registry or credentials needed.
       - if: steps.changes.outputs.changed == 'true'
-        uses: devcontainers/ci@513af61f4de4f75d37e4438f184ba4358f0fc1ca # v0.3
+        uses: devcontainers/ci@513af61f4de4f75d37e4438f184ba4358f0fc1ca # v0.3.1900000450
         with:
           push: never
           # `bazel --version` exercises the full Bazelisk chain: download from the URL

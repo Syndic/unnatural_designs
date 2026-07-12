@@ -257,8 +257,13 @@ SHA resolves to (e.g. `actions/checkout@<sha> # v7.0.1`). The *full* version in 
 makes routine upgrades land as `minor`/`patch` and batch: Renovate advances the SHA and rewrites the
 version. A bare-major comment like `# v7` would instead track the floating `v7` tag, so every `v7.x`
 release would move the SHA under a fixed version string — a `digest` update on its own PR. The
-preset's `extractVersion`/`versioning` rules resolve to the precise release so that doesn't happen.
-Semgrep is the one action that could not join this scheme: `semgrep/semgrep-action` was deprecated
+preset's `extractVersion`/`versioning` rules keep the comment on a full-semver tag *through*
+updates, but they cannot expand the comment a pin starts from: `pinDigest` copies whatever version
+string the `uses:` referenced, so a source tag written as bare `@v7` pins to `# v7` and stays there
+(it will not self-heal — under the preset's versioning `v7` and `v7.0.0` compare equal, so Renovate
+sees no update to offer). **Always reference a full three-component tag when adding or bumping a
+`uses:` entry** (`actions/checkout@v7.0.0`, not `@v7`), so the resulting pin carries a full-semver
+comment. Semgrep is the one action that could not join this scheme: `semgrep/semgrep-action` was deprecated
 and frozen at `v0.58.0`, so the SAST job runs the SHA-pinned `semgrep/semgrep` container image
 directly instead.
 
