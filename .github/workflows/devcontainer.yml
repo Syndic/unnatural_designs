@@ -1,8 +1,8 @@
 name: Devcontainer
 
 # Build the devcontainer and smoke-test the toolchain it ships. Catches breakage from
-# Renovate-driven bumps to the Debian base, the `features` block (go/python/etc.), or
-# BAZELISK_VERSION before someone hits it locally.
+# Renovate-driven bumps to the Debian base, the `features` block (go, etc.), the Dockerfile's
+# PYTHON_VERSION, or BAZELISK_VERSION before someone hits it locally.
 # The workflow always runs so the status check always reports — a trigger-level `paths:`
 # filter would skip the workflow entirely on unrelated PRs, leaving a required check
 # permanently pending. Path filtering happens inside the job instead.
@@ -14,6 +14,7 @@ on:
 
 permissions:
   contents: read
+  packages: write # push/pull the devcontainer build-cache image on GHCR
 
 jobs:
   build-and-smoke-test:
@@ -41,17 +42,33 @@ jobs:
             --base "$base" \
             --rule 'changed=^\.devcontainer/|^\.github/workflows/devcontainer\.yml$'
 
+      # Cache the built image in GHCR so the expensive feature layers (Go tools ~90s, etc.)
+      # are reused across runs instead of rebuilt cold every time. The ref must be lowercase
+      # (GHCR rejects uppercase), and ${{ github.repository }} carries the org's casing.
+      - id: img
+        if: steps.changes.outputs.changed == 'true'
+        run: echo "ref=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')-devcontainer" >> "$GITHUB_OUTPUT"
+
+      # Auth for the GHCR cache. Skipped on fork PRs — their read-only token can't reach the
+      # package, so they fall back to a cold build. Needs the packages: write permission above.
+      - if: steps.changes.outputs.changed == 'true' && github.event.pull_request.head.repo.fork != true
+        run: echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
+
       # devcontainers/ci builds with the full feature set (so feature bumps are exercised,
       # not just the Dockerfile) and runs the smoke command inside the resulting container.
-      # `push: never` keeps this self-contained — no registry or credentials needed.
+      # cacheFrom reuses the previously-built layers; push: filter seeds the cache on pushes
+      # to main only (PRs build against the cache but don't publish).
       - if: steps.changes.outputs.changed == 'true'
         uses: devcontainers/ci@513af61f4de4f75d37e4438f184ba4358f0fc1ca # v0.3.1900000450
         with:
-          push: never
+          imageName: ${{ steps.img.outputs.ref }}
+          cacheFrom: ${{ steps.img.outputs.ref }}
+          push: filter
           # `bazel --version` exercises the full Bazelisk chain: download from the URL
-          # baked into BAZELISK_VERSION, then bootstrap Bazel per .bazelversion. The
-          # toolchain feature smoke tests (`go version`, `python3 --version`) confirm
-          # the `features` block landed both interpreters on PATH. The checkstat
+          # baked into BAZELISK_VERSION, then bootstrap Bazel per .bazelversion.
+          # `go version` confirms the `go` feature landed the toolchain on PATH;
+          # `python3 --version` confirms the Dockerfile's uv-installed interpreter did.
+          # The checkstat
           # assertion confirms initializeCommand ran and wrote the shared-index
           # setting (see ".devcontainer shared git index" in .claude/CLAUDE.md);
           # `--file` skips repo discovery, which would trip git's dubious-ownership
