@@ -24,7 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v8.3.2
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           # renovate: datasource=python-version depName=python
           python-version: "3.14"
@@ -84,7 +84,7 @@ jobs:
       # trail current releases far enough to emit Node runtime deprecation warnings in every
       # consuming workflow. If this ever outgrows install-and-run, check whether that action has
       # started keeping its dependencies current and switch back.
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           # go.work pins the toolchain so a workspace-level `go X.Y.Z` directive doesn't trip
           # GOTOOLCHAIN=local.
@@ -127,7 +127,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@v8.3.2
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           # renovate: datasource=python-version depName=python
           python-version: "3.14"
@@ -165,7 +165,7 @@ jobs:
           format: sarif
           output: trivy.sarif
 
-      - uses: github/codeql-action/upload-sarif@v4
+      - uses: github/codeql-action/upload-sarif@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4.37.0
         if: always()
         with:
           sarif_file: trivy.sarif
