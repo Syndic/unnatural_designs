@@ -150,7 +150,7 @@ jobs:
       - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         id: app-token
         with:
-          app-id: ${{ vars.RENOVATE_HELPER_APP_ID }}
+          client-id: ${{ vars.RENOVATE_HELPER_CLIENT_ID }}
           private-key: ${{ secrets.RENOVATE_HELPER_PRIVATE_KEY }}
 
       # ── Conflict path ────────────────────────────────────────────────────────────
@@ -204,7 +204,7 @@ jobs:
         if: steps.ratify.outputs.conflicts == ''
         uses: ./.github/actions/commit-file-via-app
         with:
-          app-id: ${{ vars.RENOVATE_HELPER_APP_ID }}
+          client-id: ${{ vars.RENOVATE_HELPER_CLIENT_ID }}
           private-key: ${{ secrets.RENOVATE_HELPER_PRIVATE_KEY }}
           branch: ${{ github.head_ref }}
           file-paths: |

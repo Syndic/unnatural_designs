@@ -13,7 +13,8 @@ immediately, with no review gate in between.
 
 The public contract is:
 
-- the input surface: `app-id`, `private-key`, `branch`, `file-paths`, `commit-message`;
+- the input surface: `client-id` (or the deprecated `app-id`), `private-key`, `branch`,
+  `file-paths`, `commit-message`;
 - the no-op behavior: files with no working-tree diff are skipped, and if none of the listed files
   changed the action succeeds without committing.
 
