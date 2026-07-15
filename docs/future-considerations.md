@@ -167,3 +167,60 @@ the matching feature (and decide on the socket-mount vs. DinD trade-off for Dock
 rather than carrying the complexity speculatively.
 
 ---
+
+## Devcontainer: Extract Git Plumbing Shared with Syndic/.dotfiles
+
+This repo and [Syndic/.dotfiles](https://github.com/Syndic/.dotfiles) carry near-identical
+devcontainer git plumbing: worktree common-dir bridging (the `initializeCommand` symlink, the
+`.git-plumbing` path file, and the Dockerfile's recreation of the host-absolute path), the host
+snapshots (gitconfig, known_hosts, allowed_signers), ssh-agent magic-socket forwarding with its
+placeholder and chown, host timezone propagation, and the `core.checkstat = minimal` /
+`core.trustctime = false` shared-index portability fix. Three fixes from this repo's
+[PR #177](https://github.com/Syndic/unnatural_designs/pull/177) were hand-ported to .dotfiles
+[PR #99](https://github.com/Syndic/.dotfiles/pull/99) in July 2026.
+
+The duplication cost concentrates entirely in the two lifecycle scripts —
+`.devcontainer/initialize.sh` and `.devcontainer/post-start.sh` (all three ported fixes landed
+there, plus a matching CI smoke assertion). The Dockerfile's `.git-plumbing` COPY/RUN block, the
+`devcontainer.json` mount / `workspaceMount` / `SSH_AUTH_SOCK` wiring, and the
+`.git-plumbing/README.md` anchor are structurally identical across the repos but stable — not
+worth unifying. `post-create.sh` has zero overlap (go/bazel here vs. ansible/uv there) and stays
+repo-specific. Textual drift already exists in the shared scripts: comment styles have diverged,
+and there are two genuine policy forks — .dotfiles fails loud when the workspace isn't a git
+checkout while this repo keeps a graceful else-branch, and the placement of the checkstat config
+write differs accordingly.
+
+The plan: extract a canonical `git-plumbing-lib.sh` into this repo holding the shared functions
+(host side: resolving the git common dir, the index-portability config, timezone discovery, the
+four snapshots, the agent-socket placeholder; container side: `install_ssh_snapshot`, the
+gitconfig install, the `allowedSignersFile` repoint, the socket chown). Each repo's
+`initialize.sh` / `post-start.sh` becomes a thin driver calling those functions in its preferred
+policy — which absorbs the fail-loud-vs-graceful fork instead of forcing one repo to abandon its
+documented choice. Consumers vendor reviewed copies of the lib; a small CI step in each consumer
+diffs the vendored copy against the canonical and fails on drift. The check only compares —
+nothing fetched is ever executed, which matters because `initialize.sh` runs on the developer
+host and has a sudo branch. This mirrors the `commit-file-via-app` precedent already established
+in this repo: a public contract, a README documenting consumers, and a failure mode of a red
+check on the next PR rather than a silent break. The architectural rationale prose — currently
+duplicated and drifting across both repos' CLAUDE.md files — moves next to the lib as its
+canonical home, and both CLAUDE.mds shrink to pointers.
+
+Rejected alternatives:
+
+- **A published devcontainer feature.** The feature spec's lifecycle hooks exclude
+  `initializeCommand`, and features can't read the workspace build context — the host-side half
+  is the load-bearing half of this design, so a feature can't carry it.
+- **A git submodule.** An `initializeCommand` referencing a possibly-uninitialized submodule,
+  plus submodule-inside-worktree interactions, add fragility exactly where both repos are most
+  careful.
+- **Fetch-at-runtime** (curl the canonical during `up`): executes unreviewed remote code on the
+  host; ruled out on safety grounds.
+
+**Trigger to revisit:** deliberately deferred — the repos converged in July 2026 (both now carry
+all the pieces), so the churn that motivated this may be over. Do the extraction when the *next*
+shared plumbing change appears: a third hand-port is the signal that the churn hasn't stopped and
+that the fixed cost (lib + two consumer PRs + drift checks + doc moves — roughly a focused day)
+is clearly repaid. Until then, hand-porting with a session-level cross-repo check is the accepted
+cost.
+
+---
