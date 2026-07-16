@@ -230,7 +230,7 @@ Rejected alternatives:
 all the pieces), so the churn that motivated this may be over. Do the extraction when the *next*
 shared plumbing change appears: a third hand-port is the signal that the churn hasn't stopped and
 that the fixed cost (lib + two consumer PRs + the propagation workflow + drift checks + doc
-moves — on the order of a focused day) is clearly repaid. Until then, hand-porting with a session-level cross-repo check is the accepted
-cost.
+moves — on the order of a focused day) is clearly repaid. Until then, hand-porting with a
+session-level cross-repo check is the accepted cost.
 
 ---
