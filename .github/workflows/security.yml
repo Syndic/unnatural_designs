@@ -84,7 +84,7 @@ jobs:
       # trail current releases far enough to emit Node runtime deprecation warnings in every
       # consuming workflow. If this ever outgrows install-and-run, check whether that action has
       # started keeping its dependencies current and switch back.
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           # go.work pins the toolchain so a workspace-level `go X.Y.Z` directive doesn't trip
           # GOTOOLCHAIN=local.
