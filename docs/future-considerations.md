@@ -196,12 +196,19 @@ four snapshots, the agent-socket placeholder; container side: `install_ssh_snaps
 gitconfig install, the `allowedSignersFile` repoint, the socket chown). Each repo's
 `initialize.sh` / `post-start.sh` becomes a thin driver calling those functions in its preferred
 policy — which absorbs the fail-loud-vs-graceful fork instead of forcing one repo to abandon its
-documented choice. Consumers vendor reviewed copies of the lib; a small CI step in each consumer
-diffs the vendored copy against the canonical and fails on drift. The check only compares —
-nothing fetched is ever executed, which matters because `initialize.sh` runs on the developer
-host and has a sudo branch. This mirrors the `commit-file-via-app` precedent already established
-in this repo: a public contract, a README documenting consumers, and a failure mode of a red
-check on the next PR rather than a silent break. The architectural rationale prose — currently
+documented choice. Consumers vendor copies of the lib — what executes on a developer host is
+always a file in the consumer's own tree — but the copies sync automatically rather than by
+hand: a workflow in this repo, on any push to main that touches the canonical, commits the new
+version to an update PR in each consumer via the `commit-file-via-app` machinery
+(web-flow-signed, and the app-attributed push retriggers required checks) with auto-merge
+enabled. The consumer's own required checks — its devcontainer smoke job — are the quality gate;
+no human action is needed unless those checks go red. A small drift check in each consumer's CI
+stays on as the backstop that surfaces a missed or failed propagation as a red check rather than
+a silent divergence; it only compares, never executes, what it fetches. Neither path runs remote
+code on the host at `up` time, which matters because `initialize.sh` runs on the developer host
+and has a sudo branch. This extends the `commit-file-via-app` precedent already established in
+this repo: a public contract, a README documenting consumers, and a failure mode of a red check
+rather than a silent break. The architectural rationale prose — currently
 duplicated and drifting across both repos' CLAUDE.md files — moves next to the lib as its
 canonical home, and both CLAUDE.mds shrink to pointers.
 
@@ -213,14 +220,17 @@ Rejected alternatives:
 - **A git submodule.** An `initializeCommand` referencing a possibly-uninitialized submodule,
   plus submodule-inside-worktree interactions, add fragility exactly where both repos are most
   careful.
-- **Fetch-at-runtime** (curl the canonical during `up`): executes unreviewed remote code on the
-  host; ruled out on safety grounds.
+- **Fetch-at-runtime** (curl the canonical during `up`): even trusting the canonical's review
+  process, this executes whatever main holds at that instant — unpinned (behaviour can change
+  mid-branch), broken offline, and with no consumer check between a canonical regression and
+  every developer host's sudo branch. The propagation PRs deliver the same hands-off freshness
+  through a check-gated commit instead.
 
 **Trigger to revisit:** deliberately deferred — the repos converged in July 2026 (both now carry
 all the pieces), so the churn that motivated this may be over. Do the extraction when the *next*
 shared plumbing change appears: a third hand-port is the signal that the churn hasn't stopped and
-that the fixed cost (lib + two consumer PRs + drift checks + doc moves — roughly a focused day)
-is clearly repaid. Until then, hand-porting with a session-level cross-repo check is the accepted
+that the fixed cost (lib + two consumer PRs + the propagation workflow + drift checks + doc
+moves — on the order of a focused day) is clearly repaid. Until then, hand-porting with a session-level cross-repo check is the accepted
 cost.
 
 ---
