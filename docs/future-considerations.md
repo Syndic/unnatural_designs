@@ -208,11 +208,16 @@ the irreducibly-per-host residue to a stub:
   the top of `post-create.sh` — it must exist before that script runs git against the worktree,
   so `post-start.sh` is too late; timezone and the config writes are looser on ordering. The
   image ends up fully host-agnostic.
-- **Publish a shared base image from this repo.** It carries the container-side plumbing — the
-  snapshot installs, the `allowedSignersFile` repoint, the socket chown, and the now-runtime
-  symlink / timezone / config application — as reviewed scripts at a known path. Each repo's
-  Dockerfile `FROM`s it and layers its own toolchain on top; each repo's container hooks call the
-  shared functions, then do repo-specific work. The image is digest-pinned and Renovate-bumped —
+- **Build and publish the base image from this monorepo.** This fits without new build
+  infrastructure: the `Devcontainer` CI job already builds the devcontainer and pushes a cache
+  image to GHCR (`ghcr.io/<repo>-devcontainer`, `packages: write`), so the base image is a second
+  published target beside it — and this repo's own devcontainer becomes its first consumer,
+  `FROM`-ing the base and layering go/bazel on top, so the shared half is dogfooded here on every
+  CI run. The base carries the container-side plumbing — the snapshot installs, the
+  `allowedSignersFile` repoint, the socket chown, and the now-runtime symlink / timezone / config
+  application — as reviewed scripts at a known path; .dotfiles `FROM`s the same image (its GHCR
+  package readable org-wide) and layers ansible/uv. Each repo's container hooks call the shared
+  functions, then do repo-specific work. The image is digest-pinned and Renovate-bumped —
   machinery both repos already run — so a new version arrives as an auto-mergeable bump gated by
   each consumer's own devcontainer smoke check, with no new management surface.
 - **What's left on the host is a thin read-and-drop stub:** a handful of reads dropping results
@@ -248,9 +253,9 @@ Rejected alternatives:
 **Trigger to revisit:** deliberately deferred — the repos converged in July 2026 (both now carry
 all the pieces), so the churn that motivated this may be over. Do the work when the *next* shared
 plumbing change appears: a third hand-port is the signal the churn hasn't stopped and that the
-fixed cost (unbake the image, stand up and publish the base image, repoint both Dockerfiles, move
-the application logic into container hooks, move the docs — on the order of a focused day) is
-repaid. One caveat to weigh then: `devcontainer up` reuses an existing container, so a base-image
+fixed cost (unbake the image, add the base-image target to this repo's `Devcontainer` job,
+repoint both Dockerfiles, move the application logic into container hooks, move the docs — on the
+order of a focused day) is repaid. One caveat to weigh then: `devcontainer up` reuses an existing container, so a base-image
 bump lands on the next rebuild, not the next `up` — the accepted freshness cost of the image
 channel. Until then, hand-porting with a session-level cross-repo check is the accepted cost.
 
