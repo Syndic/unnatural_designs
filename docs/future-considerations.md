@@ -255,8 +255,9 @@ all the pieces), so the churn that motivated this may be over. Do the work when 
 plumbing change appears: a third hand-port is the signal the churn hasn't stopped and that the
 fixed cost (unbake the image, add the base-image target to this repo's `Devcontainer` job,
 repoint both Dockerfiles, move the application logic into container hooks, move the docs — on the
-order of a focused day) is repaid. One caveat to weigh then: `devcontainer up` reuses an existing container, so a base-image
-bump lands on the next rebuild, not the next `up` — the accepted freshness cost of the image
-channel. Until then, hand-porting with a session-level cross-repo check is the accepted cost.
+order of a focused day) is repaid. One caveat to weigh then: `devcontainer up` reuses an existing
+container, so a base-image bump lands on the next rebuild, not the next `up` — the accepted
+freshness cost of the image channel. Until then, hand-porting with a session-level cross-repo
+check is the accepted cost.
 
 ---
