@@ -8,10 +8,12 @@ name: Renovate — re-derive lock files
 # authoritative resolution). Without this workflow every Renovate PR lands with stale
 # derived files, and the committed copies drift further out of date over time.
 #
-# The two refreshes live in one workflow because they are *ordered*: uv must settle
-# `requirements_lock.txt` before `bazel mod deps` regenerates MODULE.bazel.lock (whose pip
-# `facts` derive from it), and one commit avoids the `expectedHeadOid` race two separate
-# workflows would run on a PR touching both manifests. Full rationale in the doc pointer below.
+# The refreshes live in one workflow for two reasons. Python and Bazel are *ordered*: uv must
+# settle `requirements_lock.txt` before `bazel mod deps` regenerates MODULE.bazel.lock (whose
+# pip `facts` derive from it). Go is independent of both, but rides the same job so every
+# derived file lands in ONE commit — a grouped PR can bump Go, Python and Bazel together, and
+# two workflows committing separately would race the `expectedHeadOid` the atomic mutation
+# needs. Full rationale in the doc pointer below.
 #
 # The steps run in this order:
 #   1. Classify which manifests the PR touched, so a Bazel-only PR skips uv setup.
@@ -23,7 +25,11 @@ name: Renovate — re-derive lock files
 #      settled requirements_lock.txt differs from the base (a Python bump that didn't move
 #      the lock leaves the pip facts valid and skips this), and gated on no ratify conflicts
 #      — regenerating against a half-resolved tree is worse than leaving it a round-trip stale.
-#   4. No conflicts: commit all three derived files in a single commit. Otherwise: reset
+#   4. Go: `go mod tidy` per workspace member, then `go work sync`, when a go.mod/go.work
+#      moved. Renovate's `go get` bumps go.mod/go.sum but never tidies (opt-in) or syncs
+#      (vendor-only in Renovate), so the indirect block and go.work.sum are left stale; this
+#      settles them. Gated on no ratify conflicts so the Go files join the single commit.
+#   5. No conflicts: commit every derived file in a single commit. Otherwise: reset
 #      nothing (we won't silently revert Renovate's edit — the commit step is simply
 #      skipped) and file a REQUEST_CHANGES review with the diagnosis. The review blocks
 #      merge until dismissed; dismissal is the deliberate ack that the PR is unactionable
@@ -54,6 +60,12 @@ on:
       - "pyproject.toml"
       - "uv.lock"
       - "requirements_lock.txt"
+      # Go: a Renovate bump always edits go.mod (and go.sum alongside it), so go.mod covers
+      # every case; go.sum / go.work.sum are derived here (tidy/sync) and never the sole
+      # trigger. go.work carries the go directive + workspace member list. `**/` catches the
+      # per-module go.mod at any depth.
+      - "**/go.mod"
+      - "go.work"
 
 permissions:
   contents: read
@@ -72,10 +84,10 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      # Classify what this PR changed into `python` / `bazel` outputs (three-dot diff and
-      # the tested regexes live in the script). `bazel` here means only "MODULE.bazel moved";
-      # whether a Python change ALSO needs a Bazel refresh is decided after ratify, by the
-      # requirements-lock check below — a pyproject-only edit that doesn't move
+      # Classify what this PR changed into `python` / `bazel` / `go` outputs (three-dot diff
+      # and the tested regexes live in the script). `bazel` here means only "MODULE.bazel
+      # moved"; whether a Python change ALSO needs a Bazel refresh is decided after ratify, by
+      # the requirements-lock check below — a pyproject-only edit that doesn't move
       # requirements_lock.txt leaves MODULE.bazel.lock's pip `facts` valid and skips it.
       - name: Classify changed manifests
         id: changed
@@ -85,7 +97,8 @@ jobs:
           python3 meta/scripts/classify_changed_paths.py \
             --base "origin/${BASE_REF}" \
             --rule 'python=(^|/)(pyproject\.toml|uv\.lock|requirements_lock\.txt)$' \
-            --rule 'bazel=(^|/)MODULE\.bazel$'
+            --rule 'bazel=(^|/)MODULE\.bazel$' \
+            --rule 'go=(^|/)(go\.mod|go\.work)$'
 
       # ── Python: ratify Renovate's proposals via uv ────────────────────────────────
       # A skipped step's outputs are empty, so `steps.ratify.outputs.conflicts == ''`
@@ -147,6 +160,43 @@ jobs:
         if: (steps.changed.outputs.bazel == 'true' || steps.lock.outputs.moved == 'true') && steps.ratify.outputs.conflicts == ''
         run: bazel mod deps --lockfile_mode=update
 
+      # ── Go: tidy each module and sync the workspace ───────────────────────────────
+      # Renovate's gomod manager runs `go get`, which bumps go.mod/go.sum but never
+      # `go mod tidy` (opt-in) or `go work sync` (vendor-only in Renovate) — so the indirect
+      # block and go.work.sum are left stale, and Mend-hosted Renovate can't run either anyway
+      # (the same allowedUnsafeExecutions gate as uv/Bazel). We tidy each workspace member,
+      # then sync once; both target lists come from go.work via go_derived_files.py, so a new
+      # module is picked up without touching this workflow. A tidy that fails on a genuinely
+      # inconsistent bump fails the job — the right signal that the PR isn't mergeable as-is.
+      # Gated on no ratify conflicts so Go's derived files ride the single commit below (a
+      # separate commit would race the `expectedHeadOid` the atomic mutation relies on).
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: steps.changed.outputs.go == 'true' && steps.ratify.outputs.conflicts == ''
+        with:
+          go-version-file: go.work
+          # No module cache: this is a metadata-only tidy, not a build, so the cache would save
+          # little and a workspace cache-dependency-path is the only thing it needs configured.
+          cache: false
+
+      - name: Tidy Go modules and sync the workspace
+        id: gotidy
+        if: steps.changed.outputs.go == 'true' && steps.ratify.outputs.conflicts == ''
+        run: |
+          set -euo pipefail
+          while IFS= read -r mod; do
+            echo "::group::go mod tidy (${mod})"
+            (cd "${mod}" && go mod tidy)
+            echo "::endgroup::"
+          done < <(python3 meta/scripts/go_derived_files.py --what modules)
+          go work sync
+          # Hand the commit step the exact derived-file set (each module's go.mod/go.sum plus
+          # go.work.sum); the action diff-checks each and commits only what tidy/sync moved.
+          {
+            echo "files<<EOF"
+            python3 meta/scripts/go_derived_files.py --what files
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
       - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         id: app-token
         with:
@@ -198,7 +248,8 @@ jobs:
       # One commit for every derived file. The composite action diff-checks each path
       # independently and skips the unchanged ones, so a Bazel-only PR commits only
       # MODULE.bazel.lock; if nothing changed at all (e.g. a re-run on an already-honored
-      # PR) the whole step is a clean no-op.
+      # PR) the whole step is a clean no-op. The Go paths come from the gotidy step's output
+      # (empty when the PR touched no go.mod); the action ignores the resulting blank lines.
 
       - name: Commit re-derived lock files
         if: steps.ratify.outputs.conflicts == ''
@@ -211,6 +262,7 @@ jobs:
             uv.lock
             requirements_lock.txt
             MODULE.bazel.lock
+            ${{ steps.gotidy.outputs.files }}
           commit-message: "chore(deps): re-derive lock files"
 
       # ── Dismiss prior bot reviews ───────────────────────────────────────────────

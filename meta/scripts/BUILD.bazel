@@ -82,6 +82,27 @@ py_test(
 )
 
 py_library(
+    name = "go_derived_files_lib",
+    srcs = ["go_derived_files.py"],
+    deps = [":_workspace_lib"],
+)
+
+py_binary(
+    name = "go_derived_files",
+    srcs = ["go_derived_files.py"],
+    main = "go_derived_files.py",
+    deps = [":_workspace_lib"],
+)
+
+py_test(
+    name = "test_go_derived_files",
+    size = "small",
+    srcs = ["test_go_derived_files.py"],
+    main = "test_go_derived_files.py",
+    deps = [":go_derived_files_lib"],
+)
+
+py_library(
     name = "check_secrets_dir_lib",
     srcs = ["check_secrets_dir.py"],
 )
