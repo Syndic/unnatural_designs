@@ -10,12 +10,7 @@ description: >-
 inputs:
   client-id:
     description: GitHub App Client ID whose installation will mint the commit token.
-    required: false
-  app-id:
-    description: >-
-      Deprecated — pass `client-id` instead. Numeric GitHub App ID, still honoured for
-      backward compatibility. `actions/create-github-app-token` warns when it is used.
-    required: false
+    required: true
   private-key:
     description: GitHub App private key (PEM).
     required: true
@@ -35,28 +30,10 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Require a credential
-      if: inputs.client-id == '' && inputs.app-id == ''
-      shell: bash
-      run: |
-        echo "::error::commit-file-via-app: provide client-id (preferred) or the deprecated app-id."
-        exit 1
-
-    # Two gated token steps rather than one: create-github-app-token's app-id input carries a
-    # deprecationMessage the runner emits whenever the key is present — even empty — so the
-    # client-id path must never mention app-id. Exactly one of these runs per invocation.
     - id: app-token
-      if: inputs.client-id != ''
       uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
       with:
         client-id: ${{ inputs.client-id }}
-        private-key: ${{ inputs.private-key }}
-
-    - id: app-token-legacy
-      if: inputs.client-id == ''
-      uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-      with:
-        app-id: ${{ inputs.app-id }}
         private-key: ${{ inputs.private-key }}
 
     - id: diff
@@ -81,7 +58,7 @@ runs:
     - if: steps.diff.outputs.changed-paths != ''
       shell: bash
       env:
-        GH_TOKEN: ${{ steps.app-token.outputs.token || steps.app-token-legacy.outputs.token }}
+        GH_TOKEN: ${{ steps.app-token.outputs.token }}
         REPO: ${{ github.repository }}
         BRANCH: ${{ inputs.branch }}
         CHANGED_PATHS: ${{ steps.diff.outputs.changed-paths }}
