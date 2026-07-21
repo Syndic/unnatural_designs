@@ -1,5 +1,25 @@
 # Project Instructions
 
+## Run all tooling in the devcontainer
+
+Every build, test, linter, formatter, code generator, language tool, and `git commit` runs via
+`devcontainer exec --workspace-folder . <cmd>`. The host is only for editing files, read-side `git`
+(`status`/`log`/`diff`/`rev-parse`/`branch`), and `gh`.
+
+Spin the container up on the first task that could run in it, independent of any cost assessment —
+**treat spin-up as free.** This is a standing user preference, not a trade-off to weigh: the user
+wants the container up. Bring it up once, reuse it for everything after:
+
+```
+devcontainer up --workspace-folder .          # once, at first tool need
+devcontainer exec --workspace-folder . <cmd>  # every tool invocation after
+```
+
+A missing host tool is a signal to use the container, never to provision it on the host: no
+`pip`/`brew`/`go install`, no `uvx`/`npx` to dodge the container (host-version drift, and it won't
+satisfy the `language: system` pre-commit hooks anyway). Commits especially — hooks resolve tools
+from PATH and signing needs the bridged SSH agent; see the ".devcontainer signed commits" section.
+
 ## Documentation and test hygiene
 
 Documentation and tests are part of every task, not a separate follow-up step.
@@ -46,10 +66,10 @@ no-op-when-no-diff behavior.
 
 ## Renovate auto-commit helper (`Renovate helper` app)
 
-`.github/workflows/renovate-derived-files.yml` regenerates the lock files Renovate can't
-(Mend-hosted Renovate can't run `uv lock` or `bazel mod deps` — the `allowedUnsafeExecutions`
-gate) and commits them back to the PR via a dedicated GitHub App, the `Renovate helper`.
-Load-bearing facts:
+`.github/workflows/renovate-derived-files.yml` regenerates the derived files Renovate can't
+(Mend-hosted Renovate can't run `uv lock`, `bazel mod deps`, or `go mod tidy`/`go work sync` —
+the `allowedUnsafeExecutions` gate) and commits them back to the PR via a dedicated GitHub App,
+the `Renovate helper`. Load-bearing facts:
 
 - **Why an app, not `GITHUB_TOKEN`.** The commit goes through the `commit-file-via-app` action
   (see the section above), whose `createCommitOnBranch` mutation is web-flow-signed — satisfying
@@ -64,6 +84,18 @@ Load-bearing facts:
   no-op). The Bazel refresh only rewrites the pip `facts` on a cold Bazel output base, so the
   workflow's `setup-bazel` sets only `bazelisk-cache`/`repository-cache` — adding `disk-cache` would
   make it a silent no-op.
+- **Go tidy/sync rides the same commit.** Renovate's `go get` bumps `go.mod`/`go.sum` but never
+  runs `go mod tidy` (opt-in) or `go work sync` (Renovate does it only when vendoring, which this
+  repo doesn't) — so the indirect block and `go.work.sum` are left stale. The workflow runs
+  `go mod tidy` in each `go.work` member, then `go work sync`, and adds the touched go.mod/go.sum
+  plus `go.work.sum` to the single commit. Unlike uv→Bazel, Go is *independent* of the other two
+  (no ordering constraint); it shares the job purely so a grouped Go+Python+Bazel PR settles in one
+  `expectedHeadOid` mutation instead of racing. The tidy/sync target lists come from
+  `meta/scripts/go_derived_files.py` (`--what modules|files`), which reads `go.work`'s `use`
+  directives — so a module added to the workspace is picked up with no workflow edit. Unlike the
+  uv path, there's no "conflict" review: a bump `go mod tidy` can't settle just fails the job.
+  MODULE.bazel.lock is *not* in this set — gazelle's `go_deps` extension is reproducible and absent
+  from the lockfile, and `use_repo` tracks only direct imports (unchanged by a version bump).
 - **App permissions.** `Contents: read & write` (commit) and `Pull requests: read & write` (to file
   and dismiss the `REQUEST_CHANGES` reviews the ratify step raises on an unresolvable bump). Set in
   the app's GitHub settings; no code.
