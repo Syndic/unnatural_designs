@@ -1,5 +1,25 @@
 # Project Instructions
 
+## Run all tooling in the devcontainer
+
+Every build, test, linter, formatter, code generator, language tool, and `git commit` runs via
+`devcontainer exec --workspace-folder . <cmd>`. The host is only for editing files, read-side `git`
+(`status`/`log`/`diff`/`rev-parse`/`branch`), and `gh`.
+
+Spin the container up on the first task that could run in it, independent of any cost assessment —
+**treat spin-up as free.** This is a standing user preference, not a trade-off to weigh: the user
+wants the container up. Bring it up once, reuse it for everything after:
+
+```
+devcontainer up --workspace-folder .          # once, at first tool need
+devcontainer exec --workspace-folder . <cmd>  # every tool invocation after
+```
+
+A missing host tool is a signal to use the container, never to provision it on the host: no
+`pip`/`brew`/`go install`, no `uvx`/`npx` to dodge the container (host-version drift, and it won't
+satisfy the `language: system` pre-commit hooks anyway). Commits especially — hooks resolve tools
+from PATH and signing needs the bridged SSH agent; see the ".devcontainer signed commits" section.
+
 ## Documentation and test hygiene
 
 Documentation and tests are part of every task, not a separate follow-up step.
