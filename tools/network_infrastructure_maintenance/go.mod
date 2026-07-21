@@ -2,7 +2,7 @@ module github.com/Syndic/unnatural_designs/tools/network_infrastructure_maintena
 
 go 1.26.1
 
-require github.com/vbauerster/mpb/v8 v8.13.0
+require github.com/vbauerster/mpb/v8 v8.12.1
 
 require (
 	github.com/VividCortex/ewma v1.2.0 // indirect
