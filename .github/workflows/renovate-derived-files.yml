@@ -84,6 +84,17 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      # The meta/scripts this job runs via bare `python3` (classify_changed_paths.py, and
+      # go_derived_files.py, which imports _workspace.py) are written for the repo's pinned
+      # Python 3.14 — ruff (target-version = py314) enforces 3.14-only syntax like PEP 758's
+      # parenthesis-less `except`. The runner's stock python3 lags 3.14 and SyntaxErrors on it,
+      # so pin 3.14 the same way ci.yml / security.yml do. (The ratify step runs under `uv run`,
+      # which already uses the 3.14 interpreter; this covers the bare-python3 steps.)
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          # renovate: datasource=python-version depName=python
+          python-version: "3.14"
+
       # Classify what this PR changed into `python` / `bazel` / `go` outputs (three-dot diff
       # and the tested regexes live in the script). `bazel` here means only "MODULE.bazel
       # moved"; whether a Python change ALSO needs a Bazel refresh is decided after ratify, by
