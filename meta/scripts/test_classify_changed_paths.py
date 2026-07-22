@@ -19,11 +19,13 @@ from meta.scripts.classify_changed_paths import (
 
 # Mirrors renovate-derived-files.yml. `python`, `bazel`, and `go` are independent here: the
 # python→bazel refresh is conditional (on requirements_lock.txt actually moving) and lives
-# in the workflow, not in classification. `go` matches the Go manifests only — go.sum /
-# go.work.sum are derived (tidy/sync), so a Renovate Go bump is caught via its go.mod edit.
+# in the workflow, not in classification. `bazel` covers both inputs that invalidate
+# MODULE.bazel.lock — MODULE.bazel (module graph) and .bazelversion (lock format). `go`
+# matches the Go manifests only — go.sum / go.work.sum are derived (tidy/sync), so a Renovate
+# Go bump is caught via its go.mod edit.
 RULES_RENOVATE = {
     "python": r"(^|/)(pyproject\.toml|uv\.lock|requirements_lock\.txt)$",
-    "bazel": r"(^|/)MODULE\.bazel$",
+    "bazel": r"(^|/)(MODULE\.bazel|\.bazelversion)$",
     "go": r"(^|/)(go\.mod|go\.work)$",
 }
 
@@ -79,6 +81,25 @@ class TestClassifyRenovate(unittest.TestCase):
         # `$`-anchored, not whole-line: a nested MODULE.bazel still counts.
         self.assertEqual(
             self._run(["sub/mod/MODULE.bazel"]), {"python": False, "bazel": True, "go": False}
+        )
+
+    def test_bazelversion_triggers_bazel_refresh(self):
+        # A bazel version bump changes the lock's `lockFileVersion`, so it needs the same
+        # `bazel mod deps` refresh as a MODULE.bazel change — same output, one gate.
+        self.assertEqual(
+            self._run([".bazelversion"]), {"python": False, "bazel": True, "go": False}
+        )
+
+    def test_bazelversion_alone_does_not_trigger_python_or_go(self):
+        # A .bazelversion-only PR must skip uv setup and the Go tidy entirely.
+        result = self._run([".bazelversion"])
+        self.assertFalse(result["python"])
+        self.assertFalse(result["go"])
+
+    def test_decoy_bazelversion_suffix(self):
+        # `$`-anchored: a sibling like .bazelversion.bak must not trigger a refresh.
+        self.assertEqual(
+            self._run([".bazelversion.bak"]), {"python": False, "bazel": False, "go": False}
         )
 
     def test_module_bazel_lock_is_not_a_manifest(self):
