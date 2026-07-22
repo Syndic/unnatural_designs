@@ -21,10 +21,13 @@ name: Renovate — re-derive lock files
 #      bumps from the diff, runs `uv lock --upgrade-package <each>`, re-exports
 #      `requirements_lock.txt`, and reports which (if any) proposed bumps uv refused to
 #      advance.
-#   3. Bazel: `bazel mod deps --lockfile_mode=update`, run when MODULE.bazel moved or the
-#      settled requirements_lock.txt differs from the base (a Python bump that didn't move
-#      the lock leaves the pip facts valid and skips this), and gated on no ratify conflicts
-#      — regenerating against a half-resolved tree is worse than leaving it a round-trip stale.
+#   3. Bazel: `bazel mod deps --lockfile_mode=update`, run when MODULE.bazel or .bazelversion
+#      moved, or the settled requirements_lock.txt differs from the base (a Python bump that
+#      didn't move the lock leaves the pip facts valid and skips this), and gated on no ratify
+#      conflicts — regenerating against a half-resolved tree is worse than leaving it a
+#      round-trip stale. A .bazelversion bump matters because the lock's `lockFileVersion`
+#      tracks the bazel release; bazelisk installs the bumped version, so the refresh rewrites
+#      the lock in the new format.
 #   4. Go: `go mod tidy` per workspace member, then `go work sync`, when a go.mod/go.work
 #      moved. Renovate's `go get` bumps go.mod/go.sum but never tidies (opt-in) or syncs
 #      (vendor-only in Renovate), so the indirect block and go.work.sum are left stale; this
@@ -57,6 +60,11 @@ on:
       # Manifests only. `MODULE.bazel.lock` is absent deliberately: it is derived, nothing
       # but this workflow writes it, and a lock-only diff has nothing to regenerate.
       - "MODULE.bazel"
+      # A bazel version bump re-derives the lock too: `lockFileVersion` and the recorded
+      # extension shape track the bazel release, so a bumped `.bazelversion` leaves the
+      # committed lock stale. CI hides that (`--lockfile_mode=update` rewrites in memory),
+      # but the `bazel mod tidy` pre-commit hook rewrites it on disk and blocks the commit.
+      - ".bazelversion"
       - "pyproject.toml"
       - "uv.lock"
       - "requirements_lock.txt"
@@ -96,10 +104,12 @@ jobs:
           python-version: "3.14"
 
       # Classify what this PR changed into `python` / `bazel` / `go` outputs (three-dot diff
-      # and the tested regexes live in the script). `bazel` here means only "MODULE.bazel
-      # moved"; whether a Python change ALSO needs a Bazel refresh is decided after ratify, by
-      # the requirements-lock check below — a pyproject-only edit that doesn't move
-      # requirements_lock.txt leaves MODULE.bazel.lock's pip `facts` valid and skips it.
+      # and the tested regexes live in the script). `bazel` means "an input that invalidates
+      # MODULE.bazel.lock moved" — either MODULE.bazel (module graph) or .bazelversion (lock
+      # format); both need the same refresh, so they share one output. Whether a Python change
+      # ALSO needs a Bazel refresh is decided after ratify, by the requirements-lock check
+      # below — a pyproject-only edit that doesn't move requirements_lock.txt leaves
+      # MODULE.bazel.lock's pip `facts` valid and skips it.
       - name: Classify changed manifests
         id: changed
         env:
@@ -108,7 +118,7 @@ jobs:
           python3 meta/scripts/classify_changed_paths.py \
             --base "origin/${BASE_REF}" \
             --rule 'python=(^|/)(pyproject\.toml|uv\.lock|requirements_lock\.txt)$' \
-            --rule 'bazel=(^|/)MODULE\.bazel$' \
+            --rule 'bazel=(^|/)(MODULE\.bazel|\.bazelversion)$' \
             --rule 'go=(^|/)(go\.mod|go\.work)$'
 
       # ── Python: ratify Renovate's proposals via uv ────────────────────────────────
@@ -159,8 +169,10 @@ jobs:
       # output base. Adding `disk-cache` or an output-base cache would make the refresh a
       # silent no-op: no diff to commit, job still green, MODULE.bazel.lock left stale.
       #
-      # Runs when MODULE.bazel moved OR requirements_lock.txt moved (parenthesized because
-      # GitHub Actions binds && tighter than ||). Gated on no ratify conflicts either way.
+      # Runs when the `bazel` output fired (MODULE.bazel or .bazelversion moved) OR
+      # requirements_lock.txt moved (parenthesized because GitHub Actions binds && tighter
+      # than ||). Gated on no ratify conflicts either way. bazelisk reads the checked-out
+      # .bazelversion, so a version bump regenerates the lock with the bumped bazel.
       - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
         if: (steps.changed.outputs.bazel == 'true' || steps.lock.outputs.moved == 'true') && steps.ratify.outputs.conflicts == ''
         with:

@@ -84,6 +84,14 @@ the `Renovate helper`. Load-bearing facts:
   no-op). The Bazel refresh only rewrites the pip `facts` on a cold Bazel output base, so the
   workflow's `setup-bazel` sets only `bazelisk-cache`/`repository-cache` — adding `disk-cache` would
   make it a silent no-op.
+- **`.bazelversion` invalidates the lock too.** `MODULE.bazel.lock`'s `lockFileVersion` (and the
+  shape of its recorded extensions) tracks the bazel release, so a Renovate bazel bump leaves the
+  committed lock stale. CI hides it — `--lockfile_mode=update` rewrites in memory and stays green —
+  but the `bazel mod tidy` pre-commit hook rewrites it on disk, so the staleness surfaces as a
+  blocked local commit on any `go.mod`/`MODULE.bazel` change. The workflow therefore triggers on
+  `.bazelversion` and folds it into the same `bazel` classification as `MODULE.bazel`: one output,
+  one `bazel mod deps` refresh. bazelisk reads the checked-out `.bazelversion`, so the regenerated
+  lock is in the bumped version's format.
 - **Go tidy/sync rides the same commit.** Renovate's `go get` bumps `go.mod`/`go.sum` but never
   runs `go mod tidy` (opt-in) or `go work sync` (Renovate does it only when vendoring, which this
   repo doesn't) — so the indirect block and `go.work.sum` are left stale. The workflow runs
