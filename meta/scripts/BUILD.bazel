@@ -122,6 +122,30 @@ py_test(
 )
 
 py_library(
+    name = "check_release_please_lib",
+    srcs = ["check_release_please.py"],
+    deps = [":_workspace_lib"],
+)
+
+py_binary(
+    name = "check_release_please",
+    srcs = ["check_release_please.py"],
+    main = "check_release_please.py",
+    deps = [":_workspace_lib"],
+)
+
+py_test(
+    name = "test_check_release_please",
+    size = "small",
+    srcs = ["test_check_release_please.py"],
+    main = "test_check_release_please.py",
+    deps = [
+        ":_workspace_lib",
+        ":check_release_please_lib",
+    ],
+)
+
+py_library(
     name = "check_no_cgo_lib",
     srcs = ["check_no_cgo.py"],
     deps = [":_workspace_lib"],
