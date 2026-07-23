@@ -36,6 +36,50 @@ Before declaring any task complete:
 3. **Future considerations** — if a doc item in `docs/future-considerations.md` described something
    that has now been done, update or remove that item.
 
+## Conventional Commits and release-please
+
+Commit messages follow [Conventional Commits](https://www.conventionalcommits.org): a `type(scope):`
+subject (`feat`, `fix`, `docs`, `chore`, `ci`, `refactor`, `test`, …), with `!` or a
+`BREAKING CHANGE:` footer for breaking changes. This is not just style —
+[release-please](https://github.com/googleapis/release-please) parses the commit history to compute
+each component's next version and changelog, so a mislabelled commit silently lands in the wrong
+section or drives the wrong bump. `feat` → minor, `fix` → patch, breaking → major (pre-1.0:
+`feat`/breaking → minor, `fix` → patch).
+
+**Per-component, not whole-repo.** release-please runs in *manifest mode* off two checked-in files:
+`release-please-config.json` (what to release and how to tag it) and `.release-please-manifest.json`
+(each component's last released version). Each component versions and tags independently, so a
+release that touches one project does not imply a new version of the others. This is the property
+that keeps Renovate and the Go module proxy honest: a component consumed from git tags advertises
+only *its* versions, tagged `<module-path>/vX.Y.Z`, never a bare monorepo `vX.Y.Z` that every
+downstream would misread as their own bump.
+
+Load-bearing facts:
+
+- **Go tags must be `<module-path>/vX.Y.Z`.** The Go proxy only recognizes a subdirectory module's
+  versions from that exact shape. release-please produces it via, per Go package, `component` = the
+  full module path (not the basename), `tag-separator` = `/`, and `include-component-in-tag` /
+  `include-v-in-tag` = true (the global defaults in the config). `component` defaults to the
+  basename, so it **must** be set explicitly per package or the tag loses its directory prefix.
+- **Changelogs are generated — edit commits, not `CHANGELOG.md`.** release-please rewrites each
+  package's `CHANGELOG.md` from commit history on every release PR. The seed entry exists only so
+  the file is present before the first release. Fix a wrong changelog line by amending the commit
+  message, never the file.
+- **Versions seed at `0.0.0`.** No release has been cut; the first release PR computes the real
+  first version from history. The manifest holds the bare semver (no `v`) — release-please prepends
+  the `v` at tag time.
+- **`meta/scripts/check_release_please.py` guards all of the above** offline (config/manifest
+  validity, package↔manifest bijection, semver, changelog presence, the Go tag-shape settings, and
+  completeness — every discovered Go module must be a configured package). The `TEND(project-expand)`
+  / `TEND(lang-expand)` markers in that file name the sites that grow: a new releasable unit needs a
+  `packages` entry + manifest entry + seeded `CHANGELOG.md`, and a new releasable-artifact language
+  needs `releasable_units()` and the tag-shape expectations extended.
+- **The release automation workflow is not wired yet.** TODO: add a `release-please.yml` workflow
+  (SHA-pin `googleapis/release-please-action`) once the token model is decided — default
+  `GITHUB_TOKEN` vs a dedicated app, the same web-flow-signing / retriggered-checks trade-off spelled
+  out in the "Renovate auto-commit helper" section below. Until then the config + validator are in
+  place but nothing opens release PRs.
+
 ## Comment style — keep it tight, trim what's oversized
 
 Default to short, single-sentence inline comments that name the non-obvious WHY at the line they
