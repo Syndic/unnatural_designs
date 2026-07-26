@@ -100,7 +100,7 @@ bazel run //:gazelle
 ### Remote Cache and Execution
 
 Builds use [Buildbuddy](https://buildbuddy.io) for both remote caching and remote execution (on
-Linux x86_64). CI is configured automatically.
+Linux x86_64 and arm64). CI is configured automatically.
 
 For local use, add your API key to `.bazelrc.user` (gitignored):
 
@@ -118,8 +118,9 @@ The remote cache is enabled by default on every Bazel invocation. Additional con
 | `--config=local`     | Disable all remote features (offline, or debugging cache issues).                   |
 
 Remote-executor configs are suffixed with the backend they target (`_bb` = BuildBuddy). Additional
-backends in the future would follow the same naming pattern. `darwin_arm64` has no remote executor
-and always falls back to local execution.
+backends in the future would follow the same naming pattern. `darwin_arm64` has no remote executor;
+its platform config marks every action `no-remote-exec`, so actions always execute locally while
+still reading and writing the remote cache.
 
 Target platform shortcuts are also available: `--config=linux_x86_64`, `--config=linux_arm64`,
 `--config=darwin_arm64`. See [`//platforms`](platforms/BUILD.bazel) for the platform definitions.
