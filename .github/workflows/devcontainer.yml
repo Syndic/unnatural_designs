@@ -51,9 +51,6 @@ jobs:
 
       # Auth for the GHCR cache. Skipped on fork PRs — their read-only token can't reach the
       # package, so they fall back to a cold build. Needs the packages: write permission above.
-      # The action over a raw `docker login`: it keeps docker's "credentials are stored
-      # unencrypted" warning out of the log (stderr still surfaces when login fails) and its post
-      # step runs `docker logout`, so the token isn't left in ~/.docker/config.json job-wide.
       - if: steps.changes.outputs.changed == 'true' && github.event.pull_request.head.repo.fork != true
         uses: docker/login-action@abd2ef45e78c5afb21d64d4ca52ee8550d9572c7 # v4.5.1
         with:
