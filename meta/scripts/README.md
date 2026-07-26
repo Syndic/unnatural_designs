@@ -16,7 +16,7 @@ module enumeration). The leading underscore signals it's not a public API; `test
 covers it directly.
 
 `smoke_py/` is a transient `py_test` that proves the end-to-end Python plumbing chain
-(`pyproject.toml` → `uv.lock` → `requirements_lock.txt` → `pip.parse` → `@pypi//...`) by importing
+(`pyproject.toml` → `uv.lock` → `requirements_lock.txt` → `pip.parse` → `@unnatural_designs_pypi//...`) by importing
 `requests` and asserting it loads. Slated for deletion once gazelle_python is wired (see
 `docs/future-considerations.md` "Python BUILD Generation").
 

@@ -75,7 +75,7 @@ python.toolchain(
 )
 
 # Materialise the third-party Python deps locked by uv. The chain is:
-#   pyproject.toml  →  uv.lock  →  requirements_lock.txt  →  pip.parse  →  @pypi//...
+#   pyproject.toml  →  uv.lock  →  requirements_lock.txt  →  pip.parse  →  @unnatural_designs_pypi//...
 # uv.lock is the source of truth; requirements_lock.txt is its `uv export`
 # projection (rules_python does not read uv.lock natively). A pre-commit hook
 # keeps the two in sync; see `uv-lock-fresh` in .pre-commit-config.yaml.
@@ -85,11 +85,13 @@ python.toolchain(
 # pinned version — strictly weaker provenance for no gain.
 pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
 pip.parse(
-    hub_name = "pypi",
+    # Non-reserved hub name: rules_python reserves the bare "pypi" hub and warns it
+    # will auto-rename to "<module>_pypi" in a future release, so we adopt that name now.
+    hub_name = "unnatural_designs_pypi",
     python_version = "3.14",
     requirements_lock = "//:requirements_lock.txt",
 )
-use_repo(pip, "pypi")
+use_repo(pip, "unnatural_designs_pypi")
 
 # TEND(tooling): rules_python_gazelle_plugin (a.k.a. gazelle_python) is not wired
 # here. The plugin's gazelle binary pulls in smacker/go-tree-sitter via CGO,

@@ -1,8 +1,8 @@
-load("@pypi//:requirements.bzl", "requirement")
 load("@rules_python//python:py_test.bzl", "py_test")
+load("@unnatural_designs_pypi//:requirements.bzl", "requirement")
 
 # Proves the end-to-end Python plumbing chain:
-#   pyproject.toml  →  uv.lock  →  requirements_lock.txt  →  pip.parse  →  @pypi//...
+#   pyproject.toml  →  uv.lock  →  requirements_lock.txt  →  pip.parse  →  @unnatural_designs_pypi//...
 #
 # It imports `requests` (declared in the root pyproject.toml's smoke dep) and
 # asserts the module loads. Also gives check_modules.py's Python invariants real
@@ -15,6 +15,7 @@ load("@rules_python//python:py_test.bzl", "py_test")
 
 py_test(
     name = "smoke_test",
+    size = "small",
     srcs = ["smoke_test.py"],
     deps = [requirement("requests")],
 )
