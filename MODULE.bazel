@@ -77,8 +77,9 @@ python.toolchain(
 # Materialise the third-party Python deps locked by uv. The chain is:
 #   pyproject.toml  →  uv.lock  →  requirements_lock.txt  →  pip.parse  →  @unnatural_designs_pypi//...
 # uv.lock is the source of truth; requirements_lock.txt is its `uv export`
-# projection (rules_python does not read uv.lock natively). A pre-commit hook
-# keeps the two in sync; see `uv-lock-fresh` in .pre-commit-config.yaml.
+# projection (pip.parse still requires a requirements.txt-format input — see
+# `docs/future-considerations.md` "Drop requirements_lock.txt"). A pre-commit
+# hook keeps the two in sync; see `uv-lock-fresh` in .pre-commit-config.yaml.
 # The export deliberately keeps `--hash` entries: pip.parse uses them to verify
 # the exact artifact uv resolved against. Without hashes it round-trips to
 # PyPI's Simple API at fetch time and accepts any wheel ever uploaded under the
