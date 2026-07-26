@@ -52,7 +52,11 @@ jobs:
       # Auth for the GHCR cache. Skipped on fork PRs — their read-only token can't reach the
       # package, so they fall back to a cold build. Needs the packages: write permission above.
       - if: steps.changes.outputs.changed == 'true' && github.event.pull_request.head.repo.fork != true
-        run: echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
+        uses: docker/login-action@abd2ef45e78c5afb21d64d4ca52ee8550d9572c7 # v4.5.1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       # devcontainers/ci builds with the full feature set (so feature bumps are exercised,
       # not just the Dockerfile) and runs the smoke command inside the resulting container.
