@@ -125,6 +125,70 @@ check in
 
 ---
 
+## Accept `rules_python`'s `coverage_dep` platform warnings
+
+Every cold-cache Bazel invocation prints seven copies of:
+
+```
+rules_python:coverage_dep WARNING: rules_python's bundled coverage tool has no wheel for
+python_version=3.14.4, platform=<p>. `bazel coverage` will produce empty lcov for py_test
+targets in this configuration.
+```
+
+for `<p>` in `x86_64-unknown-linux-musl`, `s390x-unknown-linux-gnu`, `riscv64-unknown-linux-gnu`,
+`ppc64le-unknown-linux-gnu`, and the `-freethreaded` variants of the latter three. It is the
+repo's highest-volume CI warning. **It is not a coverage-correctness problem, and the fix is to
+leave it alone.**
+
+### Why it is harmless
+
+`configure_coverage_tool = True` makes `rules_python` look up a bundled `coverage.py` wheel for
+every platform in its `PLATFORMS` set, and warn once per platform that has none. The cp314 wheel
+set (`python/private/coverage_deps.bzl`) covers `aarch64-apple-darwin`,
+`aarch64-unknown-linux-gnu`, `x86_64-apple-darwin`, and `x86_64-unknown-linux-gnu`, each with a
+`-freethreaded` variant. That is a superset of the three platforms `//platforms` defines, and it
+includes `x86_64-unknown-linux-gnu` — the only platform coverage actually runs on, since the CI
+`Coverage` job is deliberately single-platform (`bazel coverage --config=ci --config=linux_x86_64`).
+The seven warned platforms are ones this repo never builds for.
+
+The warning also only fires when the `python` module extension re-evaluates. The extension declares
+`extension_metadata(reproducible = True)`, so Bazel does not record it in `MODULE.bazel.lock`, and
+it re-runs on every cold output base — i.e. once per CI job, never on a warm local rebuild.
+
+### Why there is no clean fix in `rules_python` 2.2.0
+
+There is no knob that restricts the platform set. `python.toolchain` takes only
+`configure_coverage_tool`, `ignore_root_user_error`, `is_default`, and `python_version`; the
+extension seeds `dict(PLATFORMS)` and every override path is additive — `single_version_platform_override`
+adds or redefines platforms, the PBS runtime manifest skips platforms already present, and
+`python.override` filters *versions*, not platforms. The three workarounds that do exist are each
+worse than the noise:
+
+- **`single_version_override(sha256 = ..., urls = ...)`** restricts the set as a side effect (the
+  registration loop skips platforms with no sha256), but requires hand-maintaining per-platform
+  CPython hashes and a URL template for one exact `X.Y.Z`. Renovate does not track it, and it goes
+  silently inert when `minor_mapping` moves off that patch version.
+- **`configure_coverage_tool = False` plus a per-platform `coverage_tool` override** is what the
+  warning itself suggests, but it is keyed to the same exact `X.Y.Z`, so the same drift silently
+  *disables* Python coverage instead of merely restoring a warning — trading a visible log line for
+  an invisible failure.
+- **`--repo_env=RULES_PYTHON_REPO_DEBUG_VERBOSITY=FAIL`** mutes `rules_python`'s entire WARN
+  channel, including `parse_requirements`' "requirement file has been generated without hashes"
+  — the alarm guarding the `--hash` provenance property `MODULE.bazel` documents deliberately.
+
+Upstream considers the volume a defect: the maintainer filed
+[bazel-contrib/rules_python#3950](https://github.com/bazel-contrib/rules_python/issues/3950)
+("spewing too many warnings") against the change that introduced it,
+[#3766](https://github.com/bazel-contrib/rules_python/pull/3766), released in 2.1.0. No fix is in
+flight as of July 2026.
+
+**Trigger to revisit:** the `rules_python` release that closes #3950 — Renovate will surface it.
+That release is the prompt to delete this entry and the `TEND(tooling)` pointer at the
+`python.toolchain` call in `MODULE.bazel`. Revisit sooner only if the repo starts building for one
+of the warned platforms, at which point the warning becomes actionable rather than noise.
+
+---
+
 ## Retire the Renovate auto-commit helper
 
 `.github/workflows/renovate-derived-files.yml` commits regenerated lock files back to Renovate PRs
