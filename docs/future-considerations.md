@@ -101,27 +101,48 @@ pattern to include `\.py$`.
 
 ## Drop `requirements_lock.txt` once `rules_python` reads `uv.lock` natively
 
-`rules_python`'s `pip.parse` extension only accepts requirements.txt-format inputs at the pinned
-commit (and on `main`). uv.lock is uv's native TOML format, so the chain
+`rules_python`'s `pip.parse` requires a requirements.txt-format input, so the chain
 `pyproject.toml → uv.lock → requirements_lock.txt → pip.parse` carries a derived file
 (requirements_lock.txt) that must be kept in sync with uv.lock by the `uv-lock-fresh` pre-commit
-hook and the `Renovate — re-export requirements_lock.txt` workflow.
+hook and the `renovate-derived-files.yml` workflow.
 
-The drift surface goes away once `rules_python` can point `pip.parse` at `uv.lock` directly.
-Upstream tracking: [bazel-contrib/rules_python#3557](https://github.com/bazel-contrib/rules_python/issues/3557)
-and the in-flight PR [bazel-contrib/rules_python#3785](https://github.com/bazel-contrib/rules_python/pull/3785).
+`rules_python` 2.2.0 added a `pip.parse(uv_lock = ...)` attribute
+([bazel-contrib/rules_python#3785](https://github.com/bazel-contrib/rules_python/pull/3785),
+closing [#3557](https://github.com/bazel-contrib/rules_python/issues/3557)), but it does **not**
+retire the derived file. Trialled against 2.2.0 on 2026-07-26:
+
+- **A requirements input is still mandatory.** `hub_builder.bzl`'s `_create_whl_repos` calls
+  `requirements_files_by_platform()` unconditionally, so `uv_lock` on its own fails analysis with
+  "A 'requirements_lock' attribute must be specified". With both attributes set the build is green
+  (14/14 targets) and resolution genuinely comes from uv.lock — the materialised wheel repos are
+  named with uv.lock's own sha256 prefixes, and the root virtual package (no wheels/sdist)
+  correctly produces no hub entry.
+- **The advertised consistency check is not implemented.** The upstream docstring claims uv.lock is
+  cross-checked against the requirements files when both are given; in practice the requirements
+  file is used only to enumerate platform names and its package contents are never compared. Drift
+  between the two would be invisible to Bazel.
+- Adopting the both-attributes form today would therefore be a net regression: the derived file
+  stays on disk but Bazel stops depending on its contents, leaving the pre-commit hook and
+  `meta/scripts/check_modules.py` as the only drift detection.
+- Worth carrying forward: under `uv_lock` the pip `facts` entries in `MODULE.bazel.lock` disappear
+  (~106 lines) because URLs and hashes come straight from uv.lock with no PyPI Simple API
+  round-trip. That removes the stated cause of the uv-before-Bazel ordering constraint in
+  [`.claude/CLAUDE.md`](../.claude/CLAUDE.md) "Renovate auto-commit helper" — re-check that
+  constraint when the drop becomes possible.
+
 PEP 751 (`pylock.toml`) is the longer-term ecosystem-wide alternative — parent issue
 [bazel-contrib/rules_python#2787](https://github.com/bazel-contrib/rules_python/issues/2787), which
 blocks on marker-evaluation work in #2786.
 
-**Trigger to revisit:** the `rules_python` release containing #3785 (or, separately, the PEP 751
-work landing). That release is the prompt to (a) switch `pip.parse(..., requirements_lock = ...)`
-to whatever the new uv-native attribute is, (b) delete `requirements_lock.txt`, (c) drop the
-`uv-lock-fresh` hook's `requirements_lock.txt` re-export, (d) strip the Python half of the
-`renovate-derived-files.yml` workflow (the helper app stays installed as long as the Bazel half
-still commits — see "Retire the Renovate auto-commit helper" below), and (e) remove the freshness
-check in
-`meta/scripts/check_modules.py`.
+**Trigger to revisit:** `requirements_lock` becoming *optional* when `uv_lock` is set — not merely
+a release carrying uv.lock support, which 2.2.0 already is. The observable signal is
+`_create_whl_repos` skipping `requirements_files_by_platform()` when `uv_lock` is present; watch
+that call site on a `rules_python` bump. (Or, separately, the PEP 751 work landing.) That is the
+prompt to (a) switch `pip.parse(..., requirements_lock = ...)` to the uv-native attribute, (b)
+delete `requirements_lock.txt`, (c) drop the `uv-lock-fresh` hook's `requirements_lock.txt`
+re-export, (d) strip the Python half of the `renovate-derived-files.yml` workflow (the helper app
+stays installed as long as the Bazel half still commits — see "Retire the Renovate auto-commit
+helper" below), and (e) remove the freshness check in `meta/scripts/check_modules.py`.
 
 ---
 
