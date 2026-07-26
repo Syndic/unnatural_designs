@@ -15,14 +15,6 @@ rather than storing them in a file on disk.
 
 ---
 
-## Renovate Trigger Frequency
-
-Renovate appears to trigger on every branch push rather than only on changes to main. This is more
-frequent than expected and worth investigating — it may be a configuration issue or a default
-behaviour that can be tightened.
-
----
-
 ## Introducing cgo
 
 The build infrastructure assumes **pure Go** (no cgo). The rationale is build simplicity and
