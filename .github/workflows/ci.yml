@@ -123,6 +123,21 @@ jobs:
   # convert this to a matrix-per-project job (mirroring golangci-lint) and
   # add a matching matrix-completeness callsite to check_modules.py keyed off
   # a Python matrix key (matrix.module: is currently Go-only).
+  # shellcheck: mirrors the pre-commit hook of the same name. The runner image ships
+  # shellcheck, so there's nothing to install. Scoped to *.sh, which today is the
+  # devcontainer host plumbing — privileged writes against /etc and host-absolute paths,
+  # where `set -e` foot-guns are worth catching mechanically rather than in review.
+  shellcheck:
+    name: shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: |
+          set -euo pipefail
+          mapfile -t files < <(git ls-files '*.sh')
+          printf 'checking %d file(s)\n' "${#files[@]}"
+          shellcheck "${files[@]}"
+
   ruff:
     name: ruff
     runs-on: ubuntu-latest

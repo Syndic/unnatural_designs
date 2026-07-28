@@ -67,6 +67,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
         ca-certificates \
         curl \
         ripgrep \
+        shellcheck \
         unzip \
         zip \
     && rm -rf /var/lib/apt/lists/*

@@ -9,6 +9,30 @@ set -euo pipefail
 # Everything it writes is gitignored and regenerated every `up`, so the values can
 # never go stale and concurrent worktrees don't collide. Full rationale lives in
 # ".devcontainer worktree + timezone plumbing" in .claude/CLAUDE.md.
+#
+# The `initialize_*` functions are pure, split out so test_plumbing.py can source this
+# file and exercise them without touching host state.
+
+# /etc/localtime's symlink target -> IANA zone name, or empty if it isn't a zoneinfo link.
+initialize_zone_from_link() {
+  case "$1" in
+    *zoneinfo/*) printf '%s' "${1##*zoneinfo/}" ;;
+    *) printf '' ;;
+  esac
+}
+
+# Reject absolute paths and traversal: plumbing.sh builds /usr/share/zoneinfo/$tz from this
+# and feeds it to a privileged `ln`, so a hostile or broken /etc/localtime target must not
+# be able to point that elsewhere. Empty is a safe answer — the apply step then no-ops.
+initialize_sanitize_tz() {
+  case "$1" in
+    /* | *..*) printf '' ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
+# Sourcing (the tests) stops here; only direct execution runs the imperative body below.
+[ "${BASH_SOURCE[0]}" = "${0}" ] || return 0
 
 here="$(cd "$(dirname "$0")" && pwd)"        # the .devcontainer dir (host abs)
 workspace="$(cd "$here/.." && pwd)"          # repo/worktree root (host abs)
@@ -52,21 +76,12 @@ fi
 # container's default zone.
 tz=""
 if target="$(readlink /etc/localtime 2>/dev/null)"; then
-  case "$target" in
-    *zoneinfo/*) tz="${target##*zoneinfo/}" ;;
-  esac
+  tz="$(initialize_zone_from_link "$target")"
 fi
 if [ -z "$tz" ] && [ -r /etc/timezone ]; then
   tz="$(tr -d '[:space:]' </etc/timezone)"
 fi
-# Reject path traversal or absolute paths defensively — plumbing.sh uses the
-# value to build /usr/share/zoneinfo/$tz and feeds it to a privileged `ln`, so a
-# hostile or broken /etc/localtime target shouldn't be able to point that
-# elsewhere. plumbing.sh additionally checks the resolved zoneinfo file exists.
-case "$tz" in
-  /* | *..*) tz="" ;;
-esac
-printf '%s\n' "$tz" >"$tzfile"
+printf '%s\n' "$(initialize_sanitize_tz "$tz")" >"$tzfile"
 
 # Snapshot host ~/.gitconfig for post-start.sh to install when the Dev
 # Containers extension hasn't already done so. Empty file if absent.

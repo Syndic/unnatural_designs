@@ -1,0 +1,14 @@
+load("@rules_python//python:defs.bzl", "py_test")
+
+# The plumbing itself is shell (the Phase 2 base image ships no Python), but its decision
+# logic is unit-tested from Python so it rides the authoritative `bazel test //...` gate.
+py_test(
+    name = "test_plumbing",
+    size = "small",
+    srcs = ["test_plumbing.py"],
+    data = [
+        "initialize.sh",
+        "plumbing.sh",
+    ],
+    main = "test_plumbing.py",
+)

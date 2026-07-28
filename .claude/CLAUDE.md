@@ -183,6 +183,15 @@ Code server, notably) keeps UTC timestamps until restarted; and the `/etc` write
 container's writable layer, so any future prebuild mechanism would re-bake host facts and undo
 this. `onCreateCommand` is the wrong home for the same reason — it runs during prebuilds.
 
+**The plumbing stays shell, and is tested from Python.** It can't be Python: the base image it
+moves into (`mcr.microsoft.com/devcontainers/base:debian`) ships no interpreter, and adding one
+costs the RUN-free property that makes multi-arch builds free. So the decision logic is factored
+into side-effect-free `plumbing_*` / `initialize_*` functions, both scripts guard their imperative
+body on `BASH_SOURCE == $0`, and `.devcontainer/test_plumbing.py` sources them to exercise those
+functions under `bazel test //...`. `shellcheck` covers the rest, wired as both a pre-commit hook
+and a CI job. When adding logic here, put the decision in a pure function and leave only the effect
+at the call site — that is what keeps it testable.
+
 Two ordering facts the code depends on. `plumbing.sh` must run at the *top* of `post-create.sh`,
 because everything below it runs git against the worktree. And it must re-run at `postStart`:
 `devcontainer up` re-runs `initializeCommand` and can rewrite the path file even for an existing
