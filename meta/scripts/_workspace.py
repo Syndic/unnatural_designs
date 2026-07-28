@@ -165,7 +165,9 @@ def workflow_matrix_lists(
     matrix_indent = -1
     entries_indent = -1
     key_line = -1
-    current: dict[Path, int] | None = None
+    # Only meaningful while state == "in_entries"; kept non-optional (reset to {} on exit rather
+    # than None) so the accumulating subscript below needs no narrowing the checker can't do.
+    current: dict[Path, int] = {}
 
     # Job name tracking: record the YAML key at indent 2 inside jobs:.
     in_jobs = False
@@ -191,9 +193,8 @@ def workflow_matrix_lists(
         # accumulated entries and decide which state to return to based on whether we're still
         # inside the matrix block.
         if state == "in_entries" and indent <= entries_indent:
-            if current is not None:
-                result.append((current_job, key_line, current))
-            current = None
+            result.append((current_job, key_line, current))
+            current = {}
             entries_indent = -1
             key_line = -1
             state = "in_matrix" if indent > matrix_indent else "scanning"
@@ -222,7 +223,7 @@ def workflow_matrix_lists(
             current[Path(stripped[2:].strip())] = lineno
 
     # End of file while still inside an entry list.
-    if state == "in_entries" and current is not None:
+    if state == "in_entries":
         result.append((current_job, key_line, current))
 
     return result
