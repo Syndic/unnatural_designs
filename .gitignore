@@ -57,13 +57,16 @@ target/
 
 # ── Devcontainer host-plumbing (see .devcontainer/.git-plumbing/README.md) ────────────────────────
 # Runtime artifacts written by .devcontainer/initialize.sh on every `devcontainer
-# up`. The .git-plumbing/ directory itself IS tracked (anchored by its README)
-# so the Dockerfile's COPY of the directory always has a source; only the
+# up`. The .git-plumbing/ directory itself IS tracked (via its README); only the
 # runtime-written files inside are ignored.
 /.devcontainer/.host-git-common
 /.devcontainer/.git-plumbing/host-git-common-path
 /.devcontainer/.git-plumbing/host-timezone
 /.devcontainer/.git-plumbing/host-gitconfig
+# TEND(migration): drop these two once every checkout has run an `up` on or after the
+# bind-mount switch. No longer written (known_hosts and allowed_signers are bind-mounted);
+# kept so a stale checkout can't stage its leftover copy of the user's known_hosts.
+# initialize.sh deletes them on the next `up`.
 /.devcontainer/.git-plumbing/host-known-hosts
 /.devcontainer/.git-plumbing/host-allowed-signers
 

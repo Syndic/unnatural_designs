@@ -1,56 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# devcontainer.json `initializeCommand` — runs ON THE HOST, before the image is
-# built and the container created, on every `devcontainer up`. Its job: make the
-# repo's git metadata reachable inside the container at THE SAME ABSOLUTE PATH it
-# has on the host, for ANY checkout layout (full clone, the main worktree, or a
-# linked worktree living anywhere on disk).
+# devcontainer.json `initializeCommand` — runs ON THE HOST on every `devcontainer
+# up`, before the container exists. It only *reads* host state (plus the two ssh
+# trust files and the agent-socket placeholder it has to guarantee) and drops the
+# results in .git-plumbing/; plumbing.sh applies them container-side.
 #
-# Why this exists. When the `devcontainer` CLI opens a git *worktree*, the
-# worktree's `.git` is a FILE reading `gitdir: <main-repo>/.git/worktrees/<name>`
-# — a host-absolute path outside the workspace. That path isn't mounted, so every
-# in-container git command fails. (VS Code's Dev Containers extension special-
-# cases this; the CLI does not.)
-#
-# The constraint that shapes the mechanism: devcontainer.json's `mounts`,
-# `runArgs`, and `build.args` are resolved at config-parse time and can only
-# interpolate `${localEnv:VAR}` / `${localWorkspaceFolder}` — NOT a value an
-# initializeCommand computes (a child process can't set the CLI's env). So the
-# freshly-discovered absolute common-dir path can't be named as a mount target
-# directly. We bridge it WITHOUT any GIT_* override and WITHOUT a system-wide env
-# var by splitting the work between a static bind mount and the image build:
-#
-#   1. Drop a symlink at a fixed, workspace-relative path
-#      (.devcontainer/.host-git-common) pointing at the real common dir. Docker
-#      follows the symlink host-side when it binds it, so devcontainer.json can
-#      name a STATIC mount source ("${localWorkspaceFolder}/.devcontainer/
-#      .host-git-common") that resolves to wherever the main repo actually is,
-#      and bind it to a static container path (/host-git-common).
-#   2. Persist the absolute common-dir path to
-#      .git-plumbing/host-git-common-path. It lands in the build context
-#      (context: "..") so the Dockerfile can read it and recreate that exact
-#      host-absolute path inside the image as a symlink to /host-git-common.
-#      With that in place the worktree's `.git` file resolves natively — git
-#      reads its real contents and follows the host-absolute pointer, no
-#      GIT_DIR/GIT_COMMON_DIR/GIT_WORK_TREE needed.
-#
-#      The path file lives inside a tracked .git-plumbing/ dir (anchored by a
-#      committed README.md) rather than as a bare gitignored sibling. Reason:
-#      buildx errors on a COPY whose source glob matches zero files (the
-#      classic .pat[h] optional-COPY trick works on the legacy builder but
-#      not buildx), so the Dockerfile COPYs the *directory* — which always
-#      exists — and treats the file inside as optional via a shell
-#      `[ -s ... ]` test. CI's `devcontainer build` doesn't run
-#      initializeCommand, so the path file is genuinely absent there; the
-#      tracked README makes the COPY a guaranteed no-op in that case.
-#
-# Both runtime artifacts (symlink + path file) are gitignored and regenerated
-# on every `up`, so nothing the host tracks is touched and the values can
-# never go stale. The scheme works for several worktrees concurrently: each
-# carries its own symlink/path file and bakes its own host-absolute symlink
-# into its own image, binding its own /host-git-common — no cross-container
-# collision.
+# Everything it writes is gitignored and regenerated every `up`, so the values can
+# never go stale and concurrent worktrees don't collide. Full rationale lives in
+# ".devcontainer worktree + timezone plumbing" in .claude/CLAUDE.md.
 
 here="$(cd "$(dirname "$0")" && pwd)"        # the .devcontainer dir (host abs)
 workspace="$(cd "$here/.." && pwd)"          # repo/worktree root (host abs)
@@ -58,8 +16,6 @@ link="$here/.host-git-common"
 pathfile="$here/.git-plumbing/host-git-common-path"
 tzfile="$here/.git-plumbing/host-timezone"
 gitconfigfile="$here/.git-plumbing/host-gitconfig"
-knownhostsfile="$here/.git-plumbing/host-known-hosts"
-signersfile="$here/.git-plumbing/host-allowed-signers"
 
 # The .git-plumbing dir is tracked (via its README), so it normally exists
 # already; mkdir -p covers stray cases like a manual deletion without
@@ -73,33 +29,27 @@ if common="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
   # an old one) so re-runs after the main repo moves point at the new location.
   ln -sfn "$common" "$link"
   printf '%s\n' "$common" >"$pathfile"
-  # Host and container share this index but see different stat metadata for the
-  # same files; restrict git's stat checks to fields the bind mount preserves —
-  # see ".devcontainer shared git index" in .claude/CLAUDE.md.
-  git config core.checkstat minimal
-  git config core.trustctime false
 else
   # Not a git checkout (shouldn't happen for this repo, but stay safe): make the
   # mount source a real-but-empty dir so Docker doesn't auto-create a stray path,
-  # and leave the path file empty so the Dockerfile's symlink step no-ops. git
-  # then falls back to normal discovery (which no-ops), and post-create.sh's
-  # guarded `pre-commit install` skips.
+  # and leave the path file empty so plumbing.sh's symlink step no-ops. git then
+  # falls back to normal discovery (which no-ops), and post-create.sh's guarded
+  # `pre-commit install` skips.
   rm -rf "$link"
   mkdir -p "$link"
   : >"$pathfile"
 fi
 
 # Host timezone — discover the IANA zone name (e.g. "America/Los_Angeles") and
-# persist it so the Dockerfile can apply it to the image. Without this, the
-# container defaults to Etc/UTC and timestamps in molecule/playbook output drift
-# 7-8h off the host. See CLAUDE.md "Host timezone plumbing".
+# persist it so plumbing.sh can apply it in-container. Without this, the
+# container defaults to Etc/UTC and timestamps drift hours off the host.
 #
 # Two host shapes:
 #   - /etc/localtime is a symlink into the zoneinfo db (macOS, most modern
 #     Linux). Strip everything up to and including `zoneinfo/` to get the zone.
 #   - /etc/timezone exists as a plain text file (Debian/Ubuntu, some others).
-# An empty result is fine — the Dockerfile guards on `[ -s ]` and falls back to
-# the image's default zone.
+# An empty result is fine — plumbing.sh guards on `[ -s ]` and falls back to the
+# container's default zone.
 tz=""
 if target="$(readlink /etc/localtime 2>/dev/null)"; then
   case "$target" in
@@ -109,10 +59,10 @@ fi
 if [ -z "$tz" ] && [ -r /etc/timezone ]; then
   tz="$(tr -d '[:space:]' </etc/timezone)"
 fi
-# Reject path traversal or absolute paths defensively — the Dockerfile uses the
-# value to build /usr/share/zoneinfo/$tz, so a hostile or broken /etc/localtime
-# target shouldn't be able to point that elsewhere. The Dockerfile additionally
-# checks the resolved zoneinfo file exists before applying.
+# Reject path traversal or absolute paths defensively — plumbing.sh uses the
+# value to build /usr/share/zoneinfo/$tz and feeds it to a privileged `ln`, so a
+# hostile or broken /etc/localtime target shouldn't be able to point that
+# elsewhere. plumbing.sh additionally checks the resolved zoneinfo file exists.
 case "$tz" in
   /* | *..*) tz="" ;;
 esac
@@ -126,29 +76,28 @@ else
   : >"$gitconfigfile"
 fi
 
-# Snapshot host ~/.ssh/known_hosts the same way. Without it, `git push` from
-# inside a CLI-launched container fails with "Host key verification failed"
-# the first time it talks to github.com — the base image's $HOME/.ssh is
-# empty and SSH refuses unknown fingerprints by default. The host's
-# known_hosts is the right trust set to carry (same flavor as the gitconfig
-# — both are the user's existing trust state, neither secret). Empty file
-# if absent so the `[ -s ... ]` guard in post-start.sh stays a clean no-op.
-if [ -r "$HOME/.ssh/known_hosts" ]; then
-  cp "$HOME/.ssh/known_hosts" "$knownhostsfile"
-else
-  : >"$knownhostsfile"
-fi
+# known_hosts and allowed_signers are pure read-only trust data, so devcontainer.json
+# binds them straight in rather than snapshotting them. `--mount` errors on a missing
+# source, so guarantee both exist — this is the one place initialize.sh *creates* host
+# files rather than only reading them. `: >>` appends nothing, leaving any real file
+# untouched.
+mkdir -p "$HOME/.ssh"
+chmod 700 "$HOME/.ssh"
+: >>"$HOME/.ssh/known_hosts"
+: >>"$HOME/.ssh/allowed_signers"
 
-# Snapshot the host's SSH allowed-signers file — the trust set `git
-# verify-commit` needs, absent which a locally signed commit reads back as
-# untrusted ("U"). Contents are public keys and principal emails only, no
-# secret material. `--type=path` so a `~/` in the config value is expanded.
-# Empty file when the setting is unset or its target is unreadable, keeping
-# post-start.sh's `[ -s ... ]` guard a clean no-op.
-: >"$signersfile"
-if signers="$(git config --type=path --get gpg.ssh.allowedSignersFile 2>/dev/null)" \
-  && [ -r "$signers" ]; then
-  cp "$signers" "$signersfile"
+# Drop the snapshots this replaced, so a checkout predating the switch doesn't keep a copy
+# of the user's known_hosts lying around untracked.
+rm -f "$here/.git-plumbing/host-known-hosts" "$here/.git-plumbing/host-allowed-signers"
+
+# The bind can only name a `${localEnv:HOME}`-relative path, so a signers file
+# configured anywhere else would be silently ignored in-container. Fail loud instead of
+# shipping a container whose `git verify-commit` reports its own commits untrusted.
+signers="$(git config --type=path --get gpg.ssh.allowedSignersFile 2>/dev/null || true)"
+if [ -n "$signers" ] && [ "$signers" != "$HOME/.ssh/allowed_signers" ]; then
+  echo "initialize: gpg.ssh.allowedSignersFile is $signers, but the devcontainer binds" >&2
+  echo "initialize: $HOME/.ssh/allowed_signers - move the file or update the setting." >&2
+  exit 1
 fi
 
 # Pre-create the magic ssh-agent socket placeholder on hosts where Docker

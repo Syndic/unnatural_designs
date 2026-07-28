@@ -164,15 +164,30 @@ clone, main worktree, or a linked worktree anywhere on disk. The mechanism has t
 per-step rationale lives at each site, not here:
 
 - `.devcontainer/initialize.sh` (wired as `initializeCommand`) — host-side, runs on every `up`.
-  Drops `.devcontainer/.host-git-common` (symlink → real git common dir) and
-  `.devcontainer/.git-plumbing/host-git-common-path` (absolute path of the same). Both are
-  gitignored. Also writes `host-timezone` (host's IANA zone).
+  Reads host state and drops it in `.git-plumbing/`: `host-git-common-path` (absolute path of the
+  git common dir), `host-timezone` (host's IANA zone), `host-gitconfig`. Also drops
+  `.devcontainer/.host-git-common`, a symlink to the real common dir. All gitignored.
 - `.devcontainer/devcontainer.json` — binds the symlink to a static `/host-git-common`; sets
   `workspaceFolder`/`workspaceMount` to `${localWorkspaceFolder}` so the workspace lives at its
   real host path in the container.
-- `.devcontainer/Dockerfile` — reads `host-git-common-path` from the build context and recreates
-  that exact host-absolute path inside the image as a symlink to `/host-git-common`; reads
-  `host-timezone` and points `/etc/localtime` at it.
+- `.devcontainer/plumbing.sh` — applies those facts at container start, invoked from the top of
+  both `post-create.sh` and `post-start.sh`. Recreates the host-absolute git path as a symlink to
+  `/host-git-common`, points `/etc/localtime` at the host zone, and writes the shared-index config
+  below.
+
+**The application is deliberately at runtime, not baked into the image.** Nothing forces it to
+build time — the workspace isn't even mounted then — and baking the two per-host facts is the only
+thing that would stop the image being shared with `Syndic/.dotfiles`. Two consequences to keep in
+mind: the timezone lands *after* container start, so a process launched before `postCreate` (the VS
+Code server, notably) keeps UTC timestamps until restarted; and the `/etc` writes live in the
+container's writable layer, so any future prebuild mechanism would re-bake host facts and undo
+this. `onCreateCommand` is the wrong home for the same reason — it runs during prebuilds.
+
+Two ordering facts the code depends on. `plumbing.sh` must run at the *top* of `post-create.sh`,
+because everything below it runs git against the worktree. And it must re-run at `postStart`:
+`devcontainer up` re-runs `initializeCommand` and can rewrite the path file even for an existing
+container, but `postCreate` does not re-run. Every step is idempotent so the double application is
+free — including the `/etc/environment` `TZ=` line, which is rewritten rather than appended.
 
 `.devcontainer/devcontainer-lock.json` pins a resolved version + digest for each
 `ghcr.io/devcontainers/features/*` feature referenced from `devcontainer.json`. It is a **derived
@@ -216,11 +231,10 @@ symlinks `python3`/`python` onto PATH. The CI `Devcontainer` job caches the buil
 (`imageName`/`cacheFrom`, `push: filter` seeds it on pushes to main), so the feature layers are
 reused across runs rather than rebuilt cold; this needs the workflow's `packages: write`.
 
-`.git-plumbing/` is a tracked directory anchored by its README so the Dockerfile's `COPY` always
-has a source — buildx errors on a `COPY` whose glob matches zero files, and CI's `devcontainer
-build` doesn't run `initializeCommand`, so the runtime files are absent there. The shell
-`[ -s ... ]` guards in the Dockerfile make that case a clean no-op (CI keeps default UTC and skips
-the git path symlink).
+`.git-plumbing/` is tracked via its README; the files inside are gitignored and rewritten on every
+`up`. `plumbing.sh` guards each step on `[ -s ... ]`, so a missing or empty file is a clean no-op
+(no git checkout → no symlink and no shared-index config; no zone → the container keeps its
+default).
 
 ## .devcontainer shared git index
 
@@ -233,15 +247,17 @@ rebase, merge, branch switch — refuse with "your local changes would be overwr
 tree. Plain commits never hit this (no checkout involved), which is why the breakage only surfaced
 on an in-container rebase.
 
-`initialize.sh` therefore sets `core.checkstat = minimal` and `core.trustctime = false` in the
+`plumbing.sh` therefore sets `core.checkstat = minimal` and `core.trustctime = false` in the
 repo-local config. That config lives in the common dir, so one write covers both sides and every
-worktree. `minimal` reduces the stat check to whole-second mtime + file size — the two fields the
+worktree — which is also why it can be written from the container side at all. `minimal` reduces the stat check to whole-second mtime + file size — the two fields the
 bind mount preserves — making the index portable in both directions; `trustctime = false` guards
 against ctime-only divergence from metadata changes (chmod/chown) one side doesn't observe. Known
 trade-off: a same-size edit landing in the same second as the last index refresh can evade stat
 detection; git's racy-index protection (entries at least as new as the index itself get
-content-checked) covers the realistic window. CI's smoke job asserts the setting landed, which
-also pins the fact that `devcontainers/ci` runs `initializeCommand`.
+content-checked) covers the realistic window. CI's smoke job asserts both settings landed — proof
+that `post-create.sh` reached `plumbing.sh`. That `devcontainers/ci` runs `initializeCommand` at
+all (plain `devcontainer build` doesn't) is pinned separately, by asserting the host-written
+artifacts in `.git-plumbing/` are present.
 
 ## .devcontainer signed commits under CLI
 
@@ -257,7 +273,7 @@ through the VS Code Server's own SSH tunnel (a per-user socket published by the 
 *not* Docker Desktop's magic socket — that mount isn't even present in extension-launched
 containers), and bridges the host gitconfig + known_hosts between `postCreate` and `postStart`.
 It does not bridge the allowed-signers file. The `devcontainer` CLI does none of it. The fix is
-five additive pieces:
+five additive pieces — two bind mounts and three scripted steps:
 
 - **SSH agent** — `devcontainer.json` binds Docker Desktop's magic socket
   `/run/host-services/ssh-auth.sock` (Desktop's documented mechanism for exposing the host's
@@ -280,41 +296,37 @@ five additive pieces:
 - **`~/.gitconfig`** — `initialize.sh` writes a snapshot to `.git-plumbing/host-gitconfig`.
   `post-start.sh` copies it to `$HOME/.gitconfig` *only if that file is missing or empty*.
   `postStartCommand` runs after the Dev Containers extension's own gitconfig copy, so the
-  empty-check naturally lets VS Code win when it's involved; CI's `devcontainer build` never
-  reaches postStart, so the file is absent there and the script is a clean no-op. Same
-  lifecycle/buildx-safety story as `host-git-common-path` and `host-timezone` — gitignored,
-  regenerated every `up`, anchored by the tracked `.git-plumbing/README.md`.
-- **`~/.ssh/known_hosts`** — same shape as the gitconfig copy. `initialize.sh`
-  snapshots the host's `~/.ssh/known_hosts` to `.git-plumbing/host-known-hosts`;
-  `post-start.sh` installs it into `$HOME/.ssh/known_hosts` only if that file
-  is missing or empty (creating `~/.ssh` mode 700 first). Without it, `git
-  push` from inside the CLI-launched container fails with "Host key
-  verification failed" on first contact with github.com — the base image's
-  `~/.ssh` is empty and SSH refuses unknown fingerprints by default. VS Code
-  bridges known_hosts itself, so the empty-check leaves that path alone.
-  Same gitignored / regenerated-every-`up` lifecycle as the gitconfig snapshot.
-- **`~/.ssh/allowed_signers`** — the trust set `git verify-commit` checks a signature against.
-  Git reads it only for verification, never for signing, which is why commits signed fine
-  before this piece existed while `git log --show-signature` printed "Unable to open allowed
-  keys file…" / "No principal matched". `initialize.sh` snapshots the file *named by* `git
-  config --type=path --get gpg.ssh.allowedSignersFile` (the setting is authoritative; don't
-  hardcode `~/.ssh/allowed_signers`) to `.git-plumbing/host-allowed-signers`, and
-  `post-start.sh` installs it under the same missing-or-empty guard as the two copies above.
-  Contents are public keys and principal emails — no secret material, so the gitignored build
-  context is an appropriate home.
+  empty-check naturally lets VS Code win when it's involved. It stays a snapshot rather than
+  becoming a bind mount like the two below, because the container *rewrites* it (see the
+  allowed-signers repoint): a read-only mount would break the repoint and a read-write one
+  would leak container edits back to the host.
+- **`~/.ssh/known_hosts`** — a read-only bind mount from `${localEnv:HOME}`, declared in
+  `devcontainer.json`. Without it, `git push` from inside the CLI-launched container fails
+  with "Host key verification failed" on first contact with github.com — the base image's
+  `~/.ssh` is empty and SSH refuses unknown fingerprints by default. VS Code bridges
+  known_hosts itself; the mount simply wins there, harmlessly. Cost of `readonly`: ssh can't
+  record newly-accepted host keys, so it warns and continues.
+- **`~/.ssh/allowed_signers`** — the trust set `git verify-commit` checks a signature against,
+  same read-only bind. Git reads it only for verification, never for signing, which is why
+  commits signed fine before this piece existed while `git log --show-signature` printed
+  "Unable to open allowed keys file…" / "No principal matched". Contents are public keys and
+  principal emails — no secret material.
 
-  The extra step the other snapshots don't need: the copied gitconfig still points
-  `gpg.ssh.allowedSignersFile` at the host-absolute path, so `post-start.sh` rewrites it
-  (`git config --global`) to the installed copy whenever that copy is non-empty. Keying the
-  rewrite on the *destination* rather than on "did we just copy" makes it fire under VS Code
-  too — the extension bridges the gitconfig, stale path and all, but not the file it names —
-  and honours an allowed_signers a user provisioned some other way.
+  Two things follow from these being *mounts*. Docker creates the mount parent root-owned
+  0755 before any hook runs, and SSH ignores a `~/.ssh` it considers unsafe, so
+  `post-start.sh` `install -d`s the directory back to the user at mode 700 — without touching
+  the binds inside it. And `mounts` can only interpolate `${localEnv:}`, so the path is fixed
+  at `~/.ssh/allowed_signers` where the old snapshot honoured whatever
+  `gpg.ssh.allowedSignersFile` named. `initialize.sh` keeps that setting authoritative by
+  *asserting* the two agree and failing loud otherwise, rather than silently binding the
+  wrong file. Both files are also `touch`ed on the host if absent, because a bind mount with
+  a missing source aborts container start — the one place `initialize.sh` writes host state
+  rather than only reading it.
 
-  Why rewrite the config instead of recreating the host-absolute path in the image, the way
-  the Dockerfile does for `host-git-common-path`? That trick buys path *fidelity*, and the
-  git-common-dir case needs it: the worktree's `.git` file contains an absolute pointer git
-  will follow no matter what we'd prefer. Nothing here has that constraint — the only
-  reference to the allowed-signers path is the config setting itself, and we own the copy of
-  the gitconfig that carries it. Rewriting keeps the whole mechanism in `post-start.sh`
-  beside its two sibling snapshots, where a rotated key or a moved host file takes effect on
-  the next `up` rather than on an image rebuild.
+  The repoint the mounts don't remove: the copied gitconfig still points
+  `gpg.ssh.allowedSignersFile` at the *host-absolute* path (`/Users/...`), which doesn't
+  exist in the container, so `post-start.sh` rewrites it (`git config --global`) to the
+  mounted path whenever that file is non-empty. Keying the rewrite on the *destination*
+  rather than on "did we just copy" makes it fire under VS Code too — the extension bridges
+  the gitconfig, stale path and all, but not the file it names — and honours an
+  allowed_signers a user provisioned some other way.
