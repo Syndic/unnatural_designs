@@ -154,7 +154,8 @@ nothing reports it. This is not hypothetical — it stranded the CI `ty` pin on 
 (`0.0.1a25`) while the devcontainer's advanced to `0.0.64`, and equally hid the `pip-audit` pin in
 `security.yml`. Both were SCREAMING_SNAKE env-var keys that the workflow regex's
 `[A-Za-z_-]*[Vv]ersion:` clause couldn't match; the clause is now `[A-Za-z0-9_-]+:`, which claims any
-key.
+key. The stale `ty` value in `ci.yml` was deliberately *not* hand-corrected, so that Renovate bumping
+it is the end-to-end proof the widened clause works (see the `NOTE` at that site).
 
 The remaining hole is that coverage is still verified by hand. A repo-health check in the
 `meta/scripts/check_*.py` family — read `renovate.json`, walk the files each `managerFilePatterns`

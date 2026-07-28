@@ -274,9 +274,10 @@ Versions that live in a plain string rather than a manifest Renovate understands
 datasource=<ds> depName=<name>` marker comment on the line **immediately above** the value, and the
 value on the next line must be quoted in the workflow case (`key: "1.2.3"`). The key name itself is
 not constrained, so both `version:` and `TY_VERSION:` are tracked. A marker whose next line does not
-match is silently ignored — the pin then never moves, with no warning from Renovate, which is how the
-CI `ty` pin sat at an alpha for months while the devcontainer's advanced. When adding a marker,
-confirm the manager actually claims it before relying on it.
+match is silently ignored — the pin then never moves, with no warning from Renovate. That is how the
+CI `ty` pin sat at an alpha while the devcontainer's advanced: the key clause used to be
+`[A-Za-z_-]*[Vv]ersion:`, which no SCREAMING_SNAKE key could satisfy. When adding a marker, confirm
+the manager actually claims it before relying on it.
 
 The same dependency pinned in several files is one dependency to Renovate: one branch, one PR,
 every site edited together — but only while the sites agree. Divergent current values are two

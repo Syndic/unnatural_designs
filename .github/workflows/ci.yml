@@ -151,8 +151,12 @@ jobs:
       - run: uv sync
       - name: ty check
         env:
+          # NOTE: deliberately left behind the devcontainer's TY_VERSION. Until the widened
+          # workflow matchStrings in renovate.json landed, this marker matched nothing and the
+          # pin never moved; leaving the stale value is the end-to-end check that Renovate now
+          # sees it. Expect the bump in the next "all non-major dependencies" PR after merge.
           # renovate: datasource=pypi depName=ty
-          TY_VERSION: "0.0.64"
+          TY_VERSION: "0.0.1a25"
         run: uvx "ty@${TY_VERSION}" check
 
   # Build and test runs once per supported target platform, on a runner whose host matches
