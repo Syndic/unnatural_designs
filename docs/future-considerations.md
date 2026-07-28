@@ -141,23 +141,8 @@ that call site on a `rules_python` bump. (Or, separately, the PEP 751 work landi
 prompt to (a) switch `pip.parse(..., requirements_lock = ...)` to the uv-native attribute, (b)
 delete `requirements_lock.txt`, (c) drop the `uv-lock-fresh` hook's `requirements_lock.txt`
 re-export, (d) strip the Python half of the `renovate-derived-files.yml` workflow (the helper app
-stays installed as long as the Bazel half still commits — see "Retire the Renovate auto-commit
-helper" below), and (e) remove the freshness check in `meta/scripts/check_modules.py`.
-
----
-
-## Retire the Renovate auto-commit helper
-
-`.github/workflows/renovate-derived-files.yml` commits regenerated lock files back to Renovate PRs
-via the `Renovate helper` GitHub App — it exists only because Mend-hosted Renovate can't run
-`uv lock` or `bazel mod deps` itself. The app mechanism, permissions, `gitIgnoredAuthors` gotcha,
-and recovery procedure live in [`.claude/CLAUDE.md`](../.claude/CLAUDE.md) "Renovate auto-commit
-helper".
-
-**Trigger to revisit:** if every workflow that uses the helper goes away — `rules_python` lands
-uv-native lockfile support (see the entry above) AND `MODULE.bazel.lock` becomes auto-managed by
-Bazel or a Mend allowlist change lets Renovate update it directly — uninstall the app, destroy its
-key, and remove the `gitIgnoredAuthors` entry from `renovate.json` in the same change.
+stays installed for the Bazel and Go halves), and (e) remove the freshness check in
+`meta/scripts/check_modules.py`.
 
 ---
 
