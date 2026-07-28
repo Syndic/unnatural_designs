@@ -177,11 +177,15 @@ per-step rationale lives at each site, not here:
 
 **The application is deliberately at runtime, not baked into the image.** Nothing forces it to
 build time — the workspace isn't even mounted then — and baking the two per-host facts is the only
-thing that would stop the image being shared with `Syndic/.dotfiles`. Two consequences to keep in
-mind: the timezone lands *after* container start, so a process launched before `postCreate` (the VS
-Code server, notably) keeps UTC timestamps until restarted; and the `/etc` writes live in the
+thing that would stop the image being shared with `Syndic/.dotfiles`. Three consequences to keep
+in mind: the timezone lands *after* container start, so a process launched before `postCreate` (the
+VS Code server, notably) keeps UTC timestamps until restarted; the `/etc` writes live in the
 container's writable layer, so any future prebuild mechanism would re-bake host facts and undo
-this. `onCreateCommand` is the wrong home for the same reason — it runs during prebuilds.
+this (`onCreateCommand` is the wrong home for the same reason — it runs during prebuilds); and the
+shared-index config is now written by in-container `git` against a bind-mounted repo, so on any
+engine where uid mapping doesn't line up, git's dubious-ownership check would abort `postCreate` —
+a failure mode that didn't exist while this ran host-side. Docker Desktop and `devcontainers/ci`
+both map correctly (CI asserts it); rootless-Docker and colima remain unsupported here anyway.
 
 **The plumbing stays shell, and is tested from Python.** It can't be Python: the base image it
 moves into (`mcr.microsoft.com/devcontainers/base:debian`) ships no interpreter, and adding one
@@ -258,8 +262,9 @@ on an in-container rebase.
 
 `plumbing.sh` therefore sets `core.checkstat = minimal` and `core.trustctime = false` in the
 repo-local config. That config lives in the common dir, so one write covers both sides and every
-worktree — which is also why it can be written from the container side at all. `minimal` reduces the stat check to whole-second mtime + file size — the two fields the
-bind mount preserves — making the index portable in both directions; `trustctime = false` guards
+worktree — which is also why it can be written from the container side at all. `minimal` reduces
+the stat check to whole-second mtime + file size — the two fields the bind mount preserves —
+making the index portable in both directions; `trustctime = false` guards
 against ctime-only divergence from metadata changes (chmod/chown) one side doesn't observe. Known
 trade-off: a same-size edit landing in the same second as the last index refresh can evade stat
 detection; git's racy-index protection (entries at least as new as the index itself get

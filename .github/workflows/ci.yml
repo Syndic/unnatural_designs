@@ -139,6 +139,8 @@ jobs:
   # shellcheck, so there's nothing to install. Scoped to *.sh, which today is the
   # devcontainer host plumbing — privileged writes against /etc and host-absolute paths,
   # where `set -e` foot-guns are worth catching mechanically rather than in review.
+  # The runner's shellcheck and the devcontainer's Debian package are separately versioned
+  # with no shared pin, so the two can disagree; CI is authoritative if they ever do.
   shellcheck:
     name: shellcheck
     runs-on: ubuntu-latest
@@ -146,7 +148,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: |
           set -euo pipefail
+          shellcheck --version | sed -n '2p'
           mapfile -t files < <(git ls-files '*.sh')
+          # shellcheck itself exits 1 on an empty argument list; can't happen today, but a
+          # future .sh-free tree should report "nothing to check", not a red job.
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "no shell scripts tracked; nothing to check"
+            exit 0
+          fi
           printf 'checking %d file(s)\n' "${#files[@]}"
           shellcheck "${files[@]}"
 

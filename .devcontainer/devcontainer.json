@@ -42,10 +42,9 @@
     "source=${localWorkspaceFolder}/.devcontainer/.host-git-common,target=/host-git-common,type=bind",
     // Forward host ssh-agent for signed commits — see CLAUDE.md "Signed commits under devcontainer CLI".
     "source=/run/host-services/ssh-auth.sock,target=/run/host-services/ssh-auth.sock,type=bind",
-    // Pure read-only trust data, so bind it rather than snapshotting it. readonly: an
-    // in-container write would land on the host's real ~/.ssh. Cost of that: ssh can't
-    // record newly-accepted host keys (warns and continues). initialize.sh guarantees both
-    // files exist, because a bind with a missing source aborts container start.
+    // Read-only trust data for signing/pushing; initialize.sh guarantees both sources exist.
+    // See .claude/CLAUDE.md ".devcontainer signed commits under CLI" for why these are mounts
+    // rather than snapshots and what `readonly` costs.
     "source=${localEnv:HOME}/.ssh/known_hosts,target=/home/vscode/.ssh/known_hosts,type=bind,readonly",
     "source=${localEnv:HOME}/.ssh/allowed_signers,target=/home/vscode/.ssh/allowed_signers,type=bind,readonly"
   ],

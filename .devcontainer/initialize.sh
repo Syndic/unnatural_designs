@@ -31,6 +31,14 @@ initialize_sanitize_tz() {
   esac
 }
 
+# devcontainer.json's `mounts` can only interpolate ${localEnv:}, so the allowed-signers bind
+# names a fixed path. Anything else configured would be silently ignored in-container, so this
+# is checked rather than followed. Unset is fine — nothing to disagree with.
+initialize_signers_ok() {
+  local configured="$1" bound="$2"
+  [ -z "$configured" ] || [ "$configured" = "$bound" ]
+}
+
 # Sourcing (the tests) stops here; only direct execution runs the imperative body below.
 [ "${BASH_SOURCE[0]}" = "${0}" ] || return 0
 
@@ -91,29 +99,28 @@ else
   : >"$gitconfigfile"
 fi
 
-# known_hosts and allowed_signers are pure read-only trust data, so devcontainer.json
-# binds them straight in rather than snapshotting them. `--mount` errors on a missing
-# source, so guarantee both exist — this is the one place initialize.sh *creates* host
-# files rather than only reading them. `: >>` appends nothing, leaving any real file
-# untouched.
+# Assert before creating anything, so a host that trips this doesn't get a stray empty file
+# in its real ~/.ssh on the way to a hard failure.
+signers="$(git config --type=path --get gpg.ssh.allowedSignersFile 2>/dev/null || true)"
+if ! initialize_signers_ok "$signers" "$HOME/.ssh/allowed_signers"; then
+  echo "initialize: gpg.ssh.allowedSignersFile is $signers, but the devcontainer binds" >&2
+  echo "initialize: $HOME/.ssh/allowed_signers - move the file or update the setting." >&2
+  exit 1
+fi
+
+# known_hosts and allowed_signers are pure read-only trust data, so devcontainer.json binds
+# them straight in rather than snapshotting them. `--mount` errors on a missing source, so
+# guarantee both exist — the one place initialize.sh *creates* host files rather than only
+# reading them. `: >>` appends nothing, leaving any real file untouched.
 mkdir -p "$HOME/.ssh"
 chmod 700 "$HOME/.ssh"
 : >>"$HOME/.ssh/known_hosts"
 : >>"$HOME/.ssh/allowed_signers"
 
-# Drop the snapshots this replaced, so a checkout predating the switch doesn't keep a copy
-# of the user's known_hosts lying around untracked.
+# TEND(migration): drop with the .gitignore entries once every checkout has run an `up` on
+# or after the bind-mount switch. Stops a stale checkout keeping a copy of the user's
+# known_hosts lying around untracked.
 rm -f "$here/.git-plumbing/host-known-hosts" "$here/.git-plumbing/host-allowed-signers"
-
-# The bind can only name a `${localEnv:HOME}`-relative path, so a signers file
-# configured anywhere else would be silently ignored in-container. Fail loud instead of
-# shipping a container whose `git verify-commit` reports its own commits untrusted.
-signers="$(git config --type=path --get gpg.ssh.allowedSignersFile 2>/dev/null || true)"
-if [ -n "$signers" ] && [ "$signers" != "$HOME/.ssh/allowed_signers" ]; then
-  echo "initialize: gpg.ssh.allowedSignersFile is $signers, but the devcontainer binds" >&2
-  echo "initialize: $HOME/.ssh/allowed_signers - move the file or update the setting." >&2
-  exit 1
-fi
 
 # Pre-create the magic ssh-agent socket placeholder on hosts where Docker
 # Desktop isn't intercepting it (CI runners, plain Docker on Linux). Docker

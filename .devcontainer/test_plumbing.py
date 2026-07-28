@@ -29,20 +29,29 @@ def _tmpdir():
         yield d
 
 
-def _sh(script: Path, func: str, *args: str) -> str:
-    """Call one shell function and return its stdout, minus the trailing newline."""
-    result = subprocess.run(
+def _run(script: Path, func: str, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
         ["bash", "-c", _SOURCE_AND_CALL, "_", str(script), func, *args],
         capture_output=True,
         text=True,
         check=False,
     )
+
+
+def _sh(script: Path, func: str, *args: str) -> str:
+    """Call one shell function and return its stdout, minus the trailing newline."""
+    result = _run(script, func, *args)
     if result.returncode != 0:
         raise AssertionError(
             f"{func}{args} failed (rc={result.returncode})\n"
             f"stdout: {result.stdout!r}\nstderr: {result.stderr!r}"
         )
     return result.stdout.rstrip("\n")
+
+
+def _rc(script: Path, func: str, *args: str) -> int:
+    """Return just the exit status, for the predicates that signal via rc."""
+    return _run(script, func, *args).returncode
 
 
 class TestSourcingIsInert(unittest.TestCase):
@@ -135,6 +144,62 @@ class TestTzEnvironment(unittest.TestCase):
         with _tmpdir() as d:
             out = _sh(_PLUMBING_SH, "plumbing_tz_environment", "UTC", f"{d}/nonexistent")
         self.assertEqual(out.splitlines(), ["TZ=UTC"])
+
+    def test_unreadable_file_fails_instead_of_truncating(self):
+        # The caller writes this output over the real /etc/environment. A read failure must
+        # not look like "the file only needed a TZ line" — that would wipe it. A directory
+        # makes grep exit 2 regardless of uid, unlike chmod 000 which root ignores.
+        with _tmpdir() as d:
+            result = _run(_PLUMBING_SH, "plumbing_tz_environment", "UTC", d)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("TZ=UTC", result.stdout)
+
+
+class TestInputValidation(unittest.TestCase):
+    """plumbing.sh re-validates what the host stub wrote: after Phase 2 that stub lives in
+    another repo, and both values feed privileged commands."""
+
+    def test_safe_zone_accepted(self):
+        for good in ("UTC", "America/Los_Angeles", "Etc/GMT+5"):
+            with self.subTest(value=good):
+                self.assertEqual(_rc(_PLUMBING_SH, "plumbing_zone_is_safe", good), 0)
+
+    def test_unsafe_zone_rejected(self):
+        for bad in ("", "/etc/shadow", "../../etc/shadow", "America/../.."):
+            with self.subTest(value=bad):
+                self.assertNotEqual(_rc(_PLUMBING_SH, "plumbing_zone_is_safe", bad), 0)
+
+    def test_absolute_git_path_accepted(self):
+        self.assertEqual(_rc(_PLUMBING_SH, "plumbing_git_path_is_safe", "/Users/x/repo/.git"), 0)
+
+    def test_relative_or_traversing_git_path_rejected(self):
+        for bad in ("", "repo/.git", "/Users/../etc", "/a/../../b"):
+            with self.subTest(value=bad):
+                self.assertNotEqual(_rc(_PLUMBING_SH, "plumbing_git_path_is_safe", bad), 0)
+
+
+class TestSignersAssertion(unittest.TestCase):
+    """The most user-visible new failure path: a mismatch aborts `devcontainer up`."""
+
+    _BOUND = "/home/u/.ssh/allowed_signers"
+
+    def test_unset_is_ok(self):
+        self.assertEqual(_rc(_INITIALIZE_SH, "initialize_signers_ok", "", self._BOUND), 0)
+
+    def test_matching_path_is_ok(self):
+        self.assertEqual(_rc(_INITIALIZE_SH, "initialize_signers_ok", self._BOUND, self._BOUND), 0)
+
+    def test_different_path_is_rejected(self):
+        # e.g. the common ~/.config/git/allowed_signers layout.
+        self.assertNotEqual(
+            _rc(
+                _INITIALIZE_SH,
+                "initialize_signers_ok",
+                "/home/u/.config/git/allowed_signers",
+                self._BOUND,
+            ),
+            0,
+        )
 
 
 class TestTimezoneDiscovery(unittest.TestCase):

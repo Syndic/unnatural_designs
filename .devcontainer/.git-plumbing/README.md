@@ -19,6 +19,5 @@ rewritten on every `up`; this README is what keeps the directory in git.
   itself). See ".devcontainer signed commits under CLI" in `.claude/CLAUDE.md`.
 
 The host's `~/.ssh/known_hosts` and `~/.ssh/allowed_signers` are *not*
-snapshotted here — they're read-only trust data, so `devcontainer.json` binds
-them in directly. `initialize.sh` guarantees both exist, because a bind mount
-with a missing source aborts container start.
+snapshotted here — `devcontainer.json` binds them in directly. See
+".devcontainer signed commits under CLI" in `.claude/CLAUDE.md`.

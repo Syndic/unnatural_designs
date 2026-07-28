@@ -33,11 +33,34 @@ plumbing_git_common_action() {
   fi
 }
 
+# These files are written by a host-side stub that Phase 2 moves into a *different* repo, so
+# validate rather than trust: both values feed privileged commands below.
+plumbing_zone_is_safe() {
+  case "$1" in
+    "" | /* | *..*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+plumbing_git_path_is_safe() {
+  case "$1" in
+    *..*) return 1 ;;
+    /*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 # New /etc/environment content: every line except TZ=, then exactly one TZ=. Rewriting
 # rather than appending is what keeps this idempotent across repeated container starts.
 plumbing_tz_environment() {
-  local tz="$1" current="${2:-/etc/environment}"
-  grep -v '^[[:space:]]*TZ=' "$current" 2>/dev/null || true
+  local tz="$1" current="${2:-/etc/environment}" rc=0
+  if [ -e "$current" ]; then
+    grep -v '^[[:space:]]*TZ=' "$current" || rc=$?
+    # rc 1 is "no lines survived the filter", which is fine. Anything else is a read
+    # failure, and the caller overwrites /etc/environment with this output — so refuse
+    # rather than hand back a file collapsed to a single TZ= line.
+    [ "$rc" -le 1 ] || return 1
+  fi
   printf 'TZ=%s\n' "$tz"
 }
 
@@ -56,10 +79,21 @@ plumbing_sudo() {
 plumbing_apply_git_common() {
   local plumbing_dir="$1" workspace="$2" p action
   p="$(cat "$plumbing_dir/host-git-common-path")"
+
+  if ! plumbing_git_path_is_safe "$p"; then
+    plumbing_warn "refusing to bridge an unsafe git common path: $p"
+    return 1
+  fi
+
   action="$(plumbing_git_common_action "$p" "$workspace")"
 
   case "$action" in
-    skip | conflict) ;;
+    skip) ;;
+    conflict)
+      # Not fatal on its own — the -d check below decides — but never silent, or a
+      # container running against some other .git looks like magic.
+      plumbing_warn "$p already exists and is not a symlink; leaving it alone"
+      ;;
     refresh) plumbing_sudo ln -sfn /host-git-common "$p" ;;
     create)
       plumbing_sudo mkdir -p "$(dirname "$p")"
@@ -85,6 +119,12 @@ plumbing_apply_shared_index_config() {
 # Point the container at the host's IANA zone so timestamps don't drift against the host.
 plumbing_apply_timezone() {
   local tz="$1" tmp
+  # Re-validate here, not just where the value was discovered: after Phase 2 the producer
+  # is a different repo's stub and this is where the privileged `ln` happens.
+  if ! plumbing_zone_is_safe "$tz"; then
+    plumbing_warn "refusing to apply an unsafe zone name: $tz"
+    return 0
+  fi
   if [ ! -e "/usr/share/zoneinfo/$tz" ]; then
     plumbing_warn "unknown zone '$tz'; keeping the container default"
     return 0
@@ -93,7 +133,11 @@ plumbing_apply_timezone() {
   # Build the replacement first — piping sudo tee into the file being read would truncate
   # it at open.
   tmp="$(mktemp)"
-  plumbing_tz_environment "$tz" /etc/environment >"$tmp"
+  if ! plumbing_tz_environment "$tz" /etc/environment >"$tmp"; then
+    plumbing_warn "could not read /etc/environment; leaving the timezone alone"
+    rm -f "$tmp"
+    return 0
+  fi
 
   # Cosmetic step: warn and carry on rather than aborting container creation.
   if ! {
