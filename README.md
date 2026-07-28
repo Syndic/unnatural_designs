@@ -268,6 +268,21 @@ comment. Semgrep is the one action that could not join this scheme: `semgrep/sem
 and frozen at `v0.58.0`, so the SAST job runs the SHA-pinned `semgrep/semgrep` container image
 directly instead.
 
+Versions that live in a plain string rather than a manifest Renovate understands — a Dockerfile
+`ARG`, a shell assignment in `post-create.sh`, a workflow `with:`/`env:` value — are picked up by the
+`customManagers` regexes in [`renovate.json`](renovate.json). Each expects a `# renovate:
+datasource=<ds> depName=<name>` marker comment on the line **immediately above** the value, and the
+value on the next line must be quoted in the workflow case (`key: "1.2.3"`). The key name itself is
+not constrained, so both `version:` and `TY_VERSION:` are tracked. A marker whose next line does not
+match is silently ignored — the pin then never moves, with no warning from Renovate, which is how the
+CI `ty` pin sat at an alpha for months while the devcontainer's advanced. When adding a marker,
+confirm the manager actually claims it before relying on it.
+
+The same dependency pinned in several files is one dependency to Renovate: one branch, one PR,
+every site edited together — but only while the sites agree. Divergent current values are two
+separate updates and drift apart independently, so **keep duplicate pins of a tool byte-identical**
+(`ruff` and `ty` are each pinned in both the devcontainer Dockerfile and the CI workflow).
+
 Three grouping exceptions in [`renovate.json`](renovate.json)'s `packageRules` keep *major* bumps
 atomic. Each is scoped with `matchUpdateTypes: ["major"]` so it cannot overlap the minor/patch
 catch-all — every rule matches a disjoint set of updates, and the order they appear in does not
@@ -277,7 +292,8 @@ rules would be order-dependent. Don't introduce an overlap.)
 - **Language toolchain SDKs** — the Go and Python version pins, tracked across `MODULE.bazel`,
   `go.work`, per-module `go.mod`, the workflow `setup-python` steps, the `go` feature in
   `devcontainer.json`, and the devcontainer Dockerfile's `PYTHON_VERSION` arg.
-- **`ruff`** — pinned in both `pyproject.toml` and the CI workflow.
+- **`ruff`** — pinned in both the devcontainer Dockerfile and the CI workflow. (`pyproject.toml`
+  holds ruff's *config*, not its version.)
 - **Bazel toolchains and rulesets** — `bazel_dep` majors. Rulesets that must advance in lockstep
   (`rules_go` with `bazel-gazelle`, say) resolve against one another, so splitting their majors
   into separate PRs yields a `MODULE.bazel.lock` that cannot be regenerated until both land.

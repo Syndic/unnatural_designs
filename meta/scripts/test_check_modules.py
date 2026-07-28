@@ -290,6 +290,23 @@ class TestWorkflowModuleLists(unittest.TestCase):
             """)
         self.assertEqual(self._parse(content), [])
 
+    def test_matrix_key_with_empty_list(self):
+        """A declared-but-empty entry list still reports the block, with no entries.
+
+        Callers rely on this to emit "missing entry" diagnostics anchored at key_line — an
+        empty list is a matrix that exists and is incomplete, not an absent matrix.
+        """
+        content = textwrap.dedent("""\
+            jobs:
+              scan:
+                strategy:
+                  matrix:
+                    go_module:
+                steps:
+                  - run: echo hi
+            """)
+        self.assertEqual(self._parse(content), [("scan", 5, {})])
+
     def test_single_job_multiple_modules(self):
         content = textwrap.dedent("""\
             jobs:

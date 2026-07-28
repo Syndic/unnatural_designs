@@ -146,6 +146,30 @@ stays installed for the Bazel and Go halves), and (e) remove the freshness check
 
 ---
 
+## Renovate Marker Coverage Is Not Enforced
+
+A `# renovate: datasource=… depName=…` marker comment whose following line doesn't match the
+corresponding `customManagers` regex in `renovate.json` is silently ignored: the pin stops moving and
+nothing reports it. This is not hypothetical — it stranded the CI `ty` pin on an alpha
+(`0.0.1a25`) while the devcontainer's advanced to `0.0.64`, and equally hid the `pip-audit` pin in
+`security.yml`. Both were SCREAMING_SNAKE env-var keys that the workflow regex's
+`[A-Za-z_-]*[Vv]ersion:` clause couldn't match; the clause is now `[A-Za-z0-9_-]+:`, which claims any
+key.
+
+The remaining hole is that coverage is still verified by hand. A repo-health check in the
+`meta/scripts/check_*.py` family — read `renovate.json`, walk the files each `managerFilePatterns`
+selects, and fail on any marker comment no `matchStrings` entry claims — would make the class of bug
+impossible. Deferred because it wants the full pattern to be worth its keep (a `check_renovate_markers.py`
+plus its unit test, a CI job, a `.vscode/tasks.json` entry, and README table rows), and the regex
+widening removed the only failures known to exist. One caveat for whoever builds it: Renovate
+evaluates these patterns with RE2/JS named-group syntax (`(?<name>`), so a Python implementation has
+to translate to `(?P<name>` and cannot assume the two dialects agree on everything.
+
+**Trigger to revisit:** the next time a marker comment is found not to be tracked, or when a third
+manager file pattern is added.
+
+---
+
 ## Devcontainer: Docker / Kubernetes Extensions Not Fully Wired
 
 The devcontainer recommends a set of VS Code extensions that mirrors `.vscode/extensions.json`,
