@@ -5,19 +5,19 @@
     "context": ".."
   },
   "features": {
-    "ghcr.io/devcontainers/features/common-utils:2": {
+    "ghcr.io/devcontainers/features/common-utils:2.5.9": {
       "installZsh": true,
       "configureZshAsDefaultShell": false,
       "upgradePackages": false
     },
-    "ghcr.io/devcontainers/features/go:1": {
+    "ghcr.io/devcontainers/features/go:1.3.4": {
       "version": "1.26.5"
     },
     // Python is NOT a devcontainer feature: that feature compiles CPython from source
     // (~2 min/build). The Dockerfile installs a prebuilt uv-managed interpreter instead
     // (PYTHON_VERSION there, Renovate-tracked in lockstep with MODULE.bazel / setup-python).
-    "ghcr.io/devcontainers/features/github-cli:1": {},
-    "ghcr.io/devcontainers/features/git:1": {}
+    "ghcr.io/devcontainers/features/github-cli:1.1.0": {},
+    "ghcr.io/devcontainers/features/git:1.3.8": {}
   },
   "remoteUser": "vscode",
   "containerEnv": {

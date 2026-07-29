@@ -57,6 +57,10 @@
   ],
   "packageRules": [
     {
+      "matchManagers": [ "devcontainer" ],
+      "pinDigests": false
+    },
+    {
       "matchManagers": [ "custom.regex", "devcontainer" ],
       "matchDepNames": [ "go", "python" ],
       "matchUpdateTypes": [ "major" ],

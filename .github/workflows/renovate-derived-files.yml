@@ -32,6 +32,10 @@ name: Renovate — re-derive lock files
 #      moved. Renovate's `go get` bumps go.mod/go.sum but never tidies (opt-in) or syncs
 #      (vendor-only in Renovate), so the indirect block and go.work.sum are left stale; this
 #      settles them. Gated on no ratify conflicts so the Go files join the single commit.
+#   5. Devcontainer: `devcontainer upgrade` when devcontainer.json moved. The feature lock is
+#      keyed by the *reference string*, so a Renovate bump of `features/go:1.3.4` leaves every
+#      committed entry stale — same derived-file relationship as the others. Also gated on no
+#      ratify conflicts so it rides the single commit.
 #   5. No conflicts: commit every derived file in a single commit. Otherwise: reset
 #      nothing (we won't silently revert Renovate's edit — the commit step is simply
 #      skipped) and file a REQUEST_CHANGES review with the diagnosis. The review blocks
@@ -74,6 +78,11 @@ on:
       # per-module go.mod at any depth.
       - "**/go.mod"
       - "go.work"
+      # The devcontainer feature references. Renovate's `devcontainer` manager tracks them as
+      # docker deps, which works only because they are pinned to full semver — a floating `:1`
+      # gives it nothing to bump, and the lock then drifts with nothing to notice. The lock is
+      # absent from this list for the same reason MODULE.bazel.lock is: it is derived.
+      - ".devcontainer/devcontainer.json"
 
 permissions:
   contents: read
@@ -119,7 +128,8 @@ jobs:
             --base "origin/${BASE_REF}" \
             --rule 'python=(^|/)(pyproject\.toml|uv\.lock|requirements_lock\.txt)$' \
             --rule 'bazel=(^|/)(MODULE\.bazel|\.bazelversion)$' \
-            --rule 'go=(^|/)(go\.mod|go\.work)$'
+            --rule 'go=(^|/)(go\.mod|go\.work)$' \
+            --rule 'devcontainer=^\.devcontainer/devcontainer\.json$'
 
       # ── Python: ratify Renovate's proposals via uv ────────────────────────────────
       # A skipped step's outputs are empty, so `steps.ratify.outputs.conflicts == ''`
@@ -220,6 +230,27 @@ jobs:
             echo "EOF"
           } >> "${GITHUB_OUTPUT}"
 
+      # ── Devcontainer: re-resolve the feature lock ─────────────────────────────────
+      # devcontainer-lock.json records a resolved version + digest per feature, keyed by the
+      # *reference string* from devcontainer.json — so a Renovate bump of `features/go:1.3.4`
+      # to `:1.3.5` restales every entry, not just the version fields. Renovate has no way to
+      # regenerate it (the lock is not a manager's file at all), which is the same position
+      # MODULE.bazel.lock is in.
+      #
+      # `devcontainer upgrade` needs no Docker — it resolves feature metadata straight from the
+      # OCI registry — so this adds an npm install and seconds of runtime, not a container build.
+      # Gated on no ratify conflicts so the lock rides the single commit below.
+      - name: Install the devcontainer CLI
+        if: steps.changed.outputs.devcontainer == 'true' && steps.ratify.outputs.conflicts == ''
+        env:
+          # renovate: datasource=npm depName=@devcontainers/cli
+          DEVCONTAINER_CLI_VERSION: "0.88.0"
+        run: npm install -g "@devcontainers/cli@${DEVCONTAINER_CLI_VERSION}"
+
+      - name: Re-resolve the devcontainer feature lock
+        if: steps.changed.outputs.devcontainer == 'true' && steps.ratify.outputs.conflicts == ''
+        run: devcontainer upgrade --workspace-folder .
+
       - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         id: app-token
         with:
@@ -285,6 +316,7 @@ jobs:
             uv.lock
             requirements_lock.txt
             MODULE.bazel.lock
+            .devcontainer/devcontainer-lock.json
             ${{ steps.gotidy.outputs.files }}
           commit-message: "chore(deps): re-derive lock files"
 

@@ -104,6 +104,14 @@ the `Renovate helper`. Load-bearing facts:
   uv path, there's no "conflict" review: a bump `go mod tidy` can't settle just fails the job.
   MODULE.bazel.lock is *not* in this set — gazelle's `go_deps` extension is reproducible and absent
   from the lockfile, and `use_repo` tracks only direct imports (unchanged by a version bump).
+- **Devcontainer feature lock rides it too.** `devcontainer-lock.json` is keyed by the feature
+  reference string, so a Renovate bump of `features/go:1.3.4` restales every entry. The workflow
+  reruns `devcontainer upgrade` when `devcontainer.json` moves. Like Go, it is *independent* of the
+  uv→Bazel ordering and shares the job only so a grouped PR settles in one `expectedHeadOid`
+  mutation. It needs no Docker — feature metadata resolves straight from the OCI registry — so the
+  cost is an npm install of the CLI, whose pin is Renovate-tracked via the `# renovate:` marker on
+  `DEVCONTAINER_CLI_VERSION`. See the devcontainer plumbing section for why the references must be
+  full semver and must not carry digests.
 - **App permissions.** `Contents: read & write` (commit) and `Pull requests: read & write` (to file
   and dismiss the `REQUEST_CHANGES` reviews the ratify step raises on an unresolvable bump). Set in
   the app's GitHub settings; no code.
@@ -142,21 +150,31 @@ per-step rationale lives at each site, not here:
   that exact host-absolute path inside the image as a symlink to `/host-git-common`; reads
   `host-timezone` and points `/etc/localtime` at it.
 
-`.devcontainer/devcontainer-lock.json` pins the digests of the `ghcr.io/devcontainers/features/*`
-features referenced from `devcontainer.json` (common-utils, git, github-cli, go). `up`/`build` write
-it when absent but never advance it, so it is refreshed on demand with the CLI's two dedicated
-lockfile commands, run from the host:
+`.devcontainer/devcontainer-lock.json` pins a resolved version + digest for each
+`ghcr.io/devcontainers/features/*` feature referenced from `devcontainer.json`. It is a **derived
+file** in exactly the sense `MODULE.bazel.lock` is: `renovate-derived-files.yml` regenerates it with
+`devcontainer upgrade` whenever a PR moves `devcontainer.json`, and commits it in that workflow's
+single commit. To refresh by hand, `devcontainer upgrade --workspace-folder .` (`--dry-run` to
+preview); `devcontainer outdated` shows Current/Wanted/Latest.
 
-```
-devcontainer outdated --workspace-folder .   # Current / Wanted / Latest per feature
-devcontainer upgrade  --workspace-folder .   # rewrite the lock at Latest (--dry-run to preview)
-```
+Two conventions make that work, and both are load-bearing:
 
-**No automation moves it.** Renovate's `devcontainer` manager reads the feature *references* in
-`devcontainer.json` — floating major tags (`:2`, `:1`) — so it only has something to propose on a
-major release; it does not parse the lock file, and the patch-level digests inside it are invisible
-to every manager. Left alone the lock silently rots: it sat two features behind (common-utils
-2.5.8→2.5.9, git 1.3.5→1.3.8) before anyone ran `outdated`.
+- **Feature references are pinned to full semver** (`features/go:1.3.4`), not the floating major
+  tags (`:1`) the devcontainer templates emit. Renovate's `devcontainer` manager tracks features as
+  `docker` deps, so an exact tag is a version it can bump — and that bump is the event the derived
+  file regenerates from. Under a floating `:1` there is nothing for Renovate to propose, no PR, and
+  therefore no trigger; the lock then drifts with nothing to notice. It did: it sat two features
+  behind (common-utils 2.5.8→2.5.9, git 1.3.5→1.3.8) for as long as nobody thought to look.
+- **Digests are not pinned in the reference.** The devcontainer spec supports `@sha256:` on `image`
+  but not on features. Renovate's `pinDigests` output — `features/go:1.3.4@sha256:…` — makes the
+  CLI **silently drop the feature**: no error, it simply stops being installed. (The tagless
+  `features/go@sha256:…` form does resolve, but carries no version for Renovate to compare, so it
+  would be pinned forever and invisible.) `renovate.json` therefore sets `pinDigests: false` for the
+  `devcontainer` manager. Digest pinning is not lost — the lock records
+  `resolved: …@sha256:…` per feature, which is where the digest belongs.
+
+Note the lock is keyed by the *reference string*, so a version bump restales every entry rather than
+just the one field — which is why the regeneration is a full `devcontainer upgrade` and not a patch.
 
 Python is deliberately **not** a devcontainer feature: that feature compiles CPython from source
 (~2 min per build). The Dockerfile installs a prebuilt uv-managed interpreter instead — `ARG
