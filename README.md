@@ -41,13 +41,12 @@ rebuilds.
 
 **Feature pinning**: the `ghcr.io/devcontainers/features/*` references in
 [`devcontainer.json`](.devcontainer/devcontainer.json) are pinned to **full semver**
-(`features/go:1.3.4`), not the floating major tags (`:1`) the devcontainer templates emit. That is
-what makes them Renovate-visible — the manager tracks features as `docker` deps, so an exact tag is
-a version it can bump, and that bump is what triggers the
-[`devcontainer-lock.json`](.devcontainer/devcontainer-lock.json) regeneration described under
-[Automation](#automation). Digests deliberately stay *out* of the reference: the spec
-supports `@sha256:` on `image` but not on features, and a digest-pinned feature is silently dropped
-by the CLI rather than erroring. The lock is where the digests live.
+(`features/go:1.3.4`), not the floating major tags (`:1`) the devcontainer templates emit, and carry
+no digests. Both are load-bearing and both have non-obvious reasons — see
+[`.claude/CLAUDE.md`](.claude/CLAUDE.md), devcontainer plumbing section. The short version: exact
+tags are what make the features Renovate-visible, and that bump is what triggers the
+[`devcontainer-lock.json`](.devcontainer/devcontainer-lock.json) regeneration under
+[Automation](#automation), which CI then verifies.
 
 **Known limitations**: the Docker and Kubernetes VS Code extensions install but aren't wired to a
 daemon or `kubectl` inside the container; BuildBuddy credentials still need host-side setup. See
@@ -313,15 +312,18 @@ catch-all — the *grouping* rules match disjoint sets of updates, and the order
 not matter. (Renovate merges every matching rule in order and the last writer wins, so two rules
 setting `groupName` for the same update would be order-dependent. Don't introduce that overlap.)
 
-One further rule is deliberately **not** disjoint: `matchManagers: ["devcontainer"]` with
-`pinDigests: false`, listed first. It overlaps the grouping rules by design, but sets a different
-field and no later rule touches `pinDigests`, so last-writer-wins never comes into play. It exists
-because digest-pinning a devcontainer *feature* makes the CLI silently drop it — see
-[`.claude/CLAUDE.md`](.claude/CLAUDE.md) for the failure mode.
+A fifth rule sets no `groupName` at all: `matchManagers: ["devcontainer"]` with
+`pinDigests: false`, which turns off digest pinning for devcontainer features (the reason is in
+[`.claude/CLAUDE.md`](.claude/CLAUDE.md), under the devcontainer plumbing section). It overlaps the
+grouping rules, which is harmless because it is the only rule that touches `pinDigests`; it sits
+last so that stays true if a later rule ever sets the same field.
 
 - **Language toolchain SDKs** — the Go and Python version pins, tracked across `MODULE.bazel`,
-  `go.work`, per-module `go.mod`, the workflow `setup-python` steps, the `go` feature in
-  `devcontainer.json`, and the devcontainer Dockerfile's `PYTHON_VERSION` arg.
+  `go.work`, per-module `go.mod`, the workflow `setup-python` steps, the devcontainer Dockerfile's
+  `PYTHON_VERSION` arg, and the Go toolchain `version` *option* on the `go` feature in
+  `devcontainer.json`. Note the option is a different dependency from the feature reference that
+  carries it: `matchDepNames: ["go", "python"]` matches the toolchain option, not
+  `ghcr.io/devcontainers/features/go`, so a feature-package major lands ungrouped on its own PR.
 - **`ruff`** — pinned in both the devcontainer Dockerfile and the CI workflow. (`pyproject.toml`
   holds ruff's *config*, not its version.)
 - **Bazel toolchains and rulesets** — `bazel_dep` majors. Rulesets that must advance in lockstep
@@ -344,6 +346,13 @@ The uv step runs before the Bazel step, and a Python change triggers the Bazel s
 `requirements_lock.txt`: `pip.parse` reads that file, and the artifact hashes it resolves are
 recorded in `MODULE.bazel.lock`'s `facts`, so moving it restales the Bazel lock. A pyproject-only
 edit that re-resolves the same versions skips the Bazel step. Both refreshes land in a single commit.
+
+A devcontainer feature bump gets built twice by design: the helper's commit adds
+`devcontainer-lock.json`, which matches the `^\.devcontainer/` filter in
+[`devcontainer.yml`](.github/workflows/devcontainer.yml), so that workflow runs again on the settled
+state rather than only on Renovate's un-regenerated first push. It also re-runs the lock freshness
+check, which is what closes the loop: if the refresh step were skipped (a ratify conflict) or failed,
+the drifted lock fails the build instead of merging quietly.
 
 The uv step ratifies Renovate's `requirements_lock.txt` edits: it extracts the proposed package
 names, asks uv to re-resolve with those packages flagged for upgrade, and either commits the result

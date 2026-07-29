@@ -91,14 +91,10 @@ class TestClassifyRenovate(unittest.TestCase):
 
     def test_bazelversion_triggers_bazel_refresh(self):
         # A bazel version bump changes the lock's `lockFileVersion`, so it needs the same
-        # `bazel mod deps` refresh as a MODULE.bazel change — same output, one gate.
+        # `bazel mod deps` refresh as a MODULE.bazel change — same output, one gate. The
+        # full-dict compare also pins that such a PR skips uv setup, the Go tidy, and the
+        # devcontainer refresh entirely.
         self.assertEqual(self._run([".bazelversion"]), expect(bazel=True))
-
-    def test_bazelversion_alone_does_not_trigger_python_or_go(self):
-        # A .bazelversion-only PR must skip uv setup and the Go tidy entirely.
-        result = self._run([".bazelversion"])
-        self.assertFalse(result["python"])
-        self.assertFalse(result["go"])
 
     def test_decoy_bazelversion_suffix(self):
         # `$`-anchored: a sibling like .bazelversion.bak must not trigger a refresh.

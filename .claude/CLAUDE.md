@@ -104,14 +104,11 @@ the `Renovate helper`. Load-bearing facts:
   uv path, there's no "conflict" review: a bump `go mod tidy` can't settle just fails the job.
   MODULE.bazel.lock is *not* in this set — gazelle's `go_deps` extension is reproducible and absent
   from the lockfile, and `use_repo` tracks only direct imports (unchanged by a version bump).
-- **Devcontainer feature lock rides it too.** `devcontainer-lock.json` is keyed by the feature
-  reference string, so a Renovate bump of `features/go:1.3.4` restales every entry. The workflow
-  reruns `devcontainer upgrade` when `devcontainer.json` moves. Like Go, it is *independent* of the
-  uv→Bazel ordering and shares the job only so a grouped PR settles in one `expectedHeadOid`
-  mutation. It needs no Docker — feature metadata resolves straight from the OCI registry — so the
-  cost is an npm install of the CLI, whose pin is Renovate-tracked via the `# renovate:` marker on
-  `DEVCONTAINER_CLI_VERSION`. See the devcontainer plumbing section for why the references must be
-  full semver and must not carry digests.
+- **Devcontainer feature lock rides it too.** `devcontainer upgrade` reruns when
+  `devcontainer.json` moves. Like Go, it is *independent* of the uv→Bazel ordering and shares the
+  job only so a grouped PR settles in one `expectedHeadOid` mutation. Needs no Docker (OCI metadata
+  only), so the cost is an npm install of the CLI. The lock's derived-file contract, and why the
+  references must be full semver and carry no digests, live in the devcontainer plumbing section.
 - **App permissions.** `Contents: read & write` (commit) and `Pull requests: read & write` (to file
   and dismiss the `REQUEST_CHANGES` reviews the ratify step raises on an unresolvable bump). Set in
   the app's GitHub settings; no code.
@@ -154,8 +151,16 @@ per-step rationale lives at each site, not here:
 `ghcr.io/devcontainers/features/*` feature referenced from `devcontainer.json`. It is a **derived
 file** in exactly the sense `MODULE.bazel.lock` is: `renovate-derived-files.yml` regenerates it with
 `devcontainer upgrade` whenever a PR moves `devcontainer.json`, and commits it in that workflow's
-single commit. To refresh by hand, `devcontainer upgrade --workspace-folder .` (`--dry-run` to
-preview); `devcontainer outdated` shows Current/Wanted/Latest.
+single commit, and `devcontainer.yml` fails the build if the committed copy doesn't match what
+`upgrade --dry-run` would write. That check is in CI rather than pre-commit — unlike `bazel mod tidy`
+or `uv lock`, the devcontainer CLI is a host/runner tool and is deliberately absent from the image,
+so a `language: system` hook running *inside* the container could not invoke it.
+
+To re-resolve the lock by hand: `devcontainer upgrade --workspace-folder .` (`--dry-run` prints
+instead of writing). Note that under exact pins `upgrade` can no longer *advance* anything — it only
+makes the lock agree with the references. Moving a feature version means editing the tag in
+`devcontainer.json`; `devcontainer outdated` will report Wanted/Latest equal to the pin, not the
+newest release.
 
 Two conventions make that work, and both are load-bearing:
 

@@ -32,11 +32,10 @@ name: Renovate — re-derive lock files
 #      moved. Renovate's `go get` bumps go.mod/go.sum but never tidies (opt-in) or syncs
 #      (vendor-only in Renovate), so the indirect block and go.work.sum are left stale; this
 #      settles them. Gated on no ratify conflicts so the Go files join the single commit.
-#   5. Devcontainer: `devcontainer upgrade` when devcontainer.json moved. The feature lock is
-#      keyed by the *reference string*, so a Renovate bump of `features/go:1.3.4` leaves every
-#      committed entry stale — same derived-file relationship as the others. Also gated on no
-#      ratify conflicts so it rides the single commit.
-#   5. No conflicts: commit every derived file in a single commit. Otherwise: reset
+#   5. Devcontainer: `devcontainer upgrade` when devcontainer.json moved — see .claude/CLAUDE.md
+#      ".devcontainer worktree + timezone plumbing" for why the lock restales wholesale. Also
+#      gated on no ratify conflicts so it rides the single commit.
+#   6. No conflicts: commit every derived file in a single commit. Otherwise: reset
 #      nothing (we won't silently revert Renovate's edit — the commit step is simply
 #      skipped) and file a REQUEST_CHANGES review with the diagnosis. The review blocks
 #      merge until dismissed; dismissal is the deliberate ack that the PR is unactionable
@@ -78,10 +77,9 @@ on:
       # per-module go.mod at any depth.
       - "**/go.mod"
       - "go.work"
-      # The devcontainer feature references. Renovate's `devcontainer` manager tracks them as
-      # docker deps, which works only because they are pinned to full semver — a floating `:1`
-      # gives it nothing to bump, and the lock then drifts with nothing to notice. The lock is
-      # absent from this list for the same reason MODULE.bazel.lock is: it is derived.
+      # The devcontainer feature references; the lock is absent for the same reason
+      # MODULE.bazel.lock is (derived). Why full-semver pins are what make this trigger fire at
+      # all: .claude/CLAUDE.md ".devcontainer worktree + timezone plumbing".
       - ".devcontainer/devcontainer.json"
 
 permissions:
@@ -231,21 +229,29 @@ jobs:
           } >> "${GITHUB_OUTPUT}"
 
       # ── Devcontainer: re-resolve the feature lock ─────────────────────────────────
-      # devcontainer-lock.json records a resolved version + digest per feature, keyed by the
-      # *reference string* from devcontainer.json — so a Renovate bump of `features/go:1.3.4`
-      # to `:1.3.5` restales every entry, not just the version fields. Renovate has no way to
-      # regenerate it (the lock is not a manager's file at all), which is the same position
-      # MODULE.bazel.lock is in.
-      #
-      # `devcontainer upgrade` needs no Docker — it resolves feature metadata straight from the
-      # OCI registry — so this adds an npm install and seconds of runtime, not a container build.
-      # Gated on no ratify conflicts so the lock rides the single commit below.
+      # Renovate bumps the feature references in devcontainer.json but cannot regenerate the lock
+      # they resolve to (it is not a manager's file at all) — same position MODULE.bazel.lock is
+      # in. `devcontainer upgrade` needs no Docker: it resolves feature metadata straight from the
+      # OCI registry, so this costs an npm install and seconds, not a container build. Gated on no
+      # ratify conflicts so the lock rides the single commit below.
+
+      # The CLI version is pinned and Renovate-tracked, so pin the Node it runs on too — same
+      # reasoning as the setup-python above, where runner drift broke the scripts outright.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: steps.changed.outputs.devcontainer == 'true' && steps.ratify.outputs.conflicts == ''
+        with:
+          # renovate: datasource=node-version depName=node
+          node-version: "24.18.1"
+
+      # `--ignore-scripts` because nothing here needs them: the package publishes no install
+      # script (`hasInstallScript` is absent on the registry entry), so this is free hardening on
+      # a public-registry install.
       - name: Install the devcontainer CLI
         if: steps.changed.outputs.devcontainer == 'true' && steps.ratify.outputs.conflicts == ''
         env:
           # renovate: datasource=npm depName=@devcontainers/cli
           DEVCONTAINER_CLI_VERSION: "0.88.0"
-        run: npm install -g "@devcontainers/cli@${DEVCONTAINER_CLI_VERSION}"
+        run: npm install -g --ignore-scripts "@devcontainers/cli@${DEVCONTAINER_CLI_VERSION}"
 
       - name: Re-resolve the devcontainer feature lock
         if: steps.changed.outputs.devcontainer == 'true' && steps.ratify.outputs.conflicts == ''

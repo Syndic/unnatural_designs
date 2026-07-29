@@ -57,10 +57,6 @@
   ],
   "packageRules": [
     {
-      "matchManagers": [ "devcontainer" ],
-      "pinDigests": false
-    },
-    {
       "matchManagers": [ "custom.regex", "devcontainer" ],
       "matchDepNames": [ "go", "python" ],
       "matchUpdateTypes": [ "major" ],
@@ -81,6 +77,10 @@
       "matchUpdateTypes": [ "minor", "patch" ],
       "groupName": "all non-major dependencies",
       "groupSlug": "all-minor-patch"
+    },
+    {
+      "matchManagers": [ "devcontainer" ],
+      "pinDigests": false
     }
   ]
 }
