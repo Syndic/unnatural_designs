@@ -103,6 +103,25 @@ py_test(
 )
 
 py_library(
+    name = "devcontainer_lock_drift_lib",
+    srcs = ["devcontainer_lock_drift.py"],
+)
+
+py_binary(
+    name = "devcontainer_lock_drift",
+    srcs = ["devcontainer_lock_drift.py"],
+    main = "devcontainer_lock_drift.py",
+)
+
+py_test(
+    name = "test_devcontainer_lock_drift",
+    size = "small",
+    srcs = ["test_devcontainer_lock_drift.py"],
+    main = "test_devcontainer_lock_drift.py",
+    deps = [":devcontainer_lock_drift_lib"],
+)
+
+py_library(
     name = "check_secrets_dir_lib",
     srcs = ["check_secrets_dir.py"],
 )

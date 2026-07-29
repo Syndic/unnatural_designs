@@ -152,11 +152,30 @@ devcontainer outdated --workspace-folder .   # Current / Wanted / Latest per fea
 devcontainer upgrade  --workspace-folder .   # rewrite the lock at Latest (--dry-run to preview)
 ```
 
-**No automation moves it.** Renovate's `devcontainer` manager reads the feature *references* in
+Renovate does **not** cover it: its `devcontainer` manager reads the feature *references* in
 `devcontainer.json` — floating major tags (`:2`, `:1`) — so it only has something to propose on a
 major release; it does not parse the lock file, and the patch-level digests inside it are invisible
-to every manager. Left alone the lock silently rots: it sat two features behind (common-utils
-2.5.8→2.5.9, git 1.3.5→1.3.8) before anyone ran `outdated`.
+to every manager. Left alone the lock rots silently, and did: it sat two features behind
+(common-utils 2.5.8→2.5.9, git 1.3.5→1.3.8) before anyone ran `outdated`.
+
+`.github/workflows/devcontainer-lock.yml` closes that gap on a weekly schedule — it runs the two
+commands above and opens a PR when the lock has moved, committing through the same
+`commit-file-via-app` path the Renovate helper uses. Three facts worth knowing before touching it:
+
+- **It is scheduled because there is nothing to react to.** No repo event accompanies an upstream
+  feature release, which is also why it can't fold into `renovate-derived-files.yml`.
+- **It opens a PR rather than failing a check.** The drift is upstream, so a red check would block
+  PRs whose authors can't fix it.
+- **Only `current != wanted` counts as drift** — the newest version *inside* the pinned major, which
+  is all `devcontainer upgrade` can reach. A newer major needs the `devcontainer.json` reference to
+  move, which is Renovate's job; the workflow reports it and takes no action. That split lives in
+  `meta/scripts/devcontainer_lock_drift.py`.
+
+It reuses the `Renovate helper` app (below) for the commit and the PR: the permissions it needs are
+exactly that app's `Contents` + `Pull requests` read/write, and `GITHUB_TOKEN` is unusable here for
+the same reason it is there — a token-authored push suppresses the PR's status checks. The app's
+name is narrower than its use now; the `gitIgnoredAuthors` entry in `renovate.json` is unaffected,
+since it only governs commits on Renovate's own branches.
 
 Python is deliberately **not** a devcontainer feature: that feature compiles CPython from source
 (~2 min per build). The Dockerfile installs a prebuilt uv-managed interpreter instead — `ARG

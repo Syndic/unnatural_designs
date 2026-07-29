@@ -1,0 +1,155 @@
+name: Devcontainer feature lock
+
+# Refresh `.devcontainer/devcontainer-lock.json` and open a PR when the pinned feature digests
+# fall behind. Nothing else moves this file: Renovate's `devcontainer` manager reads only the
+# feature *references* in devcontainer.json — floating major tags (`:2`, `:1`), so it has
+# something to propose only on a major release — and no manager parses the lock itself. Left
+# alone it rots silently; it sat two features behind before anyone thought to check.
+#
+# Why a schedule, when every other dependency workflow here is event-driven: a feature-digest
+# refresh has no repo event to hang off. Nothing in this repository changes when upstream
+# publishes `common-utils` 2.5.10, so there is no push or PR to react to. That also rules out
+# folding this into renovate-derived-files.yml, which is triggered by Renovate PRs touching
+# specific manifests.
+#
+# Why a PR rather than a failing status check: the drift originates upstream, not in the branch
+# under review. A check that went red when a feature published would block PRs that had nothing
+# to do with it, and the fix would not be in the author's hands.
+#
+# The steps run in this order:
+#   1. `devcontainer outdated` reports Current/Wanted/Latest per feature; the drift script
+#      classifies it. Only `current != wanted` (newer version *within* the pinned major) is
+#      actionable — see the script's docstring for why a newer major is reported but not acted on.
+#   2. `devcontainer upgrade` rewrites the lock. No Docker required: it resolves feature metadata
+#      straight from the OCI registry, so this job needs no container build.
+#   3. Reset the refresh branch to main's tip, commit the lock through the same
+#      `commit-file-via-app` action the Renovate helper uses (web-flow-signed, so branch
+#      protection is satisfied, and attributed to the app so CI actually runs on the PR), then
+#      open the PR or refresh the body of the one already open.
+#
+# The classification logic lives in `meta/scripts/devcontainer_lock_drift.py` under
+# `//meta/scripts:test_devcontainer_lock_drift`; this workflow handles only the side-effecting
+# steps that need Actions context.
+#
+# See .claude/CLAUDE.md ".devcontainer worktree + timezone plumbing" for what the lock pins.
+
+on:
+  schedule:
+    # Mondays 06:17 UTC. Off-the-hour deliberately: GitHub drops scheduled runs at peak times.
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # The branch this workflow owns end to end. Reset to main's tip on every run, so a refresh
+  # that sits unmerged while main advances is rebuilt from the current base rather than stacking.
+  REFRESH_BRANCH: chore/devcontainer-feature-lock
+
+jobs:
+  refresh:
+    name: Refresh devcontainer feature lock
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The drift script targets the repo's pinned Python 3.14 (ruff enforces 3.14-only syntax
+      # via target-version = py314); the runner's stock python3 lags and would SyntaxError.
+      # Same pin as ci.yml / security.yml / renovate-derived-files.yml.
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          # renovate: datasource=python-version depName=python
+          python-version: "3.14"
+
+      - name: Install the devcontainer CLI
+        env:
+          # renovate: datasource=npm depName=@devcontainers/cli
+          DEVCONTAINER_CLI_VERSION: "0.88.0"
+        run: npm install -g "@devcontainers/cli@${DEVCONTAINER_CLI_VERSION}"
+
+      - name: Detect lock drift
+        id: drift
+        run: |
+          set -euo pipefail
+          devcontainer outdated --workspace-folder . --output-format json \
+            | python3 meta/scripts/devcontainer_lock_drift.py
+
+      - name: Refresh the lock
+        if: steps.drift.outputs.drift == 'true'
+        run: devcontainer upgrade --workspace-folder .
+
+      # Belt and braces: `drift == true` should always imply a file change, but a lock written
+      # byte-identically would otherwise leave an empty branch and an empty PR behind.
+      - name: Confirm the lock moved
+        id: moved
+        if: steps.drift.outputs.drift == 'true'
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- .devcontainer/devcontainer-lock.json; then
+            echo "moved=false" >> "${GITHUB_OUTPUT}"
+          else
+            echo "moved=true" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: app-token
+        if: steps.moved.outputs.moved == 'true'
+        with:
+          client-id: ${{ vars.RENOVATE_HELPER_CLIENT_ID }}
+          private-key: ${{ secrets.RENOVATE_HELPER_PRIVATE_KEY }}
+
+      # Point the refresh branch at main's tip before committing. Force is correct here and only
+      # here: this workflow is the branch's sole writer, and the previous run's refresh is
+      # superseded by this one rather than merged with it.
+      - name: Reset the refresh branch to main
+        if: steps.moved.outputs.moved == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          BASE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if gh api "repos/${REPO}/git/ref/heads/${REFRESH_BRANCH}" >/dev/null 2>&1; then
+            gh api -X PATCH "repos/${REPO}/git/refs/heads/${REFRESH_BRANCH}" \
+              -f sha="${BASE_SHA}" -F force=true >/dev/null
+          else
+            gh api -X POST "repos/${REPO}/git/refs" \
+              -f ref="refs/heads/${REFRESH_BRANCH}" -f sha="${BASE_SHA}" >/dev/null
+          fi
+
+      - name: Commit the refreshed lock
+        if: steps.moved.outputs.moved == 'true'
+        uses: ./.github/actions/commit-file-via-app
+        with:
+          client-id: ${{ vars.RENOVATE_HELPER_CLIENT_ID }}
+          private-key: ${{ secrets.RENOVATE_HELPER_PRIVATE_KEY }}
+          branch: ${{ env.REFRESH_BRANCH }}
+          file-paths: .devcontainer/devcontainer-lock.json
+          commit-message: "chore(deps): refresh devcontainer feature lock"
+
+      # Open the PR, or refresh the body of the one already open so a superseded refresh does not
+      # describe versions the branch no longer carries.
+      - name: Open or update the PR
+        if: steps.moved.outputs.moved == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+          SUMMARY: ${{ steps.drift.outputs.summary }}
+        run: |
+          set -euo pipefail
+          EXISTING=$(gh api \
+            "repos/${REPO}/pulls?head=${OWNER}:${REFRESH_BRANCH}&state=open" \
+            --jq '.[0].number // empty')
+          if [ -n "${EXISTING}" ]; then
+            gh pr edit "${EXISTING}" --repo "${REPO}" --body "${SUMMARY}"
+            echo "Updated existing PR #${EXISTING}."
+          else
+            gh pr create --repo "${REPO}" \
+              --base main --head "${REFRESH_BRANCH}" \
+              --title "chore(deps): refresh devcontainer feature lock" \
+              --body "${SUMMARY}"
+          fi

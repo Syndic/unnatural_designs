@@ -347,3 +347,29 @@ its required permissions, and the recovery procedure if the app is recreated.
 The action also has consumers outside this repo; its
 [README](.github/actions/commit-file-via-app/README.md) documents the compatibility contract,
 the consumer list, and the self-test workflow that exercises it on PRs.
+
+One dependency sits outside Renovate's reach entirely:
+[`.devcontainer/devcontainer-lock.json`](.devcontainer/devcontainer-lock.json), which pins a
+resolved version and digest per devcontainer feature. Renovate's `devcontainer` manager reads only
+the feature *references* in `devcontainer.json` — floating major tags (`:2`, `:1`) — so it has
+something to propose only on a major release, and no manager parses the lock itself.
+[`devcontainer-lock.yml`](.github/workflows/devcontainer-lock.yml) covers it on a weekly schedule:
+`devcontainer outdated` reports the drift,
+[`meta/scripts/devcontainer_lock_drift.py`](meta/scripts/devcontainer_lock_drift.py) classifies it
+(`bazel test //meta/scripts:test_devcontainer_lock_drift`), and `devcontainer upgrade` rewrites the
+lock, which is committed through the same composite action and raised as a PR.
+
+It is scheduled rather than event-driven because no repo event accompanies an upstream feature
+release — nothing here changes when `common-utils` publishes 2.5.10 — which is also why it cannot
+fold into the workflow above. It opens a PR rather than failing a status check, since the drift
+originates upstream and a red check would block PRs whose authors cannot fix it. Only
+`current != wanted` counts as drift, that being the newest version *within* the pinned major and all
+`devcontainer upgrade` can reach; a newer major needs the `devcontainer.json` reference to move,
+which is Renovate's job, so the workflow reports it and stops there.
+
+To refresh by hand, from the host (the two commands the workflow runs):
+
+```sh
+devcontainer outdated --workspace-folder .   # Current / Wanted / Latest per feature
+devcontainer upgrade  --workspace-folder .   # --dry-run to preview
+```
