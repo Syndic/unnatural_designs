@@ -30,8 +30,8 @@ bazel_dep(name = "gazelle", version = "0.52.2")
 go_sdk = use_extension("@rules_go//go:extensions.bzl", "go_sdk")
 
 # Download the SDK for each platform we may execute Go actions on. A single
-# go_sdk.download(version="X") tag (no goos/goarch) downloads only the host SDK,
-# which breaks `--config=remote_bb` from a darwin host: BuildBuddy executors are
+# download tag carrying only a version (no goos/goarch) downloads only the host
+# SDK, which breaks `--config=remote_bb` from a darwin host: BuildBuddy executors are
 # linux_amd64 and would receive the darwin SDK ("cannot execute binary file: Exec
 # format error" on the GoToolchainBinaryBuild action). Listing each platform
 # explicitly registers a toolchain per exec_compatible_with, and rules_go selects

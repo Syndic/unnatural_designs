@@ -12,14 +12,14 @@
     {
       "customType": "regex",
       "managerFilePatterns": [ "/^MODULE\\.bazel$/" ],
-      "matchStrings": [ "go_sdk\\.download\\(\\s*version\\s*=\\s*\"(?<currentValue>[^\"]+)\"" ],
+      "matchStrings": [ "go_sdk\\.download\\([^)]*?version\\s*=\\s*\"(?<currentValue>[^\"]+)\"" ],
       "datasourceTemplate": "golang-version",
       "depNameTemplate": "go"
     },
     {
       "customType": "regex",
       "managerFilePatterns": [ "/^MODULE\\.bazel$/" ],
-      "matchStrings": [ "python\\.toolchain\\(\\s*python_version\\s*=\\s*\"(?<currentValue>[^\"]+)\"" ],
+      "matchStrings": [ "python_version\\s*=\\s*\"(?<currentValue>[^\"]+)\"" ],
       "datasourceTemplate": "python-version",
       "depNameTemplate": "python"
     },
