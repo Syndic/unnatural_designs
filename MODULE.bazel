@@ -96,7 +96,7 @@ use_repo(pip, "unnatural_designs_pypi")
 
 # TEND(tooling): rules_python_gazelle_plugin (a.k.a. gazelle_python) is not wired
 # here. The plugin's gazelle binary pulls in smacker/go-tree-sitter via CGO,
-# which does not compile under our Go 1.26.4 SDK (upstream issue
+# which does not compile under our pinned Go SDK (upstream issue
 # bazel-contrib/rules_python#3416; the migration to a pure-Go binding is in
 # the unmerged bazel-contrib/rules_python#3786). Until #3786 ships in a
 # release, Python BUILD files are hand-authored. See
