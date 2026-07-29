@@ -185,22 +185,24 @@ pattern is added.
 
 ---
 
-## Devcontainer Feature Lock Has No Refresh Mechanism
+## Devcontainer Feature Lock Refresh Is Manual
 
 `.devcontainer/devcontainer-lock.json` pins patch-level digests for the four
-`ghcr.io/devcontainers/features/*` features, and nothing updates it automatically. Renovate's
-`devcontainer` manager reads only the feature references in `devcontainer.json`, which are floating
-major tags (`:2`, `:1`) — so it has something to propose only on a major release. The lock itself is
-invisible to every manager, and there is no `devcontainer features upgrade` subcommand to lean on
-(checked against CLI 0.88.0). It had drifted two features behind before being refreshed by hand here.
+`ghcr.io/devcontainers/features/*` features. The CLI has first-class commands for it —
+`devcontainer outdated` reports Current/Wanted/Latest per feature, `devcontainer upgrade` rewrites
+the lock (`--dry-run` to preview) — but nothing *runs* them automatically. Renovate's `devcontainer`
+manager reads only the feature references in `devcontainer.json`, which are floating major tags
+(`:2`, `:1`), so it has something to propose only on a major release; the lock itself is invisible to
+every manager. It had drifted two features behind before anyone thought to check.
 
-The natural home for a fix is `renovate-derived-files.yml`, which already exists to regenerate
-derived files Renovate cannot. The refresh is `rm .devcontainer/devcontainer-lock.json` followed by
-`devcontainer build`, then committing the rewritten file through the same `commit-file-via-app`
-path. What makes it awkward, and why it is deferred: that workflow is *triggered by* Renovate PRs
-touching specific manifests, and a feature-digest refresh has no such trigger — nothing in the repo
-changes when upstream publishes `common-utils` 2.5.10. It would need a schedule instead, which is a
-different shape from everything else in that workflow.
+The mechanism for a fix is cheap — `devcontainer upgrade` is one command and takes about a second
+(no image build), and `devcontainer outdated --output-format json` gives a machine-readable drift
+report suitable for a check that fails instead of committing. The open question is the **trigger**,
+not the work: `renovate-derived-files.yml` is the natural host, but it fires on Renovate PRs touching
+specific manifests, and a feature-digest refresh has no such event — nothing in the repo changes when
+upstream publishes `common-utils` 2.5.10. That means a `schedule:` trigger, which is a different
+shape from everything else in that workflow, and a standing decision about whether the repo wants
+unprompted digest-bump PRs on a cadence.
 
 **Trigger to revisit:** when a stale feature digest actually costs something (a devcontainer bug
 already fixed upstream), or when the workflow grows a scheduled trigger for another reason.
