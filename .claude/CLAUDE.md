@@ -143,9 +143,14 @@ per-step rationale lives at each site, not here:
   `host-timezone` and points `/etc/localtime` at it.
 
 `.devcontainer/devcontainer-lock.json` pins the digests of the `ghcr.io/devcontainers/features/*`
-features referenced from `devcontainer.json` (common-utils, git, github-cli, go). It is
-maintained by the `devcontainer` CLI (`devcontainer features upgrade`) and bumped by Renovate's
-`devcontainer` manager; nothing else writes it.
+features referenced from `devcontainer.json` (common-utils, git, github-cli, go). **Nothing updates
+it automatically.** Renovate's `devcontainer` manager reads the feature *references* in
+`devcontainer.json` — which are floating major tags (`:2`, `:1`) — so it only has something to
+propose on a major release; it does not parse the lock file, and the patch-level digests inside it
+are invisible to every manager. There is also no `devcontainer features upgrade` subcommand (checked
+against CLI 0.88.0). The only refresh path is to delete the lock and re-run `devcontainer build`
+(or `up`), which re-resolves each feature and rewrites the file. Left alone it silently rots — it
+sat two features behind (common-utils 2.5.8→2.5.9, git 1.3.5→1.3.8) until refreshed by hand.
 
 Python is deliberately **not** a devcontainer feature: that feature compiles CPython from source
 (~2 min per build). The Dockerfile installs a prebuilt uv-managed interpreter instead — `ARG

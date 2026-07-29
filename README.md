@@ -268,16 +268,29 @@ comment. Semgrep is the one action that could not join this scheme: `semgrep/sem
 and frozen at `v0.58.0`, so the SAST job runs the SHA-pinned `semgrep/semgrep` container image
 directly instead.
 
-Versions that live in a plain string rather than a manifest Renovate understands — a Dockerfile
-`ARG`, a shell assignment in `post-create.sh`, a workflow `with:`/`env:` value — are picked up by the
-`customManagers` regexes in [`renovate.json`](renovate.json). Each expects a `# renovate:
-datasource=<ds> depName=<name>` marker comment on the line **immediately above** the value, and the
-value on the next line must be quoted in the workflow case (`key: "1.2.3"`). The key name itself is
-not constrained, so both `version:` and `TY_VERSION:` are tracked. A marker whose next line does not
-match is silently ignored — the pin then never moves, with no warning from Renovate. That is how the
-CI `ty` pin sat at an alpha while the devcontainer's advanced: the key clause used to be
-`[A-Za-z_-]*[Vv]ersion:`, which no SCREAMING_SNAKE key could satisfy. When adding a marker, confirm
-the manager actually claims it before relying on it.
+Versions that live in a plain string rather than a manifest Renovate understands are picked up by the
+`customManagers` regexes in [`renovate.json`](renovate.json). They come in two flavours, and the
+difference matters when adding one:
+
+- **Marker-driven** — a Dockerfile `ARG`, a shell assignment in `post-create.sh`, a workflow
+  `with:`/`env:` value. Each expects a `# renovate: datasource=<ds> depName=<name>` comment on the
+  line **immediately above** the value, and the value must be quoted in the workflow case
+  (`key: "1.2.3"`). The key name is not constrained, so both `version:` and `TY_VERSION:` are
+  tracked.
+- **Structural** — the two `MODULE.bazel` patterns, which carry `datasourceTemplate`/`depNameTemplate`
+  in the config and match the pin site directly (`go_sdk.download(… version = "…")`, and any
+  `python_version = "…"`). There is no marker comment to grep for, so these are easy to forget when
+  auditing coverage.
+
+Either flavour fails **silently** when the regex stops matching: the pin never moves and Renovate
+says nothing. Both have happened here. The workflow clause used to be `[A-Za-z_-]*[Vv]ersion:`, which
+no SCREAMING_SNAKE key could satisfy, so the CI `ty` pin sat at an alpha while the devcontainer's
+advanced. The `MODULE.bazel` patterns used to require the version to be the *first* argument, which
+no real call site satisfied — and the `go_sdk` one matched an explanatory comment instead, yielding a
+phantom dependency that looked like coverage. Both are now written to tolerate argument order.
+
+When adding or editing a pattern, confirm it claims the sites you expect **and nothing else** before
+relying on it.
 
 The same dependency pinned in several files is one dependency to Renovate: one branch, one PR,
 every site edited together — but only while the sites agree. Divergent current values are two

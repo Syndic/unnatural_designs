@@ -146,27 +146,64 @@ stays installed for the Bazel and Go halves), and (e) remove the freshness check
 
 ---
 
-## Renovate Marker Coverage Is Not Enforced
+## Renovate Custom-Manager Coverage Is Not Enforced
 
-A `# renovate: datasource=… depName=…` marker comment whose following line doesn't match the
-corresponding `customManagers` regex in `renovate.json` is silently ignored: the pin stops moving and
-nothing reports it. This is not hypothetical — it stranded the CI `ty` pin on an alpha
-(`0.0.1a25`) while the devcontainer's advanced to `0.0.64`, and equally hid the `pip-audit` pin in
-`security.yml`. Both were SCREAMING_SNAKE env-var keys that the workflow regex's
-`[A-Za-z_-]*[Vv]ersion:` clause couldn't match; the clause is now `[A-Za-z0-9_-]+:`, which claims any
-key.
+A `customManagers` regex in `renovate.json` that matches nothing — or matches the wrong text — fails
+silently: the pin stops moving and nothing reports it. Every instance found so far shares one cause,
+a pattern over-fitted to incidental syntax rather than to the thing being pinned:
+
+- **Workflow marker comments.** The clause `[A-Za-z_-]*[Vv]ersion:` could not match a
+  SCREAMING_SNAKE key, so `TY_VERSION` (`ci.yml`) and `PIP_AUDIT_VERSION` (`security.yml`) were
+  invisible. `ty` sat on an alpha (`0.0.1a25`) while the devcontainer's advanced to `0.0.64`. Clause
+  is now `[A-Za-z0-9_-]+:`, which claims any key.
+- **`go_sdk.download` in `MODULE.bazel`.** The pattern required `version` to be the *first*
+  argument; the real tags list `goarch`/`goos` first. The only text of that shape in the file was an
+  explanatory comment containing `go_sdk.download(version="X")`, so Renovate extracted a phantom dep
+  with `currentValue = "X"` and silently failed to resolve it, while the three real pins sat at
+  `1.26.4` against a `go.work` already on `1.26.5`. **Worse than no match** — a bogus match looks
+  like coverage.
+- **`python.toolchain` in `MODULE.bazel`.** Same first-argument assumption; a comment and
+  `configure_coverage_tool` sit between the paren and `python_version`, so it matched nothing. The
+  sibling `pip.parse(python_version = …)` was never targeted by any pattern at all. Both were at
+  `3.14` — current, so nothing looked wrong.
+
+That last one is the reason this keeps going unnoticed: a pin that is untracked *and* happens to be
+current is indistinguishable from a working one. It only surfaces once upstream moves.
 
 The remaining hole is that coverage is still verified by hand. A repo-health check in the
 `meta/scripts/check_*.py` family — read `renovate.json`, walk the files each `managerFilePatterns`
-selects, and fail on any marker comment no `matchStrings` entry claims — would make the class of bug
-impossible. Deferred because it wants the full pattern to be worth its keep (a `check_renovate_markers.py`
-plus its unit test, a CI job, a `.vscode/tasks.json` entry, and README table rows), and the regex
-widening removed the only failures known to exist. One caveat for whoever builds it: Renovate
-evaluates these patterns with RE2/JS named-group syntax (`(?<name>`), so a Python implementation has
-to translate to `(?P<name>` and cannot assume the two dialects agree on everything.
+selects, and report both marker comments no `matchStrings` claims *and* patterns that match zero
+sites — would make the class of bug impossible. Deferred because it wants the full pattern to be
+worth its keep (a `check_renovate_markers.py` plus its unit test, a CI job, a `.vscode/tasks.json`
+entry, and README table rows). Two caveats for whoever builds it: Renovate evaluates these patterns
+with RE2/JS named-group syntax (`(?<name>`), so a Python implementation has to translate to
+`(?P<name>` and cannot assume the two dialects agree on everything; and a zero-match check alone
+would not have caught the `go_sdk` case, which matched — just the wrong line.
 
-**Trigger to revisit:** the next time a marker comment is found not to be tracked, or when a third
-manager file pattern is added.
+**Trigger to revisit:** the next time a pin is found not to be tracked, or when a third manager file
+pattern is added.
+
+---
+
+## Devcontainer Feature Lock Has No Refresh Mechanism
+
+`.devcontainer/devcontainer-lock.json` pins patch-level digests for the four
+`ghcr.io/devcontainers/features/*` features, and nothing updates it automatically. Renovate's
+`devcontainer` manager reads only the feature references in `devcontainer.json`, which are floating
+major tags (`:2`, `:1`) — so it has something to propose only on a major release. The lock itself is
+invisible to every manager, and there is no `devcontainer features upgrade` subcommand to lean on
+(checked against CLI 0.88.0). It had drifted two features behind before being refreshed by hand here.
+
+The natural home for a fix is `renovate-derived-files.yml`, which already exists to regenerate
+derived files Renovate cannot. The refresh is `rm .devcontainer/devcontainer-lock.json` followed by
+`devcontainer build`, then committing the rewritten file through the same `commit-file-via-app`
+path. What makes it awkward, and why it is deferred: that workflow is *triggered by* Renovate PRs
+touching specific manifests, and a feature-digest refresh has no such trigger — nothing in the repo
+changes when upstream publishes `common-utils` 2.5.10. It would need a schedule instead, which is a
+different shape from everything else in that workflow.
+
+**Trigger to revisit:** when a stale feature digest actually costs something (a devcontainer bug
+already fixed upstream), or when the workflow grows a scheduled trigger for another reason.
 
 ---
 
