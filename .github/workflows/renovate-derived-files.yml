@@ -32,7 +32,10 @@ name: Renovate — re-derive lock files
 #      moved. Renovate's `go get` bumps go.mod/go.sum but never tidies (opt-in) or syncs
 #      (vendor-only in Renovate), so the indirect block and go.work.sum are left stale; this
 #      settles them. Gated on no ratify conflicts so the Go files join the single commit.
-#   5. No conflicts: commit every derived file in a single commit. Otherwise: reset
+#   5. Devcontainer: `devcontainer upgrade` when devcontainer.json moved — see .claude/CLAUDE.md
+#      ".devcontainer worktree + timezone plumbing" for why the lock restales wholesale. Also
+#      gated on no ratify conflicts so it rides the single commit.
+#   6. No conflicts: commit every derived file in a single commit. Otherwise: reset
 #      nothing (we won't silently revert Renovate's edit — the commit step is simply
 #      skipped) and file a REQUEST_CHANGES review with the diagnosis. The review blocks
 #      merge until dismissed; dismissal is the deliberate ack that the PR is unactionable
@@ -74,6 +77,18 @@ on:
       # per-module go.mod at any depth.
       - "**/go.mod"
       - "go.work"
+      # The devcontainer feature references; the lock is absent for the same reason
+      # MODULE.bazel.lock is (derived). Why full-semver pins are what make this trigger fire at
+      # all: .claude/CLAUDE.md ".devcontainer worktree + timezone plumbing".
+      - ".devcontainer/devcontainer.json"
+
+# Deliberately NO `concurrency` block, unlike every other workflow here (see .claude/CLAUDE.md
+# "Superseding CI runs"). This workflow's own commit lands on the PR branch and touches paths in
+# the trigger list above, so it re-triggers itself — measured at ~30s after the original run
+# starts. Under `cancel-in-progress` that second run, which the actor gate immediately skips,
+# would cancel the original mid-flight, losing whatever remained after the commit (the review
+# dismissal). Every run here is already scoped to one head SHA and exits fast when there is
+# nothing to do, so there is little to reclaim.
 
 permissions:
   contents: read
@@ -119,7 +134,8 @@ jobs:
             --base "origin/${BASE_REF}" \
             --rule 'python=(^|/)(pyproject\.toml|uv\.lock|requirements_lock\.txt)$' \
             --rule 'bazel=(^|/)(MODULE\.bazel|\.bazelversion)$' \
-            --rule 'go=(^|/)(go\.mod|go\.work)$'
+            --rule 'go=(^|/)(go\.mod|go\.work)$' \
+            --rule 'devcontainer=^\.devcontainer/devcontainer\.json$'
 
       # ── Python: ratify Renovate's proposals via uv ────────────────────────────────
       # A skipped step's outputs are empty, so `steps.ratify.outputs.conflicts == ''`
@@ -220,6 +236,35 @@ jobs:
             echo "EOF"
           } >> "${GITHUB_OUTPUT}"
 
+      # ── Devcontainer: re-resolve the feature lock ─────────────────────────────────
+      # Renovate bumps the feature references in devcontainer.json but cannot regenerate the lock
+      # they resolve to (it is not a manager's file at all) — same position MODULE.bazel.lock is
+      # in. `devcontainer upgrade` needs no Docker: it resolves feature metadata straight from the
+      # OCI registry, so this costs an npm install and seconds, not a container build. Gated on no
+      # ratify conflicts so the lock rides the single commit below.
+
+      # The CLI version is pinned and Renovate-tracked, so pin the Node it runs on too — same
+      # reasoning as the setup-python above, where runner drift broke the scripts outright.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: steps.changed.outputs.devcontainer == 'true' && steps.ratify.outputs.conflicts == ''
+        with:
+          # renovate: datasource=node-version depName=node
+          node-version: "24.18.1"
+
+      # `--ignore-scripts` because nothing here needs them: the package publishes no install
+      # script (`hasInstallScript` is absent on the registry entry), so this is free hardening on
+      # a public-registry install.
+      - name: Install the devcontainer CLI
+        if: steps.changed.outputs.devcontainer == 'true' && steps.ratify.outputs.conflicts == ''
+        env:
+          # renovate: datasource=npm depName=@devcontainers/cli
+          DEVCONTAINER_CLI_VERSION: "0.88.0"
+        run: npm install -g --ignore-scripts "@devcontainers/cli@${DEVCONTAINER_CLI_VERSION}"
+
+      - name: Re-resolve the devcontainer feature lock
+        if: steps.changed.outputs.devcontainer == 'true' && steps.ratify.outputs.conflicts == ''
+        run: devcontainer upgrade --workspace-folder .
+
       - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         id: app-token
         with:
@@ -285,6 +330,7 @@ jobs:
             uv.lock
             requirements_lock.txt
             MODULE.bazel.lock
+            .devcontainer/devcontainer-lock.json
             ${{ steps.gotidy.outputs.files }}
           commit-message: "chore(deps): re-derive lock files"
 

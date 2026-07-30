@@ -77,6 +77,10 @@
       "matchUpdateTypes": [ "minor", "patch" ],
       "groupName": "all non-major dependencies",
       "groupSlug": "all-minor-patch"
+    },
+    {
+      "matchManagers": [ "devcontainer" ],
+      "pinDigests": false
     }
   ]
 }

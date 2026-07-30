@@ -64,6 +64,33 @@ a parenthetical) so a tag sweep doesn't trip on it.
 [its README](../.github/actions/commit-file-via-app/README.md) before changing its inputs or its
 no-op-when-no-diff behavior.
 
+## Superseding CI runs
+
+Every workflow except `renovate-derived-files.yml` carries the same block, and the shape of the
+group key is the load-bearing part:
+
+```yaml
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+```
+
+- **PRs group by number**, so a fast-follow push cancels the previous run. The motivating case is a
+  Renovate PR: the helper's derived-files commit lands ~30s after Renovate's push, so the first
+  devcontainer build spent ~5 of its ~5.5 minutes building a tree — bumped manifest, un-regenerated
+  lock — that never merges. Required status checks are evaluated against the PR's head SHA, so
+  cancelling a superseded SHA's run never leaves a requirement unmet.
+- **Everything else keys on `run_id`**, which is unique per run, so non-PR runs are always alone in
+  their group: nothing cancels them and — the subtler half — nothing *queues* behind them either.
+  A shared non-PR group would have made a push to main wait on an in-progress weekly security scan
+  (`cancel-in-progress: false` semantics), and a third run in that group would be dropped outright.
+  Keeping them ungrouped matters because those runs produce artifacts nothing else will: the GHCR
+  devcontainer build cache (`push: filter`), the Codecov upload, and the main-branch security
+  baseline.
+
+`renovate-derived-files.yml` is the deliberate exception; the reason is at that file's own
+`concurrency` note, since it is a property of that workflow rather than of the convention.
+
 ## Renovate auto-commit helper (`Renovate helper` app)
 
 `.github/workflows/renovate-derived-files.yml` regenerates the derived files Renovate can't
@@ -104,6 +131,11 @@ the `Renovate helper`. Load-bearing facts:
   uv path, there's no "conflict" review: a bump `go mod tidy` can't settle just fails the job.
   MODULE.bazel.lock is *not* in this set — gazelle's `go_deps` extension is reproducible and absent
   from the lockfile, and `use_repo` tracks only direct imports (unchanged by a version bump).
+- **Devcontainer feature lock rides it too.** `devcontainer upgrade` reruns when
+  `devcontainer.json` moves. Like Go, it is *independent* of the uv→Bazel ordering and shares the
+  job only so a grouped PR settles in one `expectedHeadOid` mutation. Needs no Docker (OCI metadata
+  only), so the cost is an npm install of the CLI. The lock's derived-file contract, and why the
+  references must be full semver and carry no digests, live in the devcontainer plumbing section.
 - **App permissions.** `Contents: read & write` (commit) and `Pull requests: read & write` (to file
   and dismiss the `REQUEST_CHANGES` reviews the ratify step raises on an unresolvable bump). Set in
   the app's GitHub settings; no code.
@@ -142,21 +174,39 @@ per-step rationale lives at each site, not here:
   that exact host-absolute path inside the image as a symlink to `/host-git-common`; reads
   `host-timezone` and points `/etc/localtime` at it.
 
-`.devcontainer/devcontainer-lock.json` pins the digests of the `ghcr.io/devcontainers/features/*`
-features referenced from `devcontainer.json` (common-utils, git, github-cli, go). `up`/`build` write
-it when absent but never advance it, so it is refreshed on demand with the CLI's two dedicated
-lockfile commands, run from the host:
+`.devcontainer/devcontainer-lock.json` pins a resolved version + digest for each
+`ghcr.io/devcontainers/features/*` feature referenced from `devcontainer.json`. It is a **derived
+file** in exactly the sense `MODULE.bazel.lock` is: `renovate-derived-files.yml` regenerates it with
+`devcontainer upgrade` whenever a PR moves `devcontainer.json`, and commits it in that workflow's
+single commit, and `devcontainer.yml` fails the build if the committed copy doesn't match what
+`upgrade --dry-run` would write. That check is in CI rather than pre-commit — unlike `bazel mod tidy`
+or `uv lock`, the devcontainer CLI is a host/runner tool and is deliberately absent from the image,
+so a `language: system` hook running *inside* the container could not invoke it.
 
-```
-devcontainer outdated --workspace-folder .   # Current / Wanted / Latest per feature
-devcontainer upgrade  --workspace-folder .   # rewrite the lock at Latest (--dry-run to preview)
-```
+To re-resolve the lock by hand: `devcontainer upgrade --workspace-folder .` (`--dry-run` prints
+instead of writing). Note that under exact pins `upgrade` can no longer *advance* anything — it only
+makes the lock agree with the references. Moving a feature version means editing the tag in
+`devcontainer.json`; `devcontainer outdated` will report Wanted/Latest equal to the pin, not the
+newest release.
 
-**No automation moves it.** Renovate's `devcontainer` manager reads the feature *references* in
-`devcontainer.json` — floating major tags (`:2`, `:1`) — so it only has something to propose on a
-major release; it does not parse the lock file, and the patch-level digests inside it are invisible
-to every manager. Left alone the lock silently rots: it sat two features behind (common-utils
-2.5.8→2.5.9, git 1.3.5→1.3.8) before anyone ran `outdated`.
+Two conventions make that work, and both are load-bearing:
+
+- **Feature references are pinned to full semver** (`features/go:1.3.4`), not the floating major
+  tags (`:1`) the devcontainer templates emit. Renovate's `devcontainer` manager tracks features as
+  `docker` deps, so an exact tag is a version it can bump — and that bump is the event the derived
+  file regenerates from. Under a floating `:1` there is nothing for Renovate to propose, no PR, and
+  therefore no trigger; the lock then drifts with nothing to notice. It did: it sat two features
+  behind (common-utils 2.5.8→2.5.9, git 1.3.5→1.3.8) for as long as nobody thought to look.
+- **Digests are not pinned in the reference.** The devcontainer spec supports `@sha256:` on `image`
+  but not on features. Renovate's `pinDigests` output — `features/go:1.3.4@sha256:…` — makes the
+  CLI **silently drop the feature**: no error, it simply stops being installed. (The tagless
+  `features/go@sha256:…` form does resolve, but carries no version for Renovate to compare, so it
+  would be pinned forever and invisible.) `renovate.json` therefore sets `pinDigests: false` for the
+  `devcontainer` manager. Digest pinning is not lost — the lock records
+  `resolved: …@sha256:…` per feature, which is where the digest belongs.
+
+Note the lock is keyed by the *reference string*, so a version bump restales every entry rather than
+just the one field — which is why the regeneration is a full `devcontainer upgrade` and not a patch.
 
 Python is deliberately **not** a devcontainer feature: that feature compiles CPython from source
 (~2 min per build). The Dockerfile installs a prebuilt uv-managed interpreter instead — `ARG
