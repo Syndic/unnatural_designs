@@ -210,9 +210,10 @@ rather than carrying the complexity speculatively.
 **Phase 1 landed in [PR #207](https://github.com/Syndic/unnatural_designs/pull/207).** The image is
 now host-agnostic: the git-common-dir symlink and the host timezone are applied at container start
 by `.devcontainer/plumbing.sh` instead of baked by the Dockerfile, the `checkstat`/`trustctime`
-writes moved there too, and `known_hosts`/`allowed_signers` became read-only `${localEnv:HOME}`
-bind mounts rather than snapshots. What remains is phases 2–3 (publish a shared base image and
-repoint both repos at it) plus the .dotfiles-side adoption; the inventory below reflects that.
+writes moved there too, and `known_hosts`/`allowed_signers` became bind mounts fed by stub-written
+symlinks rather than snapshots — `known_hosts` writable, so a host accepted in one container
+persists to the host itself. What remains is phases 2–3 (publish a shared base image and repoint
+both repos at it) plus the .dotfiles-side adoption; the inventory below reflects that.
 
 This repo and [Syndic/.dotfiles](https://github.com/Syndic/.dotfiles) still carry near-identical
 devcontainer git plumbing: worktree common-dir bridging (the `initializeCommand` symlink and the

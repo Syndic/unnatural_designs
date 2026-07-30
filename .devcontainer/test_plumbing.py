@@ -181,29 +181,39 @@ class TestInputValidation(unittest.TestCase):
 class TestKnownHostsDiscovery(unittest.TestCase):
     """Picks the file ssh itself writes, so a host accepted in a container reaches the host."""
 
+    def _first(self, value: str) -> str:
+        return _sh(_INITIALIZE_SH, "initialize_first_abs_path", value)
+
     def test_first_of_several_wins(self):
         # ssh appends newly-accepted hosts to the first UserKnownHostsFile only.
         self.assertEqual(
-            _sh(
-                _INITIALIZE_SH,
-                "initialize_first_path",
-                "/home/u/.ssh/known_hosts /home/u/.ssh/known_hosts2",
-            ),
+            self._first("/home/u/.ssh/known_hosts /home/u/.ssh/known_hosts2"),
             "/home/u/.ssh/known_hosts",
         )
 
     def test_single_value_passes_through(self):
-        self.assertEqual(_sh(_INITIALIZE_SH, "initialize_first_path", "/custom/kh"), "/custom/kh")
+        self.assertEqual(self._first("/custom/kh"), "/custom/kh")
 
     def test_leading_whitespace_tolerated(self):
-        self.assertEqual(
-            _sh(_INITIALIZE_SH, "initialize_first_path", "   /home/u/.ssh/known_hosts"),
-            "/home/u/.ssh/known_hosts",
-        )
+        self.assertEqual(self._first("   /home/u/.ssh/known_hosts"), "/home/u/.ssh/known_hosts")
 
     def test_empty_yields_empty_so_the_caller_can_default(self):
         # Lets the caller fall back to ssh's default rather than linking to nothing.
-        self.assertEqual(_sh(_INITIALIZE_SH, "initialize_first_path", ""), "")
+        self.assertEqual(self._first(""), "")
+
+    def test_unexpanded_tokens_are_rejected(self):
+        # An ssh that printed these literally would otherwise have the caller mkdir a literal
+        # `~` in the workspace and then dangle the symlink, aborting container start.
+        for literal in ("~/.ssh/known_hosts", "%d/.ssh/known_hosts", ".ssh/known_hosts"):
+            with self.subTest(value=literal):
+                self.assertEqual(self._first(literal), "")
+
+    def test_absolute_path_with_traversal_is_kept(self):
+        # Deliberately not rejected: unprivileged, on the user's own filesystem, and dropping
+        # it would silently ignore a legitimate config. Contrast plumbing_git_path_is_safe.
+        self.assertEqual(
+            self._first("/home/u/../u/.ssh/known_hosts"), "/home/u/../u/.ssh/known_hosts"
+        )
 
 
 class TestTimezoneDiscovery(unittest.TestCase):

@@ -32,14 +32,25 @@ initialize_sanitize_tz() {
   esac
 }
 
-# First path out of an `ssh -G` list value. ssh appends newly-accepted hosts to the FIRST
-# UserKnownHostsFile, so that's the one the container should write through to. The values
-# arrive space-separated and already tilde-expanded, which means a path containing a space
-# isn't representable — ssh has the same limitation here.
-initialize_first_path() {
+# First path out of an `ssh -G` list value, or empty unless it is absolute. ssh appends
+# newly-accepted hosts to the FIRST UserKnownHostsFile, so that's the one the container should
+# write through to. Values arrive space-separated, which means a path containing a space isn't
+# representable — ssh has the same limitation here.
+#
+# The absoluteness check is load-bearing: OpenSSH expands `~` and `%d` before printing, but an
+# older or patched ssh that returned them literally would have the caller `mkdir -p` a literal
+# `~` directory in the workspace and then dangle the symlink, which surfaces as a Docker mount
+# error pointing nowhere near the cause. Empty instead lets the caller fall back. Unlike the
+# container-side path check this doesn't reject `..`: it runs unprivileged as the user against
+# their own filesystem, so a traversing-but-absolute path is no worse than any other, and
+# rejecting it would silently ignore a legitimate config.
+initialize_first_abs_path() {
   local first=""
   read -r first _ <<<"${1:-}" || true
-  printf '%s' "$first"
+  case "$first" in
+    /*) printf '%s' "$first" ;;
+    *) printf '' ;;
+  esac
 }
 
 # Sourcing (the tests) stops here; only direct execution runs the imperative body below.
@@ -110,7 +121,7 @@ fi
 # ~/.ssh/known_hosts — this repo presents a shape for the container, it doesn't dictate the
 # host's layout. `github.com` because that's the host this repo actually talks to, and a
 # Match block could give a different answer per host.
-khfile="$(initialize_first_path \
+khfile="$(initialize_first_abs_path \
   "$(ssh -G github.com 2>/dev/null | sed -n 's/^userknownhostsfile //p')")"
 [ -n "$khfile" ] || khfile="$HOME/.ssh/known_hosts"
 # The bind needs a real target. Creating an empty known_hosts is benign — ssh would do it

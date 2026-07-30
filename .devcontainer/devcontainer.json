@@ -46,7 +46,10 @@
     // whatever the host actually uses, so devcontainer.json never names a host path. See
     // .claude/CLAUDE.md ".devcontainer signed commits under CLI".
     // known_hosts is deliberately writable — accepting a new host in any container writes
-    // through to the host's real file, so later containers start with it.
+    // through to the host's real file, so later containers start with it. Appends only:
+    // rewriting a single-file bind via temp+rename fails EBUSY in-container (so
+    // `ssh-keygen -R` won't work there), and the same rewrite done on the host swaps the
+    // inode out from under a running container. Neither affects accepting a new host.
     "source=${localWorkspaceFolder}/.devcontainer/.host-known-hosts,target=/home/vscode/.ssh/known_hosts,type=bind",
     // allowed_signers is read-only: nothing should ever write the trust set.
     "source=${localWorkspaceFolder}/.devcontainer/.host-allowed-signers,target=/home/vscode/.ssh/allowed_signers,type=bind,readonly"

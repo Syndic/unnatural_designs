@@ -148,5 +148,16 @@ jobs:
             test -d .git && test ! -L .git
             test ! -e .git/host-git-common
 
+            # The two ssh trust binds resolved. A dangling symlink would have failed the
+            # `up` already, but assert explicitly so it's clear CI is what exercises the
+            # empty-allowed-signers fallback — the runner has no signers file of its own.
+            test -e "$HOME/.ssh/known_hosts"
+            test -e "$HOME/.ssh/allowed_signers"
+            test ! -s "$HOME/.ssh/allowed_signers"
+
+            # Pin the mount flags, which is what makes host write-back work at all.
+            test -w "$HOME/.ssh/known_hosts"
+            test ! -w "$HOME/.ssh/allowed_signers"
+
       - if: steps.changes.outputs.changed != 'true'
         run: echo "No devcontainer changes in this PR; skipping build."
