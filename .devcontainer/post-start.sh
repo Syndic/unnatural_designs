@@ -4,8 +4,11 @@ set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 
 # Re-apply the host facts on every start: postCreate doesn't re-run when a container is
-# reused, but `devcontainer up` does re-run initializeCommand and can rewrite them.
-"$here/plumbing.sh" post-start
+# reused, but `devcontainer up` does re-run initializeCommand and can rewrite them. Same
+# through-the-workspace call as post-create.sh; see the note there.
+PLUMBING_WORKSPACE="$(cd "$here/.." && pwd)" \
+  PLUMBING_DIR="$here/.git-plumbing" \
+  "$here/../meta/devcontainer-base/scripts/devcontainer-plumbing.sh" post-start
 
 # Docker creates the mount parent root-owned 0755 before any hook runs, and SSH ignores a
 # ~/.ssh it considers unsafe. `install -d` fixes the directory without touching the

@@ -70,9 +70,10 @@ select = ["E", "F", "I", "B", "UP", "SIM", "RUF", "S"]
 # the arguments are not externally controlled — false positives in this
 # context.
 "meta/scripts/**" = ["S603", "S607"]
-# Same false positives, same reason: the devcontainer plumbing test shells out to `bash`
+# Same false positives, same reason: the devcontainer plumbing tests shell out to `bash`
 # by name to source the scripts under test.
 ".devcontainer/**" = ["S603", "S607"]
+"meta/devcontainer-base/**" = ["S603", "S607"]
 # Test conveniences that aren't actual problems in test code:
 # S101 = `assert` (the whole point of a test); S105/S106/S311 = throwaway
 # "secrets" and non-crypto randomness in fixtures; S108 = stable fake paths

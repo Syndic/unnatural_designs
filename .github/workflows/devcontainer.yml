@@ -45,7 +45,8 @@ jobs:
           fi
           python3 meta/scripts/classify_changed_paths.py \
             --base "$base" \
-            --rule 'changed=^\.devcontainer/|^\.github/workflows/devcontainer\.yml$'
+            --rule 'changed=^\.devcontainer/|^meta/devcontainer-base/|^\.github/workflows/devcontainer\.yml$' \
+            --rule 'base=^meta/devcontainer-base/'
 
       # ── Feature lock freshness ────────────────────────────────────────────────────
       # devcontainer-lock.json is derived from the feature references in devcontainer.json and
@@ -85,7 +86,13 @@ jobs:
       # (GHCR rejects uppercase), and ${{ github.repository }} carries the org's casing.
       - id: img
         if: steps.changes.outputs.changed == 'true'
-        run: echo "ref=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')-devcontainer" >> "$GITHUB_OUTPUT"
+        run: |
+          set -euo pipefail
+          repo="$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
+          {
+            echo "ref=ghcr.io/$repo-devcontainer"
+            echo "base=ghcr.io/$repo-devcontainer-base"
+          } >> "$GITHUB_OUTPUT"
 
       # Auth for the GHCR cache. Skipped on fork PRs — their read-only token can't reach the
       # package, so they fall back to a cold build. Needs the packages: write permission above.
@@ -95,6 +102,47 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Shared base image ─────────────────────────────────────────────────────────
+      # meta/devcontainer-base/ is published for other Syndic repos to FROM. Build it here
+      # whenever it changes so a broken Dockerfile or script fails on the PR that broke it,
+      # and smoke the dispatcher it installs. This repo does not FROM it yet — that repoint,
+      # and the BASE_IMAGE override that lets a base change be tested against a real consumer
+      # in one PR, come next. See meta/devcontainer-base/README.md.
+      - if: steps.changes.outputs.base == 'true'
+        name: Build the shared base image
+        run: |
+          set -euo pipefail
+          docker buildx build \
+            --tag devcontainer-base:ci \
+            --cache-from "${{ steps.img.outputs.base }}:latest" \
+            --load \
+            meta/devcontainer-base
+
+      - if: steps.changes.outputs.base == 'true'
+        name: Smoke test the base image
+        run: |
+          set -euo pipefail
+          docker run --rm devcontainer-base:ci bash -c '
+            set -euo pipefail
+            command -v devcontainer-plumbing >/dev/null
+            test -x "$(command -v devcontainer-plumbing)"
+            # The dispatcher is installed on PATH but its library is not beside it, so this
+            # also proves the absolute fallback path resolves in the image layout.
+            test -r /usr/local/share/devcontainer-plumbing/lib.sh
+
+            # A bad verb must be a usage error, not a silent no-op or a partial apply.
+            rc=0
+            out="$(devcontainer-plumbing bogus-verb 2>&1)" || rc=$?
+            test "$rc" -eq 2
+            case "$out" in usage:*) ;; *) echo "unexpected: $out" >&2; exit 1 ;; esac
+
+            # Same for no verb at all.
+            rc=0
+            devcontainer-plumbing >/dev/null 2>&1 || rc=$?
+            test "$rc" -eq 2
+            echo "base image smoke test OK"
+          '
 
       # devcontainers/ci builds with the full feature set (so feature bumps are exercised,
       # not just the Dockerfile) and runs the smoke command inside the resulting container.
@@ -158,6 +206,30 @@ jobs:
             # Pin the mount flags, which is what makes host write-back work at all.
             test -w "$HOME/.ssh/known_hosts"
             test ! -w "$HOME/.ssh/allowed_signers"
+
+      # Publish the base image LAST, so a base that failed its own smoke test — or broke this
+      # repo's devcontainer build above — never reaches the registry.
+      #
+      # Multi-arch needs the docker-container driver, which cannot see the local image store,
+      # so it gets its own named builder that is deliberately never `--use`d: the default
+      # `docker` driver has to stay active for the `--load` build above and for the consumer
+      # build to resolve `devcontainer-base:ci` once this repo FROMs it.
+      #
+      # :latest is what Renovate digest-pins; :sha-<gitsha> is the immutable audit trail.
+      - if: >-
+          github.event_name == 'push' && github.ref == 'refs/heads/main'
+          && steps.changes.outputs.base == 'true'
+        name: Publish the shared base image
+        run: |
+          set -euo pipefail
+          docker buildx create --name ci-multiarch --driver docker-container
+          docker buildx build --builder ci-multiarch \
+            --platform linux/amd64,linux/arm64 \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            --tag "${{ steps.img.outputs.base }}:latest" \
+            --tag "${{ steps.img.outputs.base }}:sha-${GITHUB_SHA}" \
+            --push \
+            meta/devcontainer-base
 
       - if: steps.changes.outputs.changed != 'true'
         run: echo "No devcontainer changes in this PR; skipping build."
