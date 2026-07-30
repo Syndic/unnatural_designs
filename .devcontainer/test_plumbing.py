@@ -178,28 +178,32 @@ class TestInputValidation(unittest.TestCase):
                 self.assertNotEqual(_rc(_PLUMBING_SH, "plumbing_git_path_is_safe", bad), 0)
 
 
-class TestSignersAssertion(unittest.TestCase):
-    """The most user-visible new failure path: a mismatch aborts `devcontainer up`."""
+class TestKnownHostsDiscovery(unittest.TestCase):
+    """Picks the file ssh itself writes, so a host accepted in a container reaches the host."""
 
-    _BOUND = "/home/u/.ssh/allowed_signers"
-
-    def test_unset_is_ok(self):
-        self.assertEqual(_rc(_INITIALIZE_SH, "initialize_signers_ok", "", self._BOUND), 0)
-
-    def test_matching_path_is_ok(self):
-        self.assertEqual(_rc(_INITIALIZE_SH, "initialize_signers_ok", self._BOUND, self._BOUND), 0)
-
-    def test_different_path_is_rejected(self):
-        # e.g. the common ~/.config/git/allowed_signers layout.
-        self.assertNotEqual(
-            _rc(
+    def test_first_of_several_wins(self):
+        # ssh appends newly-accepted hosts to the first UserKnownHostsFile only.
+        self.assertEqual(
+            _sh(
                 _INITIALIZE_SH,
-                "initialize_signers_ok",
-                "/home/u/.config/git/allowed_signers",
-                self._BOUND,
+                "initialize_first_path",
+                "/home/u/.ssh/known_hosts /home/u/.ssh/known_hosts2",
             ),
-            0,
+            "/home/u/.ssh/known_hosts",
         )
+
+    def test_single_value_passes_through(self):
+        self.assertEqual(_sh(_INITIALIZE_SH, "initialize_first_path", "/custom/kh"), "/custom/kh")
+
+    def test_leading_whitespace_tolerated(self):
+        self.assertEqual(
+            _sh(_INITIALIZE_SH, "initialize_first_path", "   /home/u/.ssh/known_hosts"),
+            "/home/u/.ssh/known_hosts",
+        )
+
+    def test_empty_yields_empty_so_the_caller_can_default(self):
+        # Lets the caller fall back to ssh's default rather than linking to nothing.
+        self.assertEqual(_sh(_INITIALIZE_SH, "initialize_first_path", ""), "")
 
 
 class TestTimezoneDiscovery(unittest.TestCase):

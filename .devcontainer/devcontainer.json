@@ -42,11 +42,14 @@
     "source=${localWorkspaceFolder}/.devcontainer/.host-git-common,target=/host-git-common,type=bind",
     // Forward host ssh-agent for signed commits — see CLAUDE.md "Signed commits under devcontainer CLI".
     "source=/run/host-services/ssh-auth.sock,target=/run/host-services/ssh-auth.sock,type=bind",
-    // Read-only trust data for signing/pushing; initialize.sh guarantees both sources exist.
-    // See .claude/CLAUDE.md ".devcontainer signed commits under CLI" for why these are mounts
-    // rather than snapshots and what `readonly` costs.
-    "source=${localEnv:HOME}/.ssh/known_hosts,target=/home/vscode/.ssh/known_hosts,type=bind,readonly",
-    "source=${localEnv:HOME}/.ssh/allowed_signers,target=/home/vscode/.ssh/allowed_signers,type=bind,readonly"
+    // Same static-symlink-source trick as .host-git-common: initialize.sh points these at
+    // whatever the host actually uses, so devcontainer.json never names a host path. See
+    // .claude/CLAUDE.md ".devcontainer signed commits under CLI".
+    // known_hosts is deliberately writable — accepting a new host in any container writes
+    // through to the host's real file, so later containers start with it.
+    "source=${localWorkspaceFolder}/.devcontainer/.host-known-hosts,target=/home/vscode/.ssh/known_hosts,type=bind",
+    // allowed_signers is read-only: nothing should ever write the trust set.
+    "source=${localWorkspaceFolder}/.devcontainer/.host-allowed-signers,target=/home/vscode/.ssh/allowed_signers,type=bind,readonly"
   ],
   // Mount the workspace at its real host path (not the default /workspaces/<name>)
   // so the worktree's own files — and the .git file's back-pointer — line up

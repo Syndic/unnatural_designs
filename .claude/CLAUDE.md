@@ -314,28 +314,39 @@ five additive pieces — two bind mounts and three scripted steps:
   becoming a bind mount like the two below, because the container *rewrites* it (see the
   allowed-signers repoint): a read-only mount would break the repoint and a read-write one
   would leak container edits back to the host.
-- **`~/.ssh/known_hosts`** — a read-only bind mount from `${localEnv:HOME}`, declared in
-  `devcontainer.json`. Without it, `git push` from inside the CLI-launched container fails
-  with "Host key verification failed" on first contact with github.com — the base image's
-  `~/.ssh` is empty and SSH refuses unknown fingerprints by default. VS Code bridges
-  known_hosts itself; the mount simply wins there, harmlessly. Cost of `readonly`: ssh can't
-  record newly-accepted host keys, so it warns and continues.
-- **`~/.ssh/allowed_signers`** — the trust set `git verify-commit` checks a signature against,
-  same read-only bind. Git reads it only for verification, never for signing, which is why
-  commits signed fine before this piece existed while `git log --show-signature` printed
-  "Unable to open allowed keys file…" / "No principal matched". Contents are public keys and
-  principal emails — no secret material.
+- **`~/.ssh/known_hosts`** — bound from `.devcontainer/.host-known-hosts`, a symlink
+  `initialize.sh` points at the file ssh itself would write. Without it, `git push` from
+  inside the CLI-launched container fails with "Host key verification failed" on first
+  contact with github.com — the base image's `~/.ssh` is empty and SSH refuses unknown
+  fingerprints by default. Deliberately **writable**: Docker resolves the symlink host-side,
+  so accepting a new host inside any container writes through to the host's real file and
+  every later container starts with it. Without that, an unknown-but-legitimate host would
+  have to be re-accepted in every container forever. The target is discovered from
+  `ssh -G` (`UserKnownHostsFile`, first entry — the only one ssh appends to), falling back to
+  `~/.ssh/known_hosts`. An empty target is created if absent, which ssh would do itself.
+- **`~/.ssh/allowed_signers`** — the trust set `git verify-commit` checks a signature
+  against, bound the same way from `.host-allowed-signers` but **read-only**: nothing should
+  ever write the trust set. Git reads it only for verification, never for signing, which is
+  why commits signed fine before this piece existed while `git log --show-signature` printed
+  "Unable to open allowed keys file…" / "No principal matched". The symlink follows
+  `gpg.ssh.allowedSignersFile` wherever it points, so that setting stays authoritative;
+  when it's unset or unreadable the link falls back to an empty file under `.git-plumbing/`,
+  which keeps the bind from dangling without creating anything in the user's `~/.ssh`.
+  Contents are public keys and principal emails — no secret material.
 
-  Two things follow from these being *mounts*. Docker creates the mount parent root-owned
-  0755 before any hook runs, and SSH ignores a `~/.ssh` it considers unsafe, so
-  `post-start.sh` `install -d`s the directory back to the user at mode 700 — without touching
-  the binds inside it. And `mounts` can only interpolate `${localEnv:}`, so the path is fixed
-  at `~/.ssh/allowed_signers` where the old snapshot honoured whatever
-  `gpg.ssh.allowedSignersFile` named. `initialize.sh` keeps that setting authoritative by
-  *asserting* the two agree and failing loud otherwise, rather than silently binding the
-  wrong file. Both files are also `touch`ed on the host if absent, because a bind mount with
-  a missing source aborts container start — the one place `initialize.sh` writes host state
-  rather than only reading it.
+  **Why symlinks rather than `${localEnv:HOME}` paths.** Same reason as `.host-git-common`:
+  `mounts` are resolved at config-parse time and can only interpolate `${localEnv:}` /
+  `${localWorkspaceFolder}`, so naming the host's real path would hardcode a layout this repo
+  has no business dictating. Presenting a fixed *shape* — a symlink at a known
+  workspace-relative name, whose target the host stub chooses — keeps the host free to store
+  these files anywhere. Known limitation: a single-file bind means whole-file *replacement*
+  on the host (e.g. `ssh-keygen -R`) is only picked up because Docker Desktop re-resolves the
+  path; a plain Linux bind mount pins the inode and would show stale content until restart.
+
+  One consequence of these being mounts: Docker creates the mount parent root-owned 0755
+  before any hook runs, and SSH ignores a `~/.ssh` it considers unsafe, so `post-start.sh`
+  `install -d`s the directory back to the user at mode 700 — without touching the binds
+  inside it.
 
   The repoint the mounts don't remove: the copied gitconfig still points
   `gpg.ssh.allowedSignersFile` at the *host-absolute* path (`/Users/...`), which doesn't

@@ -18,6 +18,10 @@ rewritten on every `up`; this README is what keeps the directory in git.
   `devcontainer` CLI path; VS Code's Dev Containers extension copies it for
   itself). See ".devcontainer signed commits under CLI" in `.claude/CLAUDE.md`.
 
-The host's `~/.ssh/known_hosts` and `~/.ssh/allowed_signers` are *not*
-snapshotted here — `devcontainer.json` binds them in directly. See
-".devcontainer signed commits under CLI" in `.claude/CLAUDE.md`.
+The host's known_hosts and allowed_signers are *not* snapshotted here.
+`initialize.sh` instead drops sibling symlinks — `../.host-known-hosts` and
+`../.host-allowed-signers` — pointing at whatever the host actually uses, and
+`devcontainer.json` binds those. `empty-allowed-signers` is the fallback target
+for the second one when `gpg.ssh.allowedSignersFile` is unset or unreadable, so
+the bind never dangles. See ".devcontainer signed commits under CLI" in
+`.claude/CLAUDE.md`.

@@ -261,15 +261,14 @@ the irreducibly-per-host residue to a stub:
   Keeping that lone host sudo branch repo-local also means shared image code never runs elevated
   on the developer host.
 - **Collapse two snapshots to mounts.** ✅ Done in Phase 1 — known_hosts and allowed_signers are
-  now read-only `${localEnv:HOME}` binds. gitconfig couldn't follow: the container rewrites its
-  `gpg.ssh.allowedSignersFile`, so a read-only mount breaks the repoint and a read-write one leaks
-  container edits to the host. Known cost, and reversible if it bites: `mounts` can only
-  interpolate `${localEnv:}`, so the allowed-signers path is fixed at `~/.ssh/allowed_signers`
-  where the old snapshot honoured whatever `gpg.ssh.allowedSignersFile` named. `initialize.sh`
-  asserts the two agree and fails loud rather than binding the wrong file, which means a host
-  keeping its signers at e.g. `~/.config/git/allowed_signers` must move the file or change the
-  setting. This buys nothing for the base image (both forms live outside it) — it shrinks the host
-  stub only.
+  bound from stub-written symlinks (`.host-known-hosts`, `.host-allowed-signers`), the same
+  static-source trick `.host-git-common` already used, so the host stays free to keep those files
+  anywhere. known_hosts is writable on purpose: a host accepted in one container reaches the host's
+  real file and every later container starts with it. gitconfig couldn't follow — the container
+  rewrites its `gpg.ssh.allowedSignersFile`, so a read-only mount breaks the repoint and a
+  read-write one would leak container edits to the host. What this buys the base image is the
+  deleted container-side *install*, not the host read: the reads are the stub's whole purpose, and
+  removing them (an earlier attempt) only cost host-agnosticism.
 
 The architectural rationale prose — currently duplicated and drifting across both repos' CLAUDE.md
 files — moves next to the base image as its canonical home; both CLAUDE.mds shrink to pointers.
