@@ -280,15 +280,22 @@ class TestDispatcher(unittest.TestCase):
         env = dict(os.environ)
         if plumbing_dir is not None:
             # Point the run at a sandbox so it can't read this repo's real .git-plumbing, and
-            # stub sudo so the stamping step can't touch /run — `vscode` has passwordless
-            # sudo in this repo's own devcontainer, so the default would really write there.
+            # stub the commands the stamping step would otherwise run for real against /run.
+            #
+            # Stub `install` and `touch` as well as `sudo`, because plumbing_sudo drops the
+            # `sudo` entirely when already root — which is exactly what happens under Bazel's
+            # remote executor, while a developer's container and the macOS runner are non-root.
+            # Logging the command name makes one assertion cover both.
             env["PLUMBING_DIR"] = plumbing_dir
             env["PLUMBING_WORKSPACE"] = plumbing_dir
             fake_bin = Path(plumbing_dir) / "bin"
             fake_bin.mkdir(exist_ok=True)
-            sudo = fake_bin / "sudo"
-            sudo.write_text('#!/bin/sh\necho "$@" >>"$(dirname "$0")/../sudo.log"\n')
-            sudo.chmod(0o755)
+            for name in ("sudo", "install", "touch"):
+                stub = fake_bin / name
+                stub.write_text(
+                    '#!/bin/sh\necho "$(basename "$0") $*" >>"$(dirname "$0")/../cmd.log"\n'
+                )
+                stub.chmod(0o755)
             env["PATH"] = f"{fake_bin}:{env['PATH']}"
         return subprocess.run(
             ["bash", str(_DISPATCHER), *args],
@@ -318,8 +325,9 @@ class TestDispatcher(unittest.TestCase):
                 result = self._run_dispatcher(verb, plumbing_dir=d)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 # The stamp is what a consumer's smoke test asserts on, so pin that the verb
-                # reaches it and names the file after itself.
-                log = (Path(d) / "sudo.log").read_text()
+                # reaches it and names the file after itself. The log holds either
+                # "sudo install …" or "install …" depending on whether the test runs as root.
+                log = (Path(d) / "cmd.log").read_text()
                 self.assertIn("install -d -m 0755 /run/devcontainer-plumbing", log)
                 self.assertIn(f"touch /run/devcontainer-plumbing/{verb}.stamp", log)
 
