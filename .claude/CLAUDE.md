@@ -64,6 +64,33 @@ a parenthetical) so a tag sweep doesn't trip on it.
 [its README](../.github/actions/commit-file-via-app/README.md) before changing its inputs or its
 no-op-when-no-diff behavior.
 
+## Superseding CI runs
+
+Every workflow except `renovate-derived-files.yml` carries the same block, and the shape of the
+group key is the load-bearing part:
+
+```yaml
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+```
+
+- **PRs group by number**, so a fast-follow push cancels the previous run. The motivating case is a
+  Renovate PR: the helper's derived-files commit lands ~30s after Renovate's push, so the first
+  devcontainer build spent ~5 of its ~5.5 minutes building a tree — bumped manifest, un-regenerated
+  lock — that never merges. Required status checks are evaluated against the PR's head SHA, so
+  cancelling a superseded SHA's run never leaves a requirement unmet.
+- **Everything else keys on `run_id`**, which is unique per run, so non-PR runs are always alone in
+  their group: nothing cancels them and — the subtler half — nothing *queues* behind them either.
+  A shared non-PR group would have made a push to main wait on an in-progress weekly security scan
+  (`cancel-in-progress: false` semantics), and a third run in that group would be dropped outright.
+  Keeping them ungrouped matters because those runs produce artifacts nothing else will: the GHCR
+  devcontainer build cache (`push: filter`), the Codecov upload, and the main-branch security
+  baseline.
+
+`renovate-derived-files.yml` is the deliberate exception; the reason is at that file's own
+`concurrency` note, since it is a property of that workflow rather than of the convention.
+
 ## Renovate auto-commit helper (`Renovate helper` app)
 
 `.github/workflows/renovate-derived-files.yml` regenerates the derived files Renovate can't

@@ -12,6 +12,11 @@ on:
   pull_request:
     branches: [main]
 
+# Supersede in-flight runs for the same PR; see .claude/CLAUDE.md "Superseding CI runs".
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   packages: write # push/pull the devcontainer build-cache image on GHCR

@@ -9,6 +9,11 @@ on:
     # Weekly scan every Monday at 02:00 UTC
     - cron: "0 2 * * 1"
 
+# Supersede in-flight runs for the same PR; see .claude/CLAUDE.md "Superseding CI runs".
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 

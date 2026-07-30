@@ -82,6 +82,14 @@ on:
       # all: .claude/CLAUDE.md ".devcontainer worktree + timezone plumbing".
       - ".devcontainer/devcontainer.json"
 
+# Deliberately NO `concurrency` block, unlike every other workflow here (see .claude/CLAUDE.md
+# "Superseding CI runs"). This workflow's own commit lands on the PR branch and touches paths in
+# the trigger list above, so it re-triggers itself — measured at ~30s after the original run
+# starts. Under `cancel-in-progress` that second run, which the actor gate immediately skips,
+# would cancel the original mid-flight, losing whatever remained after the commit (the review
+# dismissal). Every run here is already scoped to one head SHA and exits fast when there is
+# nothing to do, so there is little to reclaim.
+
 permissions:
   contents: read
 
