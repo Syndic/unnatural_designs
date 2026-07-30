@@ -218,8 +218,10 @@ class TestClassifyDevcontainer(unittest.TestCase):
         self.assertEqual(self._run(["README.md"]), expect_devcontainer())
 
     def test_base_image_fires_both(self):
-        # `base` must imply `changed`, or the base build would be gated behind a job that
-        # skipped itself.
+        # A base change fires both. `changed` additionally gates the login and image-ref steps
+        # the base build depends on, and — once this repo FROMs the image — the consumer build
+        # that a base change must be validated against. The job itself has no `if` and always
+        # runs, so this is about the steps inside it, not about the job skipping.
         self.assertEqual(
             self._run(["meta/devcontainer-base/scripts/lib.sh"]),
             expect_devcontainer(changed=True, base=True),

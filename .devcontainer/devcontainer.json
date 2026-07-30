@@ -30,13 +30,13 @@
   // when launched via the `devcontainer` CLI (which, unlike VS Code's Dev
   // Containers extension, does not special-case worktrees). See ".devcontainer
   // worktree + timezone plumbing" in .claude/CLAUDE.md for the full mechanism;
-  // initialize.sh and plumbing.sh carry the per-step commentary.
+  // initialize.sh and meta/devcontainer-base/ carry the per-step commentary.
   "initializeCommand": ".devcontainer/initialize.sh",
   "mounts": [
     "source=ud-bazel-cache,target=/home/vscode/.cache/bazel,type=volume",
     "source=ud-go-cache,target=/home/vscode/go,type=volume",
     // Bind the symlink (a static, workspace-relative SOURCE) to the static
-    // container path plumbing.sh points the host-absolute path at. Docker
+    // container path the shared plumbing points the host-absolute path at. Docker
     // follows the symlink host-side, so this resolves to wherever the real git
     // common dir lives without the config naming that dynamic path.
     "source=${localWorkspaceFolder}/.devcontainer/.host-git-common,target=/host-git-common,type=bind",

@@ -203,8 +203,8 @@ CI job. When adding logic here, put the decision in a pure function and leave on
 the call site — that is what keeps it testable.
 
 Two ordering facts the code depends on. `devcontainer-plumbing` must run at the *top* of
-`post-create.sh`,
-because everything below it runs git against the worktree. And it must re-run at `postStart`:
+`post-create.sh`, because everything below it runs git against the worktree. And it must re-run
+at `postStart`:
 `devcontainer up` re-runs `initializeCommand` and can rewrite the path file even for an existing
 container, but `postCreate` does not re-run. Every step is idempotent so the double application is
 free — including the `/etc/environment` `TZ=` line, which is rewritten rather than appended.

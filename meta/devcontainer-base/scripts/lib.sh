@@ -115,8 +115,12 @@ plumbing_apply_git_common() {
 # restrict git's stat checks to the fields the bind mount preserves. Repo-local, so the
 # write lands in the common dir and covers both sides and every worktree.
 plumbing_apply_shared_index_config() {
-  git -C "$1" config core.checkstat minimal
-  git -C "$1" config core.trustctime false
+  # &&-chained rather than two statements: these two settings are a pair, and a caller that
+  # invoked this with errexit suspended (inside `if !`, `||`, or a condition) would otherwise
+  # let the first write fail, the second succeed, and the function still return 0 — leaving
+  # the container missing exactly the setting whose absence breaks in-container rebase.
+  git -C "$1" config core.checkstat minimal &&
+    git -C "$1" config core.trustctime false
 }
 
 # Point the container at the host's IANA zone so timestamps don't drift against the host.
@@ -159,9 +163,12 @@ plumbing_apply_timezone() {
 plumbing_apply_all() {
   local plumbing_dir="$1" workspace="$2"
 
+  # Called bare, NOT as `step || return 1`: bash suspends errexit for the entire body of a
+  # function invoked as the left operand of `||`, so a wrapper would let a step fail partway,
+  # keep running, and still return 0. The dispatcher's `set -e` aborts before the stamp.
   if [ -s "$plumbing_dir/host-git-common-path" ]; then
-    plumbing_apply_git_common "$plumbing_dir" "$workspace" || return 1
-    plumbing_apply_shared_index_config "$workspace" || return 1
+    plumbing_apply_git_common "$plumbing_dir" "$workspace"
+    plumbing_apply_shared_index_config "$workspace"
   elif [ "${PLUMBING_REQUIRE_GIT_CHECKOUT:-0}" = 1 ]; then
     # Opt-in policy fork: Syndic/.dotfiles treats a non-git workspace as a bootstrap
     # failure, while this repo keeps a graceful else-branch. An env flag rather than
@@ -170,7 +177,9 @@ plumbing_apply_all() {
     return 1
   fi
 
+  # Timezone is documented as warn-and-continue, and the function returns 0 on every handled
+  # failure. No wrapper here either, for the same errexit reason.
   if [ -s "$plumbing_dir/host-timezone" ]; then
-    plumbing_apply_timezone "$(cat "$plumbing_dir/host-timezone")" || return 1
+    plumbing_apply_timezone "$(cat "$plumbing_dir/host-timezone")"
   fi
 }

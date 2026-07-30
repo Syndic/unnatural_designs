@@ -10,6 +10,7 @@ Host-stub functions (`initialize_*`) are tested separately, in .devcontainer/, n
 script that owns them.
 """
 
+import os
 import subprocess
 import sys
 import tempfile
@@ -180,10 +181,115 @@ class TestInputValidation(unittest.TestCase):
                 self.assertNotEqual(_rc(_LIB_SH, "plumbing_git_path_is_safe", bad), 0)
 
 
+class TestSharedIndexConfig(unittest.TestCase):
+    """The two settings are a pair: half of them is the broken state, not a lesser one."""
+
+    def test_pair_is_atomic_when_the_caller_suspends_errexit(self):
+        # Bash suspends errexit for a function's whole body when it is invoked as the left
+        # operand of `&&`/`||` or inside a condition. Two plain statements would then let the
+        # first write fail, the second succeed, and the function still return 0 — leaving a
+        # container with only core.trustctime, missing the setting whose absence produces the
+        # "your local changes would be overwritten" breakage.
+        #
+        # A non-git directory won't do as the failure injector: both writes would fail, so the
+        # chained and unchained forms return the same status. Only the FIRST call must fail.
+        with _tmpdir() as d:
+            fake_bin = Path(d) / "bin"
+            fake_bin.mkdir()
+            git = fake_bin / "git"
+            git.write_text('#!/bin/sh\ncase "$*" in *core.checkstat*) exit 1 ;; esac\nexit 0\n')
+            git.chmod(0o755)
+            env = dict(os.environ, PATH=f"{fake_bin}:{os.environ['PATH']}")
+            result = subprocess.run(
+                [
+                    "bash",
+                    "-c",
+                    'set -euo pipefail; source "$1"; '
+                    'plumbing_apply_shared_index_config "$2" && echo UNEXPECTED_SUCCESS',
+                    "_",
+                    str(_LIB_SH),
+                    d,
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                env=env,
+            )
+        self.assertNotIn("UNEXPECTED_SUCCESS", result.stdout)
+        self.assertNotEqual(result.returncode, 0)
+
+
+class TestApplyAll(unittest.TestCase):
+    """The step sequencer, including the policy fork that only Syndic/.dotfiles turns on —
+    a branch nothing in this repo exercises by running the container."""
+
+    def _apply(self, plumbing_dir: str, workspace: str, require: str | None = None):
+        env = dict(os.environ)
+        if require is not None:
+            env["PLUMBING_REQUIRE_GIT_CHECKOUT"] = require
+        return subprocess.run(
+            [
+                "bash",
+                "-c",
+                _SOURCE_AND_CALL,
+                "_",
+                str(_LIB_SH),
+                "plumbing_apply_all",
+                plumbing_dir,
+                workspace,
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+        )
+
+    def test_absent_files_are_a_clean_no_op(self):
+        # Nothing recorded: no git bridge, no config write, no timezone — and crucially no
+        # privileged call, which is what makes this safe to run as a unit test.
+        with _tmpdir() as d:
+            result = self._apply(d, d)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stderr, "")
+
+    def test_empty_path_file_is_a_clean_no_op(self):
+        # initialize.sh writes an empty file when the workspace isn't a git checkout.
+        with _tmpdir() as d:
+            (Path(d) / "host-git-common-path").write_text("")
+            result = self._apply(d, d)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_require_git_checkout_turns_the_no_op_into_a_failure(self):
+        # The .dotfiles policy: a non-git workspace is a bootstrap failure, not something to
+        # shrug at. Returns before anything privileged.
+        with _tmpdir() as d:
+            result = self._apply(d, d, require="1")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("PLUMBING_REQUIRE_GIT_CHECKOUT", result.stderr)
+
+    def test_require_flag_off_by_default_and_when_zero(self):
+        for require in (None, "0"):
+            with self.subTest(require=require), _tmpdir() as d:
+                self.assertEqual(self._apply(d, d, require=require).returncode, 0)
+
+
 class TestDispatcher(unittest.TestCase):
     """Argument handling and library resolution — the surface every consumer calls."""
 
-    def _run_dispatcher(self, *args: str, env: dict | None = None):
+    def _run_dispatcher(self, *args: str, plumbing_dir: str | None = None):
+        env = dict(os.environ)
+        if plumbing_dir is not None:
+            # Point the run at a sandbox so it can't read this repo's real .git-plumbing, and
+            # stub sudo so the stamping step can't touch /run — `vscode` has passwordless
+            # sudo in this repo's own devcontainer, so the default would really write there.
+            env["PLUMBING_DIR"] = plumbing_dir
+            env["PLUMBING_WORKSPACE"] = plumbing_dir
+            fake_bin = Path(plumbing_dir) / "bin"
+            fake_bin.mkdir(exist_ok=True)
+            sudo = fake_bin / "sudo"
+            sudo.write_text('#!/bin/sh\necho "$@" >>"$(dirname "$0")/../sudo.log"\n')
+            sudo.chmod(0o755)
+            env["PATH"] = f"{fake_bin}:{env['PATH']}"
         return subprocess.run(
             ["bash", str(_DISPATCHER), *args],
             capture_output=True,
@@ -206,17 +312,22 @@ class TestDispatcher(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn("usage:", result.stderr)
 
-    def test_both_verbs_are_accepted(self):
-        # They get past argument parsing; they fail later here because this test environment
-        # has no /run to stamp and no sudo, which is exactly what rc != 2 distinguishes.
+    def test_both_verbs_run_to_completion_and_stamp(self):
         for verb in ("post-create", "post-start"):
-            with self.subTest(verb=verb):
-                self.assertNotEqual(self._run_dispatcher(verb).returncode, 2)
+            with self.subTest(verb=verb), _tmpdir() as d:
+                result = self._run_dispatcher(verb, plumbing_dir=d)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                # The stamp is what a consumer's smoke test asserts on, so pin that the verb
+                # reaches it and names the file after itself.
+                log = (Path(d) / "sudo.log").read_text()
+                self.assertIn("install -d -m 0755 /run/devcontainer-plumbing", log)
+                self.assertIn(f"touch /run/devcontainer-plumbing/{verb}.stamp", log)
 
     def test_library_is_found_beside_the_script(self):
-        # The in-repo layout. The image layout uses the absolute fallback path, which can't be
-        # exercised from here without installing into /usr/local.
-        result = self._run_dispatcher("post-create")
+        # The in-repo layout. The image layout uses the absolute fallback path; CI's base-image
+        # smoke test covers that one, since it needs the file installed under /usr/local.
+        with _tmpdir() as d:
+            result = self._run_dispatcher("post-create", plumbing_dir=d)
         self.assertNotIn("cannot locate lib.sh", result.stderr)
 
 
