@@ -110,17 +110,54 @@ jobs:
           # baked into BAZELISK_VERSION, then bootstrap Bazel per .bazelversion.
           # `go version` confirms the `go` feature landed the toolchain on PATH;
           # `python3 --version` confirms the Dockerfile's uv-installed interpreter did.
-          # The checkstat
-          # assertion confirms initializeCommand ran and wrote the shared-index
-          # setting (see ".devcontainer shared git index" in .claude/CLAUDE.md);
-          # `--file` skips repo discovery, which would trip git's dubious-ownership
-          # check (runner uid != container uid).
+          # The rest pins the host-plumbing mechanism — see ".devcontainer worktree +
+          # timezone plumbing" in .claude/CLAUDE.md.
           runCmd: |
             set -euo pipefail
             bazel --version
             go version
             python3 --version
+
+            # Only initialize.sh writes these, and only on the host, so they pin the fact
+            # that devcontainers/ci runs initializeCommand (plain `devcontainer build`
+            # doesn't).
+            test -L .devcontainer/.host-git-common
+            test -s .devcontainer/.git-plumbing/host-git-common-path
+
+            # Both container hooks reached plumbing.sh. Every other postStart side effect
+            # is environment-dependent here (the agent socket is a placeholder regular
+            # file, allowed_signers is empty), so the stamps are what's assertable.
+            test -f /run/devcontainer-plumbing/post-create.stamp
+            test -f /run/devcontainer-plumbing/post-start.stamp
+
+            # `--file` skips repo discovery, which would trip git's dubious-ownership
+            # check (runner uid != container uid).
             test "$(git config --file .git/config --get core.checkstat)" = "minimal"
+            test "$(git config --file .git/config --get core.trustctime)" = "false"
+
+            # Timezone came from the host snapshot, and applied idempotently: postCreate
+            # and postStart both ran, so an appending /etc/environment write reads as 2.
+            tz="$(cat .devcontainer/.git-plumbing/host-timezone)"
+            test -n "$tz"
+            test "$(cat /etc/timezone)" = "$tz"
+            readlink /etc/localtime | grep -q "zoneinfo/${tz}$"
+            test "$(grep -c '^TZ=' /etc/environment)" = "1"
+
+            # CI is a full clone, so the bridge must no-op: the workspace mount already
+            # provides .git, and an unguarded `ln -sfn` would nest a stray link inside it.
+            test -d .git && test ! -L .git
+            test ! -e .git/host-git-common
+
+            # The two ssh trust binds resolved. A dangling symlink would have failed the
+            # `up` already, but assert explicitly so it's clear CI is what exercises the
+            # empty-allowed-signers fallback — the runner has no signers file of its own.
+            test -e "$HOME/.ssh/known_hosts"
+            test -e "$HOME/.ssh/allowed_signers"
+            test ! -s "$HOME/.ssh/allowed_signers"
+
+            # Pin the mount flags, which is what makes host write-back work at all.
+            test -w "$HOME/.ssh/known_hosts"
+            test ! -w "$HOME/.ssh/allowed_signers"
 
       - if: steps.changes.outputs.changed != 'true'
         run: echo "No devcontainer changes in this PR; skipping build."

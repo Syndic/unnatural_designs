@@ -46,6 +46,15 @@ repos:
         pass_filenames: false
         files: \.go$
 
+      # The devcontainer plumbing runs privileged writes against /etc and host-absolute
+      # paths, and `set -e` interacts badly enough with && chains that the foot-guns are
+      # worth catching mechanically. Mirrored by the shellcheck job in ci.yml.
+      - id: shellcheck
+        name: shellcheck
+        language: system
+        entry: shellcheck
+        files: \.sh$
+
       - id: check-secrets-dir
         name: check secrets directory
         language: python

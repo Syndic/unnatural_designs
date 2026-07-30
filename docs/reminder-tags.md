@@ -96,6 +96,15 @@ into the repo, grep for this task type and make the corresponding addition at ea
 grep -rn "TEND(lang-expand)" .
 ```
 
+#### `migration`
+
+The marked code exists only to keep a checkout that predates a staged change working, and is
+removable once that change has fully propagated. Names the condition that makes it safe to drop.
+
+```sh
+grep -rn "TEND(migration)" .
+```
+
 #### `optimization`
 
 Marks a configuration or setting that may be suboptimal and should be reviewed in the future.

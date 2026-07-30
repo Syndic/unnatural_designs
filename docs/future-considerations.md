@@ -207,52 +207,51 @@ rather than carrying the complexity speculatively.
 
 ## Devcontainer: Extract Git Plumbing Shared with Syndic/.dotfiles
 
-This repo and [Syndic/.dotfiles](https://github.com/Syndic/.dotfiles) carry near-identical
-devcontainer git plumbing: worktree common-dir bridging (the `initializeCommand` symlink, the
-`.git-plumbing` path file, and the Dockerfile's recreation of the host-absolute path), the host
-snapshots (gitconfig, known_hosts, allowed_signers), ssh-agent magic-socket forwarding with its
+**Phase 1 landed in [PR #207](https://github.com/Syndic/unnatural_designs/pull/207).** The image is
+now host-agnostic: the git-common-dir symlink and the host timezone are applied at container start
+by `.devcontainer/plumbing.sh` instead of baked by the Dockerfile, the `checkstat`/`trustctime`
+writes moved there too, and `known_hosts`/`allowed_signers` became bind mounts fed by stub-written
+symlinks rather than snapshots — `known_hosts` writable, so a host accepted in one container
+persists to the host itself. What remains is phases 2–3 (publish a shared base image and repoint
+both repos at it) plus the .dotfiles-side adoption; the inventory below reflects that.
+
+This repo and [Syndic/.dotfiles](https://github.com/Syndic/.dotfiles) still carry near-identical
+devcontainer git plumbing: worktree common-dir bridging (the `initializeCommand` symlink and the
+`.git-plumbing` path file), the host gitconfig snapshot, ssh-agent magic-socket forwarding with its
 placeholder and chown, host timezone propagation, and the `core.checkstat = minimal` /
 `core.trustctime = false` shared-index portability fix. Three fixes from this repo's
 [PR #177](https://github.com/Syndic/unnatural_designs/pull/177) were hand-ported to .dotfiles
 [PR #99](https://github.com/Syndic/.dotfiles/pull/99) in July 2026.
 
-The duplication cost concentrates in the two lifecycle scripts — `.devcontainer/initialize.sh`
-and `.devcontainer/post-start.sh` (all three ported fixes landed there, plus a matching CI smoke
-assertion). The `devcontainer.json` mount / `workspaceMount` / `SSH_AUTH_SOCK` wiring and the
-`.git-plumbing/README.md` anchor are structurally identical across the repos but stable — not
-worth unifying. `post-create.sh` has zero overlap (go/bazel here vs. ansible/uv there) and stays
-repo-specific. Textual drift already exists in the shared scripts: comment styles have diverged,
-and there are two genuine policy forks — .dotfiles fails loud when the workspace isn't a git
-checkout while this repo keeps a graceful else-branch, and the placement of the checkstat config
-write differs accordingly.
+The duplication cost now concentrates in `.devcontainer/plumbing.sh` — the container-side apply
+logic Phase 1 created, which is exactly what the base image is meant to carry — plus
+`initialize.sh` and `post-start.sh`. The `devcontainer.json` mount / `workspaceMount` /
+`SSH_AUTH_SOCK` wiring is structurally identical across the repos but stable — not worth unifying.
+`post-create.sh` has zero overlap (go/bazel here vs. ansible/uv there) and stays repo-specific.
+The drift is wider since Phase 1: .dotfiles still bakes both host facts into its Dockerfile and
+still snapshots all three host files, and the two policy forks remain — .dotfiles fails loud when
+the workspace isn't a git checkout while this repo keeps a graceful else-branch.
 
 The insight that shapes the plan is where the host/container boundary actually falls. Every
 host-side line either *reads host state* — `git rev-parse --git-common-dir`, the timezone
-discovery, the three `cp`s from `$HOME` — or *applies a workaround*. Only the reads are
-irreducibly host-side: the data isn't visible in-container, and each read pairs with a
-container-side *apply*. Everything else sits on the host by convenience. In particular the
-Dockerfile bakes two per-host facts — the git-common-dir symlink and the timezone — into the
-image at *build* time, and that is the sole reason the image can't be shared; nothing forces that
-work to build time, since the workspace isn't even mounted then.
+discovery, the `cp` from `$HOME` — or *applies a workaround*. Only the reads are irreducibly
+host-side: the data isn't visible in-container, and each read pairs with a container-side *apply*.
+Everything else sits on the host by convenience.
 
 The plan therefore inverts the earlier idea of extracting a host-side library. Instead, move the
 movable application logic to the container side and let a shared base image carry it, shrinking
 the irreducibly-per-host residue to a stub:
 
-- **Unbake the image.** Push the git-path symlink and timezone application out of the Dockerfile
-  into container lifecycle hooks that read the same mounted `.git-plumbing/` path files at
-  runtime, and move the `checkstat`/`trustctime` config writes there too. The git symlink goes at
-  the top of `post-create.sh` — it must exist before that script runs git against the worktree,
-  so `post-start.sh` is too late; timezone and the config writes are looser on ordering. The
-  image ends up fully host-agnostic.
+- **Unbake the image.** ✅ Done in Phase 1 — `plumbing.sh` applies the symlink, the timezone and
+  the config writes at `postCreate` (top, before anything runs git) and again at `postStart`.
 - **Build and publish the base image from this monorepo.** This fits without new build
   infrastructure: the `Devcontainer` CI job already builds the devcontainer and pushes a cache
   image to GHCR (`ghcr.io/<repo>-devcontainer`, `packages: write`), so the base image is a second
   published target beside it — and this repo's own devcontainer becomes its first consumer,
   `FROM`-ing the base and layering go/bazel on top, so the shared half is dogfooded here on every
-  CI run. The base carries the container-side plumbing — the snapshot installs, the
-  `allowedSignersFile` repoint, the socket chown, and the now-runtime symlink / timezone / config
-  application — as reviewed scripts at a known path; .dotfiles `FROM`s the same image (its GHCR
+  CI run. The base carries the container-side plumbing — today's `plumbing.sh` (symlink, timezone,
+  shared-index config), the gitconfig install, the `allowedSignersFile` repoint and the socket
+  chown — as reviewed scripts at a known path; .dotfiles `FROM`s the same image (its GHCR
   package readable org-wide) and layers ansible/uv. Each repo's container hooks call the shared
   functions, then do repo-specific work. The image is digest-pinned and Renovate-bumped —
   machinery both repos already run — so a new version arrives as an auto-mergeable bump gated by
@@ -262,11 +261,15 @@ the irreducibly-per-host residue to a stub:
   changes and is too small to be worth a shared artifact, so it stays hand-copied — cheaply.
   Keeping that lone host sudo branch repo-local also means shared image code never runs elevated
   on the developer host.
-- **Optionally collapse two snapshots to mounts.** known_hosts and allowed_signers are pure
-  read-only trust data; each could become a declarative `${localEnv:HOME}/...` bind-mount in
-  `devcontainer.json`, removing both its host read and its container install and shrinking the
-  stub further. gitconfig can't follow: the container rewrites its `gpg.ssh.allowedSignersFile`,
-  so a read-only mount breaks the repoint and a read-write mount leaks container edits to the host.
+- **Collapse two snapshots to mounts.** ✅ Done in Phase 1 — known_hosts and allowed_signers are
+  bound from stub-written symlinks (`.host-known-hosts`, `.host-allowed-signers`), the same
+  static-source trick `.host-git-common` already used, so the host stays free to keep those files
+  anywhere. known_hosts is writable on purpose: a host accepted in one container reaches the host's
+  real file and every later container starts with it. gitconfig couldn't follow — the container
+  rewrites its `gpg.ssh.allowedSignersFile`, so a read-only mount breaks the repoint and a
+  read-write one would leak container edits to the host. What this buys the base image is the
+  deleted container-side *install*, not the host read: the reads are the stub's whole purpose, and
+  removing them (an earlier attempt) only cost host-agnosticism.
 
 The architectural rationale prose — currently duplicated and drifting across both repos' CLAUDE.md
 files — moves next to the base image as its canonical home; both CLAUDE.mds shrink to pointers.
@@ -287,14 +290,13 @@ Rejected alternatives:
   configuration, and PR churn in every consumer cost more than the risk they retire once the base
   image's digest bump already delivers hands-off pickup.
 
-**Trigger to revisit:** deliberately deferred — the repos converged in July 2026 (both now carry
-all the pieces), so the churn that motivated this may be over. Do the work when the *next* shared
-plumbing change appears: a third hand-port is the signal the churn hasn't stopped and that the
-fixed cost (unbake the image, add the base-image target to this repo's `Devcontainer` job,
-repoint both Dockerfiles, move the application logic into container hooks, move the docs — on the
-order of a focused day) is repaid. One caveat to weigh then: `devcontainer up` reuses an existing
-container, so a base-image bump lands on the next rebuild, not the next `up` — the accepted
-freshness cost of the image channel. Until then, hand-porting with a session-level cross-repo
-check is the accepted cost.
+**Remaining work:** phase 2 (add `meta/devcontainer-base/`, build and publish it from the
+`Devcontainer` job) and phase 3 (repoint this repo's Dockerfile at the published digest and delete
+the now-duplicated logic from the lifecycle hooks), then the .dotfiles-side adoption. Phase 1
+widened the gap between the repos rather than closing it, so the cross-repo check stays necessary
+until phase 3 lands. Two caveats to carry forward: the consumer's pinned digest can't resolve until
+the image exists on `main`, so phases 2 and 3 can't be one PR; and `devcontainer up` reuses an
+existing container, so a base-image bump lands on the next rebuild, not the next `up` — the
+accepted freshness cost of the image channel.
 
 ---

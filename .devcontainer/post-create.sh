@@ -6,6 +6,10 @@ set -euo pipefail
 # logic that reads git config — user.email, user.signingkey, gpg.* settings, etc. — will see
 # an empty config here and must live in a postStartCommand script instead.
 
+# Must come first: everything below runs git against the worktree, whose .git file only
+# resolves once the host-absolute common-dir symlink exists.
+"$(cd "$(dirname "$0")" && pwd)/plumbing.sh" post-create
+
 # Make the named-volume mounts writable by the non-root user. Docker attaches volumes
 # root-owned on first mount, and the .cache parent of the bazel mount inherits that, so
 # the chown covers .cache itself. postCreateCommand reruns on every rebuild, so this
@@ -56,7 +60,7 @@ if [ -n "$hooks_path" ]; then
   default_hooks_path="$(git rev-parse --path-format=absolute --git-common-dir)/hooks"
 
   # `-ef` (same-inode) not string-equality: the worktree-fix symlink layer
-  # (initialize.sh + Dockerfile) makes the two paths name the same dir via a
+  # (initialize.sh + plumbing.sh) makes the two paths name the same dir via a
   # symlink, so they compare unequal as text but resolve to the same inode.
   if [ "$hooks_path" -ef "$default_hooks_path" ]; then
     if [ "$(git config --get extensions.worktreeConfig || true)" = "true" ]; then

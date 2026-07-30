@@ -30,18 +30,29 @@
   // when launched via the `devcontainer` CLI (which, unlike VS Code's Dev
   // Containers extension, does not special-case worktrees). See ".devcontainer
   // worktree + timezone plumbing" in .claude/CLAUDE.md for the full mechanism;
-  // initialize.sh and the Dockerfile carry the per-step commentary.
+  // initialize.sh and plumbing.sh carry the per-step commentary.
   "initializeCommand": ".devcontainer/initialize.sh",
   "mounts": [
     "source=ud-bazel-cache,target=/home/vscode/.cache/bazel,type=volume",
     "source=ud-go-cache,target=/home/vscode/go,type=volume",
     // Bind the symlink (a static, workspace-relative SOURCE) to the static
-    // container path the Dockerfile points the host-absolute path at. Docker
+    // container path plumbing.sh points the host-absolute path at. Docker
     // follows the symlink host-side, so this resolves to wherever the real git
     // common dir lives without the config naming that dynamic path.
     "source=${localWorkspaceFolder}/.devcontainer/.host-git-common,target=/host-git-common,type=bind",
     // Forward host ssh-agent for signed commits — see CLAUDE.md "Signed commits under devcontainer CLI".
-    "source=/run/host-services/ssh-auth.sock,target=/run/host-services/ssh-auth.sock,type=bind"
+    "source=/run/host-services/ssh-auth.sock,target=/run/host-services/ssh-auth.sock,type=bind",
+    // Same static-symlink-source trick as .host-git-common: initialize.sh points these at
+    // whatever the host actually uses, so devcontainer.json never names a host path. See
+    // .claude/CLAUDE.md ".devcontainer signed commits under CLI".
+    // known_hosts is deliberately writable — accepting a new host in any container writes
+    // through to the host's real file, so later containers start with it. Appends only:
+    // rewriting a single-file bind via temp+rename fails EBUSY in-container (so
+    // `ssh-keygen -R` won't work there), and the same rewrite done on the host swaps the
+    // inode out from under a running container. Neither affects accepting a new host.
+    "source=${localWorkspaceFolder}/.devcontainer/.host-known-hosts,target=/home/vscode/.ssh/known_hosts,type=bind",
+    // allowed_signers is read-only: nothing should ever write the trust set.
+    "source=${localWorkspaceFolder}/.devcontainer/.host-allowed-signers,target=/home/vscode/.ssh/allowed_signers,type=bind,readonly"
   ],
   // Mount the workspace at its real host path (not the default /workspaces/<name>)
   // so the worktree's own files — and the .git file's back-pointer — line up
