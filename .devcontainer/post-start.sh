@@ -16,7 +16,8 @@ PLUMBING_WORKSPACE="$(cd "$here/.." && pwd)" \
 sudo install -d -m 700 -o "$(id -u)" -g "$(id -g)" "$HOME/.ssh"
 
 # Install host ~/.gitconfig when the Dev Containers extension didn't already copy it in
-# (devcontainer CLI case). See ".devcontainer signed commits under CLI" in .claude/CLAUDE.md.
+# (devcontainer CLI case). See "Signed commits under the devcontainer CLI" in
+# meta/devcontainer-base/README.md.
 src="$here/.git-plumbing/host-gitconfig"
 if [ ! -s "$HOME/.gitconfig" ] && [ -s "$src" ]; then
   cp "$src" "$HOME/.gitconfig"

@@ -9,20 +9,21 @@ the directory in git.
   (`git rev-parse --git-common-dir`). The shared plumbing recreates that same
   host-absolute path inside the container as a symlink to `/host-git-common`,
   so a worktree's `.git` file resolves natively. Empty when the workspace
-  isn't a git checkout, which makes the step a no-op. See ".devcontainer
-  worktree + timezone plumbing" in `.claude/CLAUDE.md` for the why.
+  isn't a git checkout, which makes the step a no-op. See "What the plumbing
+  solves" in `meta/devcontainer-base/README.md` for the why.
 - `host-timezone` — IANA zone name (e.g. `America/Los_Angeles`) of the host's
   timezone. The shared plumbing points `/etc/localtime` at it so container
   timestamps match the host. Empty is fine — the container keeps its default.
 - `host-gitconfig` — snapshot of the host's `~/.gitconfig`. `post-start.sh`
   installs it into the container only when `~/.gitconfig` is empty (i.e. the
   `devcontainer` CLI path; VS Code's Dev Containers extension copies it for
-  itself). See ".devcontainer signed commits under CLI" in `.claude/CLAUDE.md`.
+  itself). See "Signed commits under the devcontainer CLI" in
+  `meta/devcontainer-base/README.md`.
 
 The host's known_hosts and allowed_signers are *not* snapshotted here.
 `initialize.sh` instead drops sibling symlinks — `../.host-known-hosts` and
 `../.host-allowed-signers` — pointing at whatever the host actually uses, and
 `devcontainer.json` binds those. `empty-allowed-signers` is the fallback target
 for the second one when `gpg.ssh.allowedSignersFile` is unset or unreadable, so
-the bind never dangles. See ".devcontainer signed commits under CLI" in
-`.claude/CLAUDE.md`.
+the bind never dangles. See "Signed commits under the devcontainer CLI" in
+`meta/devcontainer-base/README.md`.

@@ -31,15 +31,15 @@
   "remoteUser": "vscode",
   "containerEnv": {
     "GOTOOLCHAIN": "local",
-    // Forward host ssh-agent for signed commits — see CLAUDE.md "Signed commits under devcontainer CLI".
+    // Forward host ssh-agent for signed commits — see meta/devcontainer-base/README.md.
     "SSH_AUTH_SOCK": "/run/host-services/ssh-auth.sock"
   },
   // Make git fully resolve inside the container for ANY checkout layout — a full
   // clone, the main worktree, or a linked worktree living anywhere on disk —
   // when launched via the `devcontainer` CLI (which, unlike VS Code's Dev
   // Containers extension, does not special-case worktrees). See ".devcontainer
-  // worktree + timezone plumbing" in .claude/CLAUDE.md for the full mechanism;
-  // initialize.sh and meta/devcontainer-base/ carry the per-step commentary.
+  // meta/devcontainer-base/README.md for the full mechanism; initialize.sh and
+  // meta/devcontainer-base/scripts/ carry the per-step commentary.
   "initializeCommand": ".devcontainer/initialize.sh",
   "mounts": [
     "source=ud-bazel-cache,target=/home/vscode/.cache/bazel,type=volume",
@@ -49,11 +49,11 @@
     // follows the symlink host-side, so this resolves to wherever the real git
     // common dir lives without the config naming that dynamic path.
     "source=${localWorkspaceFolder}/.devcontainer/.host-git-common,target=/host-git-common,type=bind",
-    // Forward host ssh-agent for signed commits — see CLAUDE.md "Signed commits under devcontainer CLI".
+    // Forward host ssh-agent for signed commits — see meta/devcontainer-base/README.md.
     "source=/run/host-services/ssh-auth.sock,target=/run/host-services/ssh-auth.sock,type=bind",
     // Same static-symlink-source trick as .host-git-common: initialize.sh points these at
     // whatever the host actually uses, so devcontainer.json never names a host path. See
-    // .claude/CLAUDE.md ".devcontainer signed commits under CLI".
+    // "Signed commits under the devcontainer CLI" in meta/devcontainer-base/README.md.
     // known_hosts is deliberately writable — accepting a new host in any container writes
     // through to the host's real file, so later containers start with it. Appends only:
     // rewriting a single-file bind via temp+rename fails EBUSY in-container (so

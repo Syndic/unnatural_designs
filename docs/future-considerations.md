@@ -214,10 +214,9 @@ instead of baked by the Dockerfile, the `checkstat`/`trustctime` writes moved th
 snapshots — `known_hosts` writable, so a host accepted in one container persists to the host itself.
 
 **Phase 2 landed.** The container-side plumbing lives in `meta/devcontainer-base/` as a `lib.sh`
-plus a `devcontainer-plumbing` dispatcher, published multi-arch to GHCR on pushes to `main`. This
-repo's hooks already call that single copy through the workspace, so it is dogfooded here, but its
-Dockerfile does not `FROM` the image yet — a consumer's pinned digest cannot resolve until the
-image exists on `main`, which is why the repoint is phase 3 rather than part of this one.
+plus a `devcontainer-plumbing` dispatcher, published multi-arch to GHCR on pushes to `main`. It
+shipped without the consumer-side repoint on purpose: a pinned digest cannot resolve until the
+image exists on `main`, so phases 2 and 3 could not be one PR.
 
 The image is assembled by **Bazel** (`rules_oci`) rather than a Dockerfile, so it builds under
 plain `bazel build //...` with no Docker daemon — which is what lets it build inside this repo's
@@ -226,10 +225,16 @@ property of the toolchain, since `rules_oci` cannot execute a build step at all;
 pinned timestamps make rebuilds byte-identical, so the digest is stable across machines where a
 `docker build` would have produced a fresh one each time.
 
-What remains is phase 3 (repoint this repo's Dockerfile at the published digest, switch the hooks to
-`/usr/local/bin/devcontainer-plumbing`, add the `BASE_IMAGE` override so a base change can be
-smoke-tested against a real consumer in one PR) plus the .dotfiles-side adoption. The inventory
-below reflects that.
+**Phase 3 landed.** This repo's Dockerfile now `FROM`s the published image at a pinned digest, the
+hooks call `/usr/local/bin/devcontainer-plumbing` from it, and a `BASE_IMAGE` build-arg lets CI
+substitute the image a PR *would* publish, so a base change is smoke-tested against a real consumer
+before it reaches the registry. The architectural rationale moved to
+[`meta/devcontainer-base/README.md`](../meta/devcontainer-base/README.md) as its canonical home;
+this repo's CLAUDE.md keeps a pointer plus the repo-local half.
+
+What remains is the .dotfiles-side adoption: it `FROM`s the same image, deletes its own copy of the
+plumbing, and shrinks its CLAUDE.md to a pointer at the README above. The inventory below reflects
+that.
 
 This repo and [Syndic/.dotfiles](https://github.com/Syndic/.dotfiles) still carry near-identical
 devcontainer git plumbing: worktree common-dir bridging (the `initializeCommand` symlink and the
@@ -261,20 +266,19 @@ the irreducibly-per-host residue to a stub:
 - **Unbake the image.** ✅ Done in Phase 1 — the symlink, the timezone and the config writes are
   applied at `postCreate` (top, before anything runs git) and again at `postStart`.
 - **Build and publish the base image from this monorepo.** ✅ Done in Phase 2 — the `Devcontainer`
-  job builds `meta/devcontainer-base/` whenever it changes, smoke-tests the dispatcher it installs,
+  job builds `meta/devcontainer-base/` whenever it — or the `MODULE.bazel` pin of its own base —
+  changes, smoke-tests the dispatcher it installs,
   and publishes multi-arch to `ghcr.io/<repo>-devcontainer-base` on pushes to `main` only, so a
-  base that failed its own checks never reaches the registry. **Still to do:** make that GHCR
-  package public — Mend-hosted Renovate cannot read digests from a private package and silently
-  stops producing updates. It is safe because the image holds only two shell scripts and a Debian
-  base, no host-specific content.
-
-  Not yet done, and the substance of phase 3: .dotfiles `FROM`s the same image and layers
-  ansible/uv, while this repo `FROM`s it and layers go/bazel so the shared half is dogfooded here
-  on every CI run. The image is digest-pinned and Renovate-bumped — machinery both repos already
-  run — so a new version arrives as a bump gated by each consumer's own devcontainer smoke check,
-  with no new management surface. The gitconfig install, the `allowedSignersFile` repoint and the
-  socket chown are still in this repo's `post-start.sh`; they move into the shared library when
-  .dotfiles needs them too.
+  base that failed its own checks never reaches the registry. The GHCR package is public, which
+  Mend-hosted Renovate needs to read its digests; that is safe because the image holds only two
+  shell scripts and a Debian base, no host-specific content.
+- **Consume the image here.** ✅ Done in Phase 3 — this repo `FROM`s it and layers go/bazel, so the
+  shared half is dogfooded on every CI run. The pin is a digest Renovate bumps, machinery both
+  repos already run, so a new version arrives as a bump gated by the consumer's own devcontainer
+  smoke check with no new management surface. .dotfiles doing the same, layering ansible/uv, is
+  what remains. The gitconfig install, the `allowedSignersFile` repoint and the socket chown are
+  still in this repo's `post-start.sh`; they move into the shared library when .dotfiles needs
+  them too.
 - **What's left on the host is a thin read-and-drop stub:** a handful of reads dropping results
   into `.git-plumbing/`, plus the one sudo branch (the agent-socket placeholder). It rarely
   changes and is too small to be worth a shared artifact, so it stays hand-copied — cheaply.
@@ -290,8 +294,9 @@ the irreducibly-per-host residue to a stub:
   deleted container-side *install*, not the host read: the reads are the stub's whole purpose, and
   removing them (an earlier attempt) only cost host-agnosticism.
 
-The architectural rationale prose — currently duplicated and drifting across both repos' CLAUDE.md
-files — moves next to the base image as its canonical home; both CLAUDE.mds shrink to pointers.
+The architectural rationale prose now lives next to the base image as its canonical home. This
+repo's CLAUDE.md is already a pointer plus its repo-local half; .dotfiles' shrinks the same way
+when it adopts the image.
 
 Rejected alternatives:
 
@@ -309,14 +314,12 @@ Rejected alternatives:
   configuration, and PR churn in every consumer cost more than the risk they retire once the base
   image's digest bump already delivers hands-off pickup.
 
-**Remaining work:** phase 3 (make the GHCR package public, repoint this repo's Dockerfile at the
-published digest, switch the hooks from the workspace path to the image's command, and add the
-`BASE_IMAGE` build-arg override so a base change is smoke-tested against a real consumer in the same
-PR), then the .dotfiles-side adoption. Phases 1–2 widened the gap between the repos rather than
-closing it, so the cross-repo check stays necessary until .dotfiles adopts the image. Two caveats to
-carry forward: the consumer's pinned digest can't resolve until
-the image exists on `main`, so phases 2 and 3 can't be one PR; and `devcontainer up` reuses an
-existing container, so a base-image bump lands on the next rebuild, not the next `up` — the
-accepted freshness cost of the image channel.
+**Remaining work:** the .dotfiles-side adoption. Phases 1–3 widened the gap between the repos
+rather than closing it, so the cross-repo check stays necessary until .dotfiles adopts the image.
+Two caveats to carry forward: `devcontainer up` reuses an existing container, so a base-image bump
+lands on the next rebuild, not the next `up` — the accepted freshness cost of the image channel;
+and the base image's own base is pinned in `MODULE.bazel`, so that file is part of the devcontainer
+workflow's path classification. A consumer that forgets the equivalent gets a pin that moves and an
+image that never rebuilds.
 
 ---
