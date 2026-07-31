@@ -49,10 +49,20 @@ jobs:
           else
             base="${{ github.event.before }}"
           fi
+          # MODULE.bazel is in both rules because it pins the base image's own base (the
+          # `devcontainers_base_debian` oci.pull). Without it, Renovate's automerged digest
+          # bump moves that pin, skips every job here, and never republishes — so the published
+          # image keeps the superseded Debian layers and the bump reaches nothing. It is in
+          # `changed` too so the automerged bump is gated by a real consumer build, which is
+          # what `publish` needs. An unrelated MODULE.bazel edit costs a rebuild of an
+          # unchanged image, which re-pushes the same digest and leaves :latest where it was.
+          #
+          # Keep `base` a subset of `changed`: the BASE_IMAGE override below only reaches the
+          # build when both are true.
           python3 meta/scripts/classify_changed_paths.py \
             --base "$base" \
-            --rule 'changed=^\.devcontainer/|^meta/devcontainer-base/|^\.github/workflows/devcontainer\.yml$' \
-            --rule 'base=^meta/devcontainer-base/'
+            --rule 'changed=^\.devcontainer/|^meta/devcontainer-base/|^MODULE\.bazel$|^\.github/workflows/devcontainer\.yml$' \
+            --rule 'base=^meta/devcontainer-base/|^MODULE\.bazel$'
 
   # ── Shared base image ───────────────────────────────────────────────────────────────
   # meta/devcontainer-base/ is published for other Syndic repos to FROM. Bazel assembles it and

@@ -33,9 +33,14 @@ RULES_RENOVATE = {
 # Mirrors devcontainer.yml. `changed` gates the whole job; `base` additionally gates building
 # and publishing the shared base image, so a PR that only touches .devcontainer/ doesn't pay
 # for a base rebuild (which would also cold-miss the consumer's FROM layer cache).
+# MODULE.bazel is in both: it pins the base image's own base, and the consumer build is what
+# the BASE_IMAGE override validates that pin against.
 RULES_DEVCONTAINER = {
-    "changed": r"^\.devcontainer/|^meta/devcontainer-base/|^\.github/workflows/devcontainer\.yml$",
-    "base": r"^meta/devcontainer-base/",
+    "changed": (
+        r"^\.devcontainer/|^meta/devcontainer-base/|^MODULE\.bazel$"
+        r"|^\.github/workflows/devcontainer\.yml$"
+    ),
+    "base": r"^meta/devcontainer-base/|^MODULE\.bazel$",
 }
 
 
@@ -219,13 +224,42 @@ class TestClassifyDevcontainer(unittest.TestCase):
 
     def test_base_image_fires_both(self):
         # A base change fires both. `changed` additionally gates the login and image-ref steps
-        # the base build depends on, and — once this repo FROMs the image — the consumer build
-        # that a base change must be validated against. The job itself has no `if` and always
-        # runs, so this is about the steps inside it, not about the job skipping.
+        # the base build depends on, plus the consumer build this repo's FROM makes the real
+        # validation of a base change. The job itself has no `if` and always runs, so this is
+        # about the steps inside it, not about the job skipping.
         self.assertEqual(
             self._run(["meta/devcontainer-base/scripts/lib.sh"]),
             expect_devcontainer(changed=True, base=True),
         )
+
+    def test_module_bazel_fires_both(self):
+        # MODULE.bazel pins the base image's own base (the devcontainers_base_debian oci.pull),
+        # and that bump automerges. Missing it here would move the pin without rebuilding,
+        # smoke-testing or republishing anything — the bump would reach no image at all.
+        self.assertEqual(self._run(["MODULE.bazel"]), expect_devcontainer(changed=True, base=True))
+
+    def test_module_bazel_lock_is_derived_not_a_trigger(self):
+        # The lock records no oci extension state (every pull is digest-pinned, hence
+        # reproducible), so it never carries a base change of its own.
+        self.assertEqual(self._run(["MODULE.bazel.lock"]), expect_devcontainer())
+
+    def test_nested_module_bazel_is_not_matched(self):
+        # `^`-anchored: only the root module declares the image's base.
+        self.assertEqual(self._run(["vendor/MODULE.bazel"]), expect_devcontainer())
+
+    def test_base_is_a_subset_of_changed(self):
+        # The BASE_IMAGE override only reaches the build when both fire — the load step is
+        # gated on `base` and the consumer build on `changed`. A path that set `base` alone
+        # would load an image nothing then builds against.
+        for path in (
+            "meta/devcontainer-base/scripts/lib.sh",
+            "meta/devcontainer-base/BUILD.bazel",
+            "MODULE.bazel",
+        ):
+            with self.subTest(path=path):
+                result = self._run([path])
+                self.assertTrue(result["base"])
+                self.assertTrue(result["changed"])
 
     def test_base_image_readme_also_counts(self):
         # The README is the canonical rationale home; cheap to rebuild, and keeping the rule
