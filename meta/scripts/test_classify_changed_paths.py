@@ -4,11 +4,16 @@ The pure functions (parse_rule, is_branch_creation, classify, format_outputs) ca
 non-I/O logic; tests focus there. The git diff and $GITHUB_OUTPUT wiring is exercised
 end-to-end by the caller workflows on real PRs.
 
-The two `RULES_*` fixtures below mirror the exact rules the workflows pass, so a regex
-or coupling change in a workflow that isn't reflected here shows up as a test failure.
+The two `RULES_*` fixtures are read out of the workflows themselves rather than restated here.
+A hand-copy is green whichever side drifts, and both sides move in the same PRs; each rule's
+own reasoning lives at the `--rule` line in its workflow, which is the only place it can't go
+stale.
 """
 
+import re
+import tempfile
 import unittest
+from pathlib import Path
 
 from meta.scripts.classify_changed_paths import (
     classify,
@@ -17,31 +22,23 @@ from meta.scripts.classify_changed_paths import (
     parse_rule,
 )
 
-# Mirrors renovate-derived-files.yml. `python`, `bazel`, and `go` are independent here: the
-# python→bazel refresh is conditional (on requirements_lock.txt actually moving) and lives
-# in the workflow, not in classification. `bazel` covers both inputs that invalidate
-# MODULE.bazel.lock — MODULE.bazel (module graph) and .bazelversion (lock format). `go`
-# matches the Go manifests only — go.sum / go.work.sum are derived (tidy/sync), so a Renovate
-# Go bump is caught via its go.mod edit.
-RULES_RENOVATE = {
-    "python": r"(^|/)(pyproject\.toml|uv\.lock|requirements_lock\.txt)$",
-    "bazel": r"(^|/)(MODULE\.bazel|\.bazelversion)$",
-    "go": r"(^|/)(go\.mod|go\.work)$",
-    "devcontainer": r"^\.devcontainer/devcontainer\.json$",
-}
+# Not .resolve(): the workflows are cross-package data deps, so they live in the runfiles tree
+# beside this file rather than at the source path a resolved symlink would lead back to.
+_WORKFLOWS = Path(__file__).parent.parent.parent / ".github" / "workflows"
 
-# Mirrors devcontainer.yml. `changed` gates the whole job; `base` additionally gates building
-# and publishing the shared base image, so a PR that only touches .devcontainer/ doesn't pay
-# for a base rebuild (which would also cold-miss the consumer's FROM layer cache).
-# MODULE.bazel is in both: it pins the base image's own base, and the consumer build is what
-# the BASE_IMAGE override validates that pin against.
-RULES_DEVCONTAINER = {
-    "changed": (
-        r"^\.devcontainer/|^meta/devcontainer-base/|^MODULE\.bazel$"
-        r"|^\.github/workflows/devcontainer\.yml$"
-    ),
-    "base": r"^meta/devcontainer-base/|^MODULE\.bazel$",
-}
+
+def rules_from_workflow(path: Path) -> dict[str, str]:
+    """Extract the `--rule 'name=regex'` arguments a workflow passes to the classifier."""
+    specs = re.findall(r"--rule\s+'([^']*)'", path.read_text(encoding="utf-8"))
+    if not specs:
+        raise AssertionError(f"no --rule arguments found in {path}")
+    # Split here rather than via parse_rule: a fixture that leans on the function under test
+    # would go quiet in exactly the case parse_rule's own tests are meant to catch.
+    return {spec.partition("=")[0]: spec.partition("=")[2] for spec in specs}
+
+
+RULES_RENOVATE = rules_from_workflow(_WORKFLOWS / "renovate-derived-files.yml")
+RULES_DEVCONTAINER = rules_from_workflow(_WORKFLOWS / "devcontainer.yml")
 
 
 def expect_devcontainer(**fired):
@@ -56,6 +53,29 @@ def expect(**fired):
     result = dict.fromkeys(RULES_RENOVATE, False)
     result.update(fired)
     return result
+
+
+class TestRuleExtraction(unittest.TestCase):
+    """Guards the fixtures themselves: a silently empty extraction would make everything below
+    assert against nothing."""
+
+    def test_devcontainer_rule_names(self):
+        self.assertEqual(sorted(RULES_DEVCONTAINER), ["base", "changed"])
+
+    def test_renovate_rule_names(self):
+        self.assertEqual(sorted(RULES_RENOVATE), ["bazel", "devcontainer", "go", "python"])
+
+    def test_a_workflow_without_rules_raises(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            empty = Path(tmp) / "workflow.yml"
+            empty.write_text("jobs: {}\n", encoding="utf-8")
+            with self.assertRaises(AssertionError):
+                rules_from_workflow(empty)
+
+    def test_regexes_survive_extraction_intact(self):
+        # The `--rule` arguments are single-quoted in the workflow, so nothing in a regex needs
+        # unescaping — pin that, since a quoting change would land here as a subtly wrong rule.
+        self.assertEqual(RULES_DEVCONTAINER["base"], r"^meta/devcontainer-base/|^MODULE\.bazel$")
 
 
 class TestParseRule(unittest.TestCase):

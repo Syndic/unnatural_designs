@@ -22,10 +22,17 @@ import sys
 import unittest
 from pathlib import Path
 
-_HERE = Path(__file__).resolve().parent
+# Not .resolve(): devcontainer.yml is a cross-package data dep and lives in the runfiles tree,
+# which a resolved symlink would lead back out of. The rest read fine either way.
+_HERE = Path(__file__).parent
 _DEVCONTAINER_JSON = _HERE / "devcontainer.json"
 _DOCKERFILE = _HERE / "Dockerfile"
 _HOOKS = (_HERE / "post-create.sh", _HERE / "post-start.sh")
+_DEVCONTAINER_WORKFLOW = _HERE.parent / ".github" / "workflows" / "devcontainer.yml"
+
+# The host-side name CI sets and devcontainer.json reads. Namespaced on purpose — see
+# test_the_host_variable_is_the_namespaced_one.
+_HOST_ENV_VAR = "DEVCONTAINER_BASE_IMAGE"
 
 # Where the base image installs the dispatcher. Consumers call it by absolute path rather
 # than by name so a PATH surprise fails visibly instead of finding some other file.
@@ -76,14 +83,23 @@ def scan_outside_comments(text: str):
 def strip_jsonc(text: str) -> str:
     """Turn JSONC (comments + trailing commas, which devcontainer.json uses) into JSON."""
     chars = list(scan_outside_comments(text))
-    out = []
-    for idx, (ch, in_string) in enumerate(chars):
-        if ch == "," and not in_string:
-            following = (c for c, s in chars[idx + 1 :] if s or not c.isspace())
-            if next(following, None) in ("}", "]"):
-                continue
-        out.append(ch)
-    return "".join(out)
+
+    # Next significant character strictly after each index, precomputed in one reverse pass:
+    # a trailing comma is one whose next significant character closes a container. Whitespace
+    # *inside* a string stays significant, so a `,` in a string value is never a candidate.
+    next_significant: list[str | None] = [None] * len(chars)
+    nxt: str | None = None
+    for idx in range(len(chars) - 1, -1, -1):
+        next_significant[idx] = nxt
+        ch, in_string = chars[idx]
+        if in_string or not ch.isspace():
+            nxt = ch
+
+    return "".join(
+        ch
+        for idx, (ch, in_string) in enumerate(chars)
+        if not (ch == "," and not in_string and next_significant[idx] in ("}", "]"))
+    )
 
 
 def parse_local_env(value: str) -> tuple[str, str | None]:
@@ -99,7 +115,12 @@ def parse_local_env(value: str) -> tuple[str, str | None]:
 
 
 def dockerfile_instructions(text: str) -> list[tuple[str, str]]:
-    """Ordered `(INSTRUCTION, argument)` pairs, skipping comments and blank lines."""
+    """Ordered instruction *heads* — `(FIRST_WORD, rest)` per non-comment, non-blank line.
+
+    Not a Dockerfile parser: `\\`-continuation lines come back as their own entries (a `&& ...`
+    head). That is enough for the FROM/ARG identity and ordering questions asked below, none of
+    which spans a continuation, and it keeps the indices monotonic in file order.
+    """
     instructions = []
     for line in text.splitlines():
         stripped = line.strip()
@@ -198,10 +219,20 @@ class TestBaseImageOverride(unittest.TestCase):
         _, default = parse_local_env(self._build_arg())
         self.assertNotIn(":", default)
 
-    def test_env_var_name_matches_the_build_arg(self):
-        # CI sets this in the step environment; a rename on either side is a silent no-op.
+    def test_the_host_variable_is_the_namespaced_one(self):
+        # Deliberately not the build arg's own name: this one is read from the developer's
+        # environment and goes into FROM unvalidated, so a stray generic `BASE_IMAGE` export
+        # must not select their base image.
         name, _ = parse_local_env(self._build_arg())
-        self.assertEqual(name, "BASE_IMAGE")
+        self.assertEqual(name, _HOST_ENV_VAR)
+
+    def test_ci_sets_the_same_variable(self):
+        # The two sides are a hand-coupling across files: a rename here without one in the
+        # workflow leaves CI passing an env var nothing reads, and the override silently
+        # degrades to the pinned digest — a green build that tested the wrong image.
+        workflow = _DEVCONTAINER_WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn(f"{_HOST_ENV_VAR}:", workflow)
+        self.assertIn("devcontainer-base:ci", workflow)
 
     def test_arg_default_equals_the_substitution_default(self):
         # The two defaults are the same sentinel, so an unset BASE_IMAGE and an explicitly

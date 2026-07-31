@@ -133,7 +133,7 @@ FROM ${BASE_IMAGE}
 with the selector in `devcontainer.json`:
 
 ```jsonc
-"build": { "args": { "BASE_IMAGE": "${localEnv:BASE_IMAGE:pinned-base}" } }
+"build": { "args": { "BASE_IMAGE": "${localEnv:DEVCONTAINER_BASE_IMAGE:pinned-base}" } }
 ```
 
 Every line of that is load-bearing, and the shapes it rules out fail quietly:
@@ -141,12 +141,16 @@ Every line of that is load-bearing, and the shapes it rules out fail quietly:
 - **The override has to travel through `build.args`.** `devcontainers/ci` has no build-arg input,
   so an env var is the only channel, and `${localEnv:}` is the only thing `devcontainer.json` can
   interpolate.
-- **The substitution needs a default.** A bare `"${localEnv:BASE_IMAGE}"` passes
-  `--build-arg BASE_IMAGE=` when the variable is unset, and an explicitly empty build arg
-  overrides the Dockerfile's `ARG` default — breaking `FROM` for every local `devcontainer up`.
+- **The substitution needs a default.** A bare `"${localEnv:…}"` passes `--build-arg BASE_IMAGE=`
+  when the variable is unset, and an explicitly empty build arg overrides the Dockerfile's `ARG`
+  default — breaking `FROM` for every local `devcontainer up`.
 - **The default cannot be a reference.** The CLI splits the substitution on `:` and takes field 2,
-  so `"${localEnv:BASE_IMAGE:ghcr.io/…@sha256:…}"` silently truncates. A digest can never be a
-  substitution default; a colon-free stage alias can.
+  so `"${localEnv:…:ghcr.io/…@sha256:…}"` silently truncates. A digest can never be a substitution
+  default; a colon-free stage alias can.
+- **The host variable is namespaced, the build arg is not.** Its value reaches `FROM` unvalidated,
+  so a developer with a stray `BASE_IMAGE` exported would silently build against it;
+  `DEVCONTAINER_BASE_IMAGE` is specific enough not to collide. The build arg keeps the short name
+  because it is scoped to the build, not read from the environment.
 - **`AS pinned-base` must precede the consuming `FROM`.** That is what makes Renovate read
   `FROM ${BASE_IMAGE}` as an internal stage reference and skip it. Drop the alias and Renovate
   emits a bogus `pinned-base` dependency instead.
@@ -155,9 +159,11 @@ Every line of that is load-bearing, and the shapes it rules out fail quietly:
 
 This repo is the first consumer, so its `.devcontainer/` is the worked example, and
 `.devcontainer/test_devcontainer_config.py` asserts the couplings above from the files themselves.
-CI sets `BASE_IMAGE=devcontainer-base:ci` — the tag `bazel run :load` produces — whenever a PR
-touches the base, so a base change is smoke-tested against a real consumer *before* it publishes,
-rather than a Renovate bump later.
+CI sets `DEVCONTAINER_BASE_IMAGE=devcontainer-base:ci` — the tag `bazel run :load` produces —
+whenever a PR touches the base, so a base change is smoke-tested against a real consumer *before*
+it publishes, rather than a Renovate bump later. One consequence for a consumer that caches its
+built image: the push that merges a base change seeds that cache from the candidate image while the
+Dockerfile still pins the previous digest, so builds miss the cache until the digest bump lands.
 
 Note the freshness trade-off the image channel buys: `devcontainer up` reuses an existing
 container, so a base bump lands on the next rebuild, not the next `up`.

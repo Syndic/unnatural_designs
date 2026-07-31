@@ -5,12 +5,14 @@
     "context": "..",
     "args": {
       // Override the shared base image, so a change to it is smoke-tested against this
-      // consumer in the same PR (CI sets BASE_IMAGE to the locally loaded devcontainer-base:ci).
-      // The `pinned-base` default is a Dockerfile stage alias, not a reference: a bare
-      // ${localEnv:BASE_IMAGE} passes an empty --build-arg when unset, and a substitution
-      // default is truncated at its first `:` so it could never carry a digest. See
-      // "Consuming the image" in meta/devcontainer-base/README.md.
-      "BASE_IMAGE": "${localEnv:BASE_IMAGE:pinned-base}"
+      // consumer in the same PR (CI sets DEVCONTAINER_BASE_IMAGE to the locally loaded
+      // devcontainer-base:ci). The host variable is namespaced because its value goes
+      // straight into FROM unvalidated; the build arg it feeds keeps the short name, being
+      // scoped to this build. The `pinned-base` default is a Dockerfile stage alias, not a
+      // reference: a bare ${localEnv:...} passes an empty --build-arg when unset, and a
+      // substitution default is truncated at its first `:` so it could never carry a digest.
+      // See "Consuming the image" in meta/devcontainer-base/README.md.
+      "BASE_IMAGE": "${localEnv:DEVCONTAINER_BASE_IMAGE:pinned-base}"
     }
   },
   "features": {
@@ -37,7 +39,7 @@
   // Make git fully resolve inside the container for ANY checkout layout — a full
   // clone, the main worktree, or a linked worktree living anywhere on disk —
   // when launched via the `devcontainer` CLI (which, unlike VS Code's Dev
-  // Containers extension, does not special-case worktrees). See ".devcontainer
+  // Containers extension, does not special-case worktrees). See
   // meta/devcontainer-base/README.md for the full mechanism; initialize.sh and
   // meta/devcontainer-base/scripts/ carry the per-step commentary.
   "initializeCommand": ".devcontainer/initialize.sh",

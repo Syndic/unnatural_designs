@@ -40,8 +40,11 @@ Before declaring any task complete:
 
 Default to short, single-sentence inline comments that name the non-obvious WHY at the line they
 describe. Don't write rationale-prose blocks inline; the home for architectural or cross-cutting
-rationale is this CLAUDE.md (see the devcontainer plumbing section below as the model — overview
-here, terse pointers at the sites).
+rationale is this CLAUDE.md (see "Superseding CI runs" below as the model — overview here, terse
+pointers at the sites). When a fact spans repos rather than just files, the canonical home moves
+out to the shared artifact and this file becomes one of the pointers — see ".devcontainer plumbing
+and feature pins", whose prose lives in `meta/devcontainer-base/README.md` so `Syndic/.dotfiles`
+reads the same copy.
 
 When you touch a file whose existing comments feel oversized for the rent they pay, tightening them
 as part of the change is welcome and doesn't need a separate task. Leave the load-bearing facts;

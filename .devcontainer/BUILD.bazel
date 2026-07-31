@@ -22,6 +22,7 @@ py_test(
         "devcontainer.json",
         "post-create.sh",
         "post-start.sh",
+        "//:.github/workflows/devcontainer.yml",
     ],
     main = "test_devcontainer_config.py",
 )
