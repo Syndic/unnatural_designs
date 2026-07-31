@@ -50,9 +50,11 @@ out of the image also means shared code never runs elevated on a developer's hos
 
 ## Conventions
 
-- **RUN-free.** With no `RUN` there is nothing to emulate, so `--platform
-  linux/amd64,linux/arm64` costs nothing — which matters because developer hosts are Apple
-  Silicon and CI runners are amd64. Adding a `RUN` makes multi-arch builds slow.
+- **RUN-free, structurally.** With nothing executed at build time, producing both
+  `linux/amd64` and `linux/arm64` needs no QEMU — which matters because developer hosts are
+  Apple Silicon and CI runners are amd64. This used to be a convention a comment asked people
+  to honour; since the image is assembled by `rules_oci`, which cannot execute a build step at
+  all, it is now a property of the toolchain. Reaching for a `RUN` means leaving Bazel.
 - **No baked features.** The devcontainer CLI applies each consumer's `features` block on top
   of this image and does not dedupe against it, so baking them would either waste build time
   or pull the feature pins and `devcontainer-lock.json` out of the repos that consume them.
@@ -66,9 +68,28 @@ out of the image also means shared code never runs elevated on a developer's hos
 
 ## Build and publish
 
-CI builds this image in the `Devcontainer` workflow whenever `meta/devcontainer-base/`
-changes, and publishes multi-arch on pushes to `main` only — so an unbuilt or unsmoke-tested
-base never reaches the registry. Consumers pin a digest and Renovate bumps it.
+The image is assembled by Bazel, not a Dockerfile, so it rides `bazel build //...` like
+everything else — one command, exercised locally and in CI. That also means no Docker daemon is
+needed to build it, which is what makes it work inside this repo's own devcontainer (which has
+neither a docker client nor a mounted socket).
+
+| command | needs |
+| --- | --- |
+| `bazel build //meta/devcontainer-base:image` | nothing — runs in the devcontainer |
+| `bazel test //meta/devcontainer-base/...` | nothing — layer layout and modes are asserted from the tars |
+| `bazel run //meta/devcontainer-base:load` | a Docker daemon; loads `devcontainer-base:ci` |
+| `bazel run //meta/devcontainer-base:push` | a daemon-free registry client plus credentials |
+
+Because `pkg_tar` pins timestamps, rebuilds are byte-identical and the image digest is stable —
+so the same source produces the same digest on any machine. A `docker build` never did: it bakes
+fresh timestamps into the image config, which is why an equivalent rebuild still looked different.
+
+CI builds this whenever `meta/devcontainer-base/` changes, loads it into a daemon and runs the
+dispatcher, then publishes multi-arch on pushes to `main` only — so an unbuilt or
+unsmoke-tested base never reaches the registry. `oci_push` publishes the exact index Bazel
+built rather than rebuilding it. Consumers pin a digest and Renovate bumps it; its
+`bazel-module` manager reads `oci.pull` as a `docker` dependency, which is why the base is
+declared with both a tag and a digest.
 
 The GHCR package must be **public** for Mend-hosted Renovate to read its digests; a private
 package makes Renovate silently stop producing updates. That is safe here because the image

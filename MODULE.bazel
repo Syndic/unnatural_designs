@@ -102,3 +102,36 @@ use_repo(pip, "unnatural_designs_pypi")
 # release, Python BUILD files are hand-authored. See
 # `docs/future-considerations.md` (Python BUILD generation) for the trigger
 # that brings this back in.
+
+# ── Container images ──────────────────────────────────────────────────────────────────────────────
+# The shared devcontainer base image (//meta/devcontainer-base) is assembled here rather than by a
+# Dockerfile so it rides `bazel build //...` like everything else — one command, exercised locally
+# and in CI. rules_oci only *assembles* layers; it cannot execute a RUN step, which turns the
+# image's deliberately RUN-free shape into a property of the toolchain instead of a convention
+# someone has to honour. It also needs no Docker daemon to build, which matters because this
+# repo's own devcontainer has neither a docker client nor a mounted socket.
+bazel_dep(name = "rules_oci", version = "2.3.0")
+bazel_dep(name = "rules_pkg", version = "1.2.0")
+
+oci = use_extension("@rules_oci//oci:extensions.bzl", "oci")
+
+# `tag` and `digest` together on purpose: the digest is what makes the fetch reproducible, and the
+# tag is what Renovate's bazel-module manager anchors its lookup to (it extracts oci.pull as a
+# `docker` datasource with both currentValue and currentDigest). Digest alone would be pinned
+# forever with nothing to compare against — the same trap the devcontainer features hit.
+oci.pull(
+    name = "devcontainers_base_debian",
+    digest = "sha256:a07f1804d8e665ff64bf6adcd60f4d9b9223dc52ee18a1f1a7a8e1ee1a134d34",
+    image = "mcr.microsoft.com/devcontainers/base",
+    platforms = [
+        "linux/amd64",
+        "linux/arm64",
+    ],
+    tag = "debian",
+)
+use_repo(
+    oci,
+    "devcontainers_base_debian",
+    "devcontainers_base_debian_linux_amd64",
+    "devcontainers_base_debian_linux_arm64",
+)
