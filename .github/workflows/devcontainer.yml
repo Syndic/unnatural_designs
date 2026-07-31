@@ -22,9 +22,16 @@ permissions:
   packages: write # push/pull the devcontainer build-cache image on GHCR
 
 jobs:
-  build-and-smoke-test:
-    name: Build devcontainer and smoke test
+  # Split out so the base-image matrix and the publish job can gate on the same classification
+  # without each re-running the diff. `build-and-smoke-test` keeps its name and its
+  # always-runs shape because it is the required status check; the jobs added below are new,
+  # so they can skip outright.
+  changes:
+    name: Detect devcontainer changes
     runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.classify.outputs.changed }}
+      base: ${{ steps.classify.outputs.base }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -34,8 +41,7 @@ jobs:
       # Pick the base to diff against (the classifier handles the diff, the zero-SHA
       # branch-creation case, and emitting `changed`). PRs diff the base branch tip;
       # pushes diff the previous tip.
-      - id: changes
-        name: Detect devcontainer changes
+      - id: classify
         run: |
           set -euo pipefail
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
@@ -47,6 +53,79 @@ jobs:
             --base "$base" \
             --rule 'changed=^\.devcontainer/|^meta/devcontainer-base/|^\.github/workflows/devcontainer\.yml$' \
             --rule 'base=^meta/devcontainer-base/'
+
+  # ── Shared base image ───────────────────────────────────────────────────────────────
+  # meta/devcontainer-base/ is published for other Syndic repos to FROM. Bazel assembles it and
+  # unit-tests its layer layout without a daemon (//meta/devcontainer-base:test_image_layers,
+  # in the Build and test job), so what is left here is the part Bazel deliberately does not
+  # do: put the image in a daemon and run it.
+  #
+  # Matrixed over both architectures because `oci_load` can only materialise one — a Docker tag
+  # holds a single image. On amd64 alone the arm64 manifest would ship having only ever been
+  # assembled, and arm64 is the architecture developer hosts actually run. The runners are
+  # native (`ubuntu-24.04-arm`, as ci.yml already uses), so this costs no QEMU — which is the
+  # constraint the image is shaped around.
+  base-image:
+    name: Base image (${{ matrix.platform }})
+    needs: changes
+    if: needs.changes.outputs.base == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux_x86_64
+            runner: ubuntu-latest
+          - platform: linux_arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/setup-bazel-remote
+        with:
+          buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
+
+      # `:push` is otherwise only ever executed after merge. Building it stages both arches'
+      # blobs as runfiles — the part `:load` (one architecture) does not cover — and needs no
+      # registry credentials, so the PR path can carry it.
+      - name: Stage the push runfiles
+        run: bazel build --config=ci --config=${{ matrix.platform }} //meta/devcontainer-base:push
+
+      # `--config=<platform>` rather than letting the `select()` fall out of host detection:
+      # it makes the resolved architecture explicit and mirrors ci.yml's matrix pairing.
+      - name: Load the shared base image into Docker
+        run: bazel run --config=ci --config=${{ matrix.platform }} //meta/devcontainer-base:load
+
+      - name: Smoke test the base image
+        run: |
+          set -euo pipefail
+          docker run --rm devcontainer-base:ci bash -c '
+            set -euo pipefail
+            command -v devcontainer-plumbing >/dev/null
+            test -x "$(command -v devcontainer-plumbing)"
+            # The dispatcher is installed on PATH but its library is not beside it, so this
+            # also proves the absolute fallback path resolves in the image layout.
+            test -r /usr/local/share/devcontainer-plumbing/lib.sh
+
+            # A bad verb must be a usage error, not a silent no-op or a partial apply.
+            rc=0
+            out="$(devcontainer-plumbing bogus-verb 2>&1)" || rc=$?
+            test "$rc" -eq 2
+            case "$out" in usage:*) ;; *) echo "unexpected: $out" >&2; exit 1 ;; esac
+
+            # Same for no verb at all.
+            rc=0
+            devcontainer-plumbing >/dev/null 2>&1 || rc=$?
+            test "$rc" -eq 2
+            echo "base image smoke test OK"
+          '
+
+  build-and-smoke-test:
+    name: Build devcontainer and smoke test
+    needs: changes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # ── Feature lock freshness ────────────────────────────────────────────────────
       # devcontainer-lock.json is derived from the feature references in devcontainer.json and
@@ -87,15 +166,14 @@ jobs:
       # Only the consumer build needs a ref computed here; the base image's own repository is
       # declared on the `oci_push` target in meta/devcontainer-base/BUILD.bazel.
       - id: img
-        if: steps.changes.outputs.changed == 'true'
+        if: needs.changes.outputs.changed == 'true'
         run: echo "ref=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')-devcontainer" >> "$GITHUB_OUTPUT"
 
-      # Auth for the GHCR cache and for `oci_push`, which reads the same docker config. Skipped
-      # on fork PRs — their read-only token can't reach the package, so they fall back to a cold
-      # build. Needs the packages: write permission above. `base` implies `changed` today; both
-      # are named so the intent survives if that ever stops being true.
+      # Auth for the GHCR cache. Skipped on fork PRs — their read-only token can't reach the
+      # package, so they fall back to a cold build. Needs the packages: write permission above.
+      # The base image's own push authenticates separately, in the publish job.
       - if: >-
-          (steps.changes.outputs.changed == 'true' || steps.changes.outputs.base == 'true')
+          needs.changes.outputs.changed == 'true'
           && github.event.pull_request.head.repo.fork != true
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
@@ -103,56 +181,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # ── Shared base image ─────────────────────────────────────────────────────────
-      # meta/devcontainer-base/ is published for other Syndic repos to FROM. It is assembled by
-      # Bazel, so `bazel build //...` covers it and the layer layout is unit-tested without a
-      # daemon (//meta/devcontainer-base:test_image_layers, which runs in the Build and test
-      # job). What is left for this job is what Bazel deliberately does not do: put the image
-      # in a daemon and actually run it. This repo does not FROM the image yet — that repoint,
-      # and the BASE_IMAGE override that lets a base change be tested against a real consumer
-      # in one PR, come next. See meta/devcontainer-base/README.md.
-      - if: steps.changes.outputs.base == 'true'
-        uses: ./.github/actions/setup-bazel-remote
-        with:
-          buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
-
-      # `oci_load` is the one part Bazel can't do hermetically: it hands the image to a Docker
-      # daemon. The repository cache from the setup action keeps the base image layers from
-      # being refetched on every run.
-      - if: steps.changes.outputs.base == 'true'
-        name: Load the shared base image into Docker
-        run: bazel run --config=ci //meta/devcontainer-base:load
-
-      - if: steps.changes.outputs.base == 'true'
-        name: Smoke test the base image
-        run: |
-          set -euo pipefail
-          docker run --rm devcontainer-base:ci bash -c '
-            set -euo pipefail
-            command -v devcontainer-plumbing >/dev/null
-            test -x "$(command -v devcontainer-plumbing)"
-            # The dispatcher is installed on PATH but its library is not beside it, so this
-            # also proves the absolute fallback path resolves in the image layout.
-            test -r /usr/local/share/devcontainer-plumbing/lib.sh
-
-            # A bad verb must be a usage error, not a silent no-op or a partial apply.
-            rc=0
-            out="$(devcontainer-plumbing bogus-verb 2>&1)" || rc=$?
-            test "$rc" -eq 2
-            case "$out" in usage:*) ;; *) echo "unexpected: $out" >&2; exit 1 ;; esac
-
-            # Same for no verb at all.
-            rc=0
-            devcontainer-plumbing >/dev/null 2>&1 || rc=$?
-            test "$rc" -eq 2
-            echo "base image smoke test OK"
-          '
-
       # devcontainers/ci builds with the full feature set (so feature bumps are exercised,
       # not just the Dockerfile) and runs the smoke command inside the resulting container.
       # cacheFrom reuses the previously-built layers; push: filter seeds the cache on pushes
       # to main only (PRs build against the cache but don't publish).
-      - if: steps.changes.outputs.changed == 'true'
+      - if: needs.changes.outputs.changed == 'true'
         uses: devcontainers/ci@513af61f4de4f75d37e4438f184ba4358f0fc1ca # v0.3.1900000450
         with:
           imageName: ${{ steps.img.outputs.ref }}
@@ -211,25 +244,47 @@ jobs:
             test -w "$HOME/.ssh/known_hosts"
             test ! -w "$HOME/.ssh/allowed_signers"
 
-      # Publish the base image LAST, so a base that failed its own smoke test — or broke this
-      # repo's devcontainer build above — never reaches the registry.
-      #
-      # `oci_push` pushes the exact multi-arch index Bazel built, so unlike a `docker buildx`
-      # publish this is the same artifact the smoke test loaded rather than a rebuild of it.
-      # No QEMU and no second builder are involved: nothing is executed to produce either
-      # architecture, so the index is assembled from two sets of layers.
-      #
-      # :latest is what Renovate digest-pins; :sha-<gitsha> is the immutable audit trail.
-      # Credentials come from the docker/login-action step above, which writes the config
-      # oci_push's registry client reads.
-      - if: >-
-          github.event_name == 'push' && github.ref == 'refs/heads/main'
-          && steps.changes.outputs.base == 'true'
-        name: Publish the shared base image
-        run: |
+      - if: needs.changes.outputs.changed != 'true'
+        run: echo "No devcontainer changes in this PR; skipping build."
+
+  # Publish LAST — `needs` both smoke jobs, so a base that failed on either architecture, or
+  # that broke this repo's own devcontainer build, never reaches the registry.
+  #
+  # `oci_push` pushes the exact multi-arch index Bazel built, so unlike a `docker buildx`
+  # publish this is the artifact that was smoke-tested rather than a rebuild of it. Runs on one
+  # runner regardless of architecture: nothing is executed to produce either variant, so the
+  # index is assembled from two sets of already-built layers.
+  #
+  # Known non-atomicity: the runner does `crane push repo@digest` and then one `crane tag` per
+  # tag, so a failure between them can leave :latest moved with sha-<gitsha> missing. Re-running
+  # fixes it — a half-tagged package is not a corrupt push.
+  #
+  # :latest is what Renovate digest-pins; :sha-<gitsha> is the immutable audit trail.
+  publish:
+    name: Publish the shared base image
+    needs:
+      - changes
+      - base-image
+      - build-and-smoke-test
+    if: >-
+      github.event_name == 'push' && github.ref == 'refs/heads/main'
+      && needs.changes.outputs.base == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/setup-bazel-remote
+        with:
+          buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
+
+      # oci_push's registry client reads the docker config this writes.
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - run: |
           set -euo pipefail
           bazel run --config=ci //meta/devcontainer-base:push -- \
             --tag latest --tag "sha-${GITHUB_SHA}"
-
-      - if: steps.changes.outputs.changed != 'true'
-        run: echo "No devcontainer changes in this PR; skipping build."

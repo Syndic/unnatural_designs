@@ -78,18 +78,28 @@ neither a docker client nor a mounted socket).
 | `bazel build //meta/devcontainer-base:image` | nothing — runs in the devcontainer |
 | `bazel test //meta/devcontainer-base/...` | nothing — layer layout and modes are asserted from the tars |
 | `bazel run //meta/devcontainer-base:load` | a Docker daemon; loads `devcontainer-base:ci` |
-| `bazel run //meta/devcontainer-base:push` | a daemon-free registry client plus credentials |
+| `bazel run //meta/devcontainer-base:push` | credentials; pushes the index, no daemon |
 
 Because `pkg_tar` pins timestamps, rebuilds are byte-identical and the image digest is stable —
 so the same source produces the same digest on any machine. A `docker build` never did: it bakes
 fresh timestamps into the image config, which is why an equivalent rebuild still looked different.
 
-CI builds this whenever `meta/devcontainer-base/` changes, loads it into a daemon and runs the
-dispatcher, then publishes multi-arch on pushes to `main` only — so an unbuilt or
-unsmoke-tested base never reaches the registry. `oci_push` publishes the exact index Bazel
-built rather than rebuilding it. Consumers pin a digest and Renovate bumps it; its
-`bazel-module` manager reads `oci.pull` as a `docker` dependency, which is why the base is
-declared with both a tag and a digest.
+CI builds this whenever `meta/devcontainer-base/` changes and runs the dispatcher inside it on
+**both** architectures — native `ubuntu-latest` and `ubuntu-24.04-arm` runners, so no QEMU is
+involved. Both are smoke-tested because `oci_load` can only materialise one image per Docker
+tag; on an amd64 runner alone, the arm64 manifest would ship having only ever been assembled,
+and arm64 is what developer hosts actually run.
+
+Publishing happens on pushes to `main` only, in a job gated on both smoke jobs, so a base that
+failed on either architecture never reaches the registry. `oci_push` publishes the exact index
+Bazel built rather than rebuilding it.
+
+Consumers pin a digest and Renovate bumps it: its `bazel-module` manager reads `oci.pull` as a
+`docker` dependency, which is why the base is declared with both a tag and a digest — a digest
+alone would be pinned forever with nothing to compare against.
+
+The GHCR repository is declared once, on the `oci_push` target in `BUILD.bazel`; it is a
+property of the artifact rather than of the runner, so it does not appear in the workflow.
 
 The GHCR package must be **public** for Mend-hosted Renovate to read its digests; a private
 package makes Renovate silently stop producing updates. That is safe here because the image

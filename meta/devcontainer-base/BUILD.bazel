@@ -114,6 +114,7 @@ py_test(
     srcs = ["test_image_layers.py"],
     data = [
         ":dispatcher_layer",
+        ":image",
         ":scripts_layer",
     ],
     main = "test_image_layers.py",
