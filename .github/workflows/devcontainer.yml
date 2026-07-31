@@ -120,6 +120,29 @@ jobs:
             echo "base image smoke test OK"
           '
 
+  # Fan-in so branch protection has one stable name to require instead of one per matrix row —
+  # same pattern as ci.yml's `build-and-test-all`. Adding an architecture then needs no branch
+  # protection edit, and a failure on any row blocks the merge.
+  #
+  # Unlike ci.yml's equivalent, `skipped` has to pass: that matrix is gated on the base image
+  # actually having changed, so most PRs legitimately skip it. Only failure and cancellation
+  # are real.
+  base-image-all:
+    name: Base image (all platforms)
+    needs: base-image
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify every base-image row passed
+        run: |
+          set -euo pipefail
+          result="${{ needs.base-image.result }}"
+          echo "base-image result: $result"
+          case "$result" in
+            success | skipped) ;;
+            *) exit 1 ;;
+          esac
+
   build-and-smoke-test:
     name: Build devcontainer and smoke test
     needs: changes
@@ -264,7 +287,7 @@ jobs:
     name: Publish the shared base image
     needs:
       - changes
-      - base-image
+      - base-image-all
       - build-and-smoke-test
     if: >-
       github.event_name == 'push' && github.ref == 'refs/heads/main'
