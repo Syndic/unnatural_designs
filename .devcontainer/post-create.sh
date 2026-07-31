@@ -8,7 +8,15 @@ set -euo pipefail
 
 # Must come first: everything below runs git against the worktree, whose .git file only
 # resolves once the host-absolute common-dir symlink exists.
-"$(cd "$(dirname "$0")" && pwd)/plumbing.sh" post-create
+#
+# Called through the workspace for now; it moves to the base image's
+# /usr/local/bin/devcontainer-plumbing once this repo's Dockerfile FROMs that image. The env
+# vars are passed explicitly because the script lives outside .devcontainer/ and so can't
+# derive them from its own location — see meta/devcontainer-base/README.md.
+_dc_here="$(cd "$(dirname "$0")" && pwd)"
+PLUMBING_WORKSPACE="$(cd "$_dc_here/.." && pwd)" \
+  PLUMBING_DIR="$_dc_here/.git-plumbing" \
+  "$_dc_here/../meta/devcontainer-base/scripts/devcontainer-plumbing.sh" post-create
 
 # Make the named-volume mounts writable by the non-root user. Docker attaches volumes
 # root-owned on first mount, and the .cache parent of the bazel mount inherits that, so
@@ -60,7 +68,7 @@ if [ -n "$hooks_path" ]; then
   default_hooks_path="$(git rev-parse --path-format=absolute --git-common-dir)/hooks"
 
   # `-ef` (same-inode) not string-equality: the worktree-fix symlink layer
-  # (initialize.sh + plumbing.sh) makes the two paths name the same dir via a
+  # (initialize.sh + devcontainer-plumbing) makes the two paths name the same dir via a
   # symlink, so they compare unequal as text but resolve to the same inode.
   if [ "$hooks_path" -ef "$default_hooks_path" ]; then
     if [ "$(git config --get extensions.worktreeConfig || true)" = "true" ]; then

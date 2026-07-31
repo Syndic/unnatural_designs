@@ -84,5 +84,5 @@ RUN ARCH="$(dpkg --print-architecture)" \
     && chmod 0755 /usr/local/bin/buildifier
 
 # No host-specific layers here on purpose: the git-common-dir symlink and the host timezone
-# are applied at container start by .devcontainer/plumbing.sh, which keeps this image
+# are applied at container start by meta/devcontainer-base/, which keeps this image
 # host-agnostic. See ".devcontainer worktree + timezone plumbing" in .claude/CLAUDE.md.

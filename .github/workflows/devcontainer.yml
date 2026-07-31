@@ -45,7 +45,8 @@ jobs:
           fi
           python3 meta/scripts/classify_changed_paths.py \
             --base "$base" \
-            --rule 'changed=^\.devcontainer/|^\.github/workflows/devcontainer\.yml$'
+            --rule 'changed=^\.devcontainer/|^meta/devcontainer-base/|^\.github/workflows/devcontainer\.yml$' \
+            --rule 'base=^meta/devcontainer-base/'
 
       # ── Feature lock freshness ────────────────────────────────────────────────────
       # devcontainer-lock.json is derived from the feature references in devcontainer.json and
@@ -83,9 +84,18 @@ jobs:
       # Cache the built image in GHCR so the expensive feature layers (Go tools ~90s, etc.)
       # are reused across runs instead of rebuilt cold every time. The ref must be lowercase
       # (GHCR rejects uppercase), and ${{ github.repository }} carries the org's casing.
+      # `base` currently implies `changed` (the base dir is inside the `changed` regex), but
+      # gate on both so the base build can't silently lose its image refs if that stops being
+      # true.
       - id: img
-        if: steps.changes.outputs.changed == 'true'
-        run: echo "ref=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')-devcontainer" >> "$GITHUB_OUTPUT"
+        if: steps.changes.outputs.changed == 'true' || steps.changes.outputs.base == 'true'
+        run: |
+          set -euo pipefail
+          repo="$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
+          {
+            echo "ref=ghcr.io/$repo-devcontainer"
+            echo "base=ghcr.io/$repo-devcontainer-base"
+          } >> "$GITHUB_OUTPUT"
 
       # Auth for the GHCR cache. Skipped on fork PRs — their read-only token can't reach the
       # package, so they fall back to a cold build. Needs the packages: write permission above.
@@ -95,6 +105,46 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Shared base image ─────────────────────────────────────────────────────────
+      # meta/devcontainer-base/ is published for other Syndic repos to FROM. Build it here
+      # whenever it changes so a broken Dockerfile or script fails on the PR that broke it,
+      # and smoke the dispatcher it installs. This repo does not FROM it yet — that repoint,
+      # and the BASE_IMAGE override that lets a base change be tested against a real consumer
+      # in one PR, come next. See meta/devcontainer-base/README.md.
+      # No --cache-from: the image is FROM + two COPYs with no RUN layers, so there is nothing
+      # a layer cache would save. Pulling the published image to compare against would cost
+      # more than the build.
+      - if: steps.changes.outputs.base == 'true'
+        name: Build the shared base image
+        run: |
+          set -euo pipefail
+          docker buildx build --tag devcontainer-base:ci --load meta/devcontainer-base
+
+      - if: steps.changes.outputs.base == 'true'
+        name: Smoke test the base image
+        run: |
+          set -euo pipefail
+          docker run --rm devcontainer-base:ci bash -c '
+            set -euo pipefail
+            command -v devcontainer-plumbing >/dev/null
+            test -x "$(command -v devcontainer-plumbing)"
+            # The dispatcher is installed on PATH but its library is not beside it, so this
+            # also proves the absolute fallback path resolves in the image layout.
+            test -r /usr/local/share/devcontainer-plumbing/lib.sh
+
+            # A bad verb must be a usage error, not a silent no-op or a partial apply.
+            rc=0
+            out="$(devcontainer-plumbing bogus-verb 2>&1)" || rc=$?
+            test "$rc" -eq 2
+            case "$out" in usage:*) ;; *) echo "unexpected: $out" >&2; exit 1 ;; esac
+
+            # Same for no verb at all.
+            rc=0
+            devcontainer-plumbing >/dev/null 2>&1 || rc=$?
+            test "$rc" -eq 2
+            echo "base image smoke test OK"
+          '
 
       # devcontainers/ci builds with the full feature set (so feature bumps are exercised,
       # not just the Dockerfile) and runs the smoke command inside the resulting container.
@@ -124,7 +174,7 @@ jobs:
             test -L .devcontainer/.host-git-common
             test -s .devcontainer/.git-plumbing/host-git-common-path
 
-            # Both container hooks reached plumbing.sh. Every other postStart side effect
+            # Both container hooks reached the shared plumbing. Every other postStart effect
             # is environment-dependent here (the agent socket is a placeholder regular
             # file, allowed_signers is empty), so the stamps are what's assertable.
             test -f /run/devcontainer-plumbing/post-create.stamp
@@ -158,6 +208,37 @@ jobs:
             # Pin the mount flags, which is what makes host write-back work at all.
             test -w "$HOME/.ssh/known_hosts"
             test ! -w "$HOME/.ssh/allowed_signers"
+
+      # Publish the base image LAST, so a base that failed its own smoke test — or broke this
+      # repo's devcontainer build above — never reaches the registry.
+      #
+      # Multi-arch needs the docker-container driver, which cannot see the local image store,
+      # so it gets its own named builder that is deliberately never `--use`d: the default
+      # `docker` driver has to stay active for the `--load` build above and for the consumer
+      # build to resolve `devcontainer-base:ci` once this repo FROMs it.
+      #
+      # :latest is what Renovate digest-pins; :sha-<gitsha> is the immutable audit trail.
+      #
+      # This rebuilds rather than pushing the exact image the smoke test ran against — the
+      # multi-arch driver can't take it from the local store. For a RUN-free FROM + COPY the
+      # result is content-identical, but it does mean the arm64 variant's only validation is
+      # that it built: smoke-testing it on an amd64 runner would need the QEMU this image is
+      # shaped to avoid.
+      - if: >-
+          github.event_name == 'push' && github.ref == 'refs/heads/main'
+          && steps.changes.outputs.base == 'true'
+        name: Publish the shared base image
+        run: |
+          set -euo pipefail
+          # Idempotent: a re-run on a warm runner would otherwise fail on an existing builder.
+          docker buildx inspect ci-multiarch >/dev/null 2>&1 \
+            || docker buildx create --name ci-multiarch --driver docker-container
+          docker buildx build --builder ci-multiarch \
+            --platform linux/amd64,linux/arm64 \
+            --tag "${{ steps.img.outputs.base }}:latest" \
+            --tag "${{ steps.img.outputs.base }}:sha-${GITHUB_SHA}" \
+            --push \
+            meta/devcontainer-base
 
       - if: steps.changes.outputs.changed != 'true'
         run: echo "No devcontainer changes in this PR; skipping build."

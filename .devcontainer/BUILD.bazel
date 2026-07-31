@@ -1,14 +1,12 @@
 load("@rules_python//python:defs.bzl", "py_test")
 
-# The plumbing itself is shell (the Phase 2 base image ships no Python), but its decision
-# logic is unit-tested from Python so it rides the authoritative `bazel test //...` gate.
+# The host stub is shell (it runs before any container exists), but its decision logic is
+# unit-tested from Python so it rides the authoritative `bazel test //...` gate. The shared
+# library it feeds is tested in //meta/devcontainer-base.
 py_test(
-    name = "test_plumbing",
+    name = "test_initialize",
     size = "small",
-    srcs = ["test_plumbing.py"],
-    data = [
-        "initialize.sh",
-        "plumbing.sh",
-    ],
-    main = "test_plumbing.py",
+    srcs = ["test_initialize.py"],
+    data = ["initialize.sh"],
+    main = "test_initialize.py",
 )

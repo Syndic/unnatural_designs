@@ -30,10 +30,20 @@ RULES_RENOVATE = {
     "devcontainer": r"^\.devcontainer/devcontainer\.json$",
 }
 
-# Mirrors devcontainer.yml.
+# Mirrors devcontainer.yml. `changed` gates the whole job; `base` additionally gates building
+# and publishing the shared base image, so a PR that only touches .devcontainer/ doesn't pay
+# for a base rebuild (which would also cold-miss the consumer's FROM layer cache).
 RULES_DEVCONTAINER = {
-    "changed": r"^\.devcontainer/|^\.github/workflows/devcontainer\.yml$",
+    "changed": r"^\.devcontainer/|^meta/devcontainer-base/|^\.github/workflows/devcontainer\.yml$",
+    "base": r"^meta/devcontainer-base/",
 }
+
+
+def expect_devcontainer(**fired):
+    """Full RULES_DEVCONTAINER classification: every group False except the ones named."""
+    result = dict.fromkeys(RULES_DEVCONTAINER, False)
+    result.update(fired)
+    return result
 
 
 def expect(**fired):
@@ -192,17 +202,41 @@ class TestClassifyDevcontainer(unittest.TestCase):
         return classify(files, RULES_DEVCONTAINER)
 
     def test_devcontainer_dir(self):
-        self.assertEqual(self._run([".devcontainer/Dockerfile"]), {"changed": True})
+        # Builds the devcontainer but not the base image: nothing shared changed.
+        self.assertEqual(self._run([".devcontainer/Dockerfile"]), expect_devcontainer(changed=True))
 
     def test_workflow_file(self):
-        self.assertEqual(self._run([".github/workflows/devcontainer.yml"]), {"changed": True})
+        self.assertEqual(
+            self._run([".github/workflows/devcontainer.yml"]), expect_devcontainer(changed=True)
+        )
 
     def test_other_workflow_not_matched(self):
         # The `$` on the second alternative keeps a sibling workflow from matching.
-        self.assertEqual(self._run([".github/workflows/ci.yml"]), {"changed": False})
+        self.assertEqual(self._run([".github/workflows/ci.yml"]), expect_devcontainer())
 
     def test_unrelated(self):
-        self.assertEqual(self._run(["README.md"]), {"changed": False})
+        self.assertEqual(self._run(["README.md"]), expect_devcontainer())
+
+    def test_base_image_fires_both(self):
+        # A base change fires both. `changed` additionally gates the login and image-ref steps
+        # the base build depends on, and — once this repo FROMs the image — the consumer build
+        # that a base change must be validated against. The job itself has no `if` and always
+        # runs, so this is about the steps inside it, not about the job skipping.
+        self.assertEqual(
+            self._run(["meta/devcontainer-base/scripts/lib.sh"]),
+            expect_devcontainer(changed=True, base=True),
+        )
+
+    def test_base_image_readme_also_counts(self):
+        # The README is the canonical rationale home; cheap to rebuild, and keeping the rule
+        # a plain prefix avoids a per-file allowlist drifting from the directory.
+        self.assertEqual(
+            self._run(["meta/devcontainer-base/README.md"]),
+            expect_devcontainer(changed=True, base=True),
+        )
+
+    def test_sibling_meta_dir_not_matched(self):
+        self.assertEqual(self._run(["meta/scripts/check_modules.py"]), expect_devcontainer())
 
 
 class TestFormatOutputs(unittest.TestCase):

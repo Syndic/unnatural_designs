@@ -1,0 +1,15 @@
+load("@rules_python//python:defs.bzl", "py_test")
+
+# Shared devcontainer base image, published to GHCR and consumed by Syndic repos.
+# The image itself is built by CI (docker buildx), not Bazel; this target only tests the
+# shell library it ships, so the decisions ride `bazel test //...` like everything else.
+py_test(
+    name = "test_plumbing",
+    size = "small",
+    srcs = ["test_plumbing.py"],
+    data = [
+        "scripts/devcontainer-plumbing.sh",
+        "scripts/lib.sh",
+    ],
+    main = "test_plumbing.py",
+)

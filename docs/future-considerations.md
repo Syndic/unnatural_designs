@@ -209,11 +209,21 @@ rather than carrying the complexity speculatively.
 
 **Phase 1 landed in [PR #207](https://github.com/Syndic/unnatural_designs/pull/207).** The image is
 now host-agnostic: the git-common-dir symlink and the host timezone are applied at container start
-by `.devcontainer/plumbing.sh` instead of baked by the Dockerfile, the `checkstat`/`trustctime`
-writes moved there too, and `known_hosts`/`allowed_signers` became bind mounts fed by stub-written
-symlinks rather than snapshots — `known_hosts` writable, so a host accepted in one container
-persists to the host itself. What remains is phases 2–3 (publish a shared base image and repoint
-both repos at it) plus the .dotfiles-side adoption; the inventory below reflects that.
+instead of baked by the Dockerfile, the `checkstat`/`trustctime` writes moved there too, and
+`known_hosts`/`allowed_signers` became bind mounts fed by stub-written symlinks rather than
+snapshots — `known_hosts` writable, so a host accepted in one container persists to the host itself.
+
+**Phase 2 is in progress.** The container-side plumbing now lives in `meta/devcontainer-base/` as
+a `lib.sh` plus a `devcontainer-plumbing` dispatcher, built into a RUN-free image that CI publishes
+multi-arch to GHCR on pushes to `main`. This repo's hooks already call that single copy through the
+workspace, so it is dogfooded here, but its Dockerfile does not `FROM` the image yet — a consumer's
+pinned digest cannot resolve until the image exists on `main`, which is why the repoint is phase 3
+rather than part of this one.
+
+What remains is phase 3 (repoint this repo's Dockerfile at the published digest, switch the hooks to
+`/usr/local/bin/devcontainer-plumbing`, add the `BASE_IMAGE` override so a base change can be
+smoke-tested against a real consumer in one PR) plus the .dotfiles-side adoption. The inventory
+below reflects that.
 
 This repo and [Syndic/.dotfiles](https://github.com/Syndic/.dotfiles) still carry near-identical
 devcontainer git plumbing: worktree common-dir bridging (the `initializeCommand` symlink and the
@@ -223,9 +233,9 @@ placeholder and chown, host timezone propagation, and the `core.checkstat = mini
 [PR #177](https://github.com/Syndic/unnatural_designs/pull/177) were hand-ported to .dotfiles
 [PR #99](https://github.com/Syndic/.dotfiles/pull/99) in July 2026.
 
-The duplication cost now concentrates in `.devcontainer/plumbing.sh` — the container-side apply
-logic Phase 1 created, which is exactly what the base image is meant to carry — plus
-`initialize.sh` and `post-start.sh`. The `devcontainer.json` mount / `workspaceMount` /
+The duplication cost concentrates in the container-side apply logic — now extracted to
+`meta/devcontainer-base/`, but not yet consumed by .dotfiles — plus `initialize.sh` and
+`post-start.sh`. The `devcontainer.json` mount / `workspaceMount` /
 `SSH_AUTH_SOCK` wiring is structurally identical across the repos but stable — not worth unifying.
 `post-create.sh` has zero overlap (go/bazel here vs. ansible/uv there) and stays repo-specific.
 The drift is wider since Phase 1: .dotfiles still bakes both host facts into its Dockerfile and
@@ -242,20 +252,23 @@ The plan therefore inverts the earlier idea of extracting a host-side library. I
 movable application logic to the container side and let a shared base image carry it, shrinking
 the irreducibly-per-host residue to a stub:
 
-- **Unbake the image.** ✅ Done in Phase 1 — `plumbing.sh` applies the symlink, the timezone and
-  the config writes at `postCreate` (top, before anything runs git) and again at `postStart`.
-- **Build and publish the base image from this monorepo.** This fits without new build
-  infrastructure: the `Devcontainer` CI job already builds the devcontainer and pushes a cache
-  image to GHCR (`ghcr.io/<repo>-devcontainer`, `packages: write`), so the base image is a second
-  published target beside it — and this repo's own devcontainer becomes its first consumer,
-  `FROM`-ing the base and layering go/bazel on top, so the shared half is dogfooded here on every
-  CI run. The base carries the container-side plumbing — today's `plumbing.sh` (symlink, timezone,
-  shared-index config), the gitconfig install, the `allowedSignersFile` repoint and the socket
-  chown — as reviewed scripts at a known path; .dotfiles `FROM`s the same image (its GHCR
-  package readable org-wide) and layers ansible/uv. Each repo's container hooks call the shared
-  functions, then do repo-specific work. The image is digest-pinned and Renovate-bumped —
-  machinery both repos already run — so a new version arrives as an auto-mergeable bump gated by
-  each consumer's own devcontainer smoke check, with no new management surface.
+- **Unbake the image.** ✅ Done in Phase 1 — the symlink, the timezone and the config writes are
+  applied at `postCreate` (top, before anything runs git) and again at `postStart`.
+- **Build and publish the base image from this monorepo.** ✅ Done in Phase 2 — the `Devcontainer`
+  job builds `meta/devcontainer-base/` whenever it changes, smoke-tests the dispatcher it installs,
+  and publishes multi-arch to `ghcr.io/<repo>-devcontainer-base` on pushes to `main` only, so a
+  base that failed its own checks never reaches the registry. **Still to do:** make that GHCR
+  package public — Mend-hosted Renovate cannot read digests from a private package and silently
+  stops producing updates. It is safe because the image holds only two shell scripts and a Debian
+  base, no host-specific content.
+
+  Not yet done, and the substance of phase 3: .dotfiles `FROM`s the same image and layers
+  ansible/uv, while this repo `FROM`s it and layers go/bazel so the shared half is dogfooded here
+  on every CI run. The image is digest-pinned and Renovate-bumped — machinery both repos already
+  run — so a new version arrives as a bump gated by each consumer's own devcontainer smoke check,
+  with no new management surface. The gitconfig install, the `allowedSignersFile` repoint and the
+  socket chown are still in this repo's `post-start.sh`; they move into the shared library when
+  .dotfiles needs them too.
 - **What's left on the host is a thin read-and-drop stub:** a handful of reads dropping results
   into `.git-plumbing/`, plus the one sudo branch (the agent-socket placeholder). It rarely
   changes and is too small to be worth a shared artifact, so it stays hand-copied — cheaply.
@@ -290,11 +303,12 @@ Rejected alternatives:
   configuration, and PR churn in every consumer cost more than the risk they retire once the base
   image's digest bump already delivers hands-off pickup.
 
-**Remaining work:** phase 2 (add `meta/devcontainer-base/`, build and publish it from the
-`Devcontainer` job) and phase 3 (repoint this repo's Dockerfile at the published digest and delete
-the now-duplicated logic from the lifecycle hooks), then the .dotfiles-side adoption. Phase 1
-widened the gap between the repos rather than closing it, so the cross-repo check stays necessary
-until phase 3 lands. Two caveats to carry forward: the consumer's pinned digest can't resolve until
+**Remaining work:** phase 3 (make the GHCR package public, repoint this repo's Dockerfile at the
+published digest, switch the hooks from the workspace path to the image's command, and add the
+`BASE_IMAGE` build-arg override so a base change is smoke-tested against a real consumer in the same
+PR), then the .dotfiles-side adoption. Phases 1–2 widened the gap between the repos rather than
+closing it, so the cross-repo check stays necessary until .dotfiles adopts the image. Two caveats to
+carry forward: the consumer's pinned digest can't resolve until
 the image exists on `main`, so phases 2 and 3 can't be one PR; and `devcontainer up` reuses an
 existing container, so a base-image bump lands on the next rebuild, not the next `up` — the
 accepted freshness cost of the image channel.

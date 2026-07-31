@@ -170,10 +170,14 @@ per-step rationale lives at each site, not here:
 - `.devcontainer/devcontainer.json` — binds the symlink to a static `/host-git-common`; sets
   `workspaceFolder`/`workspaceMount` to `${localWorkspaceFolder}` so the workspace lives at its
   real host path in the container.
-- `.devcontainer/plumbing.sh` — applies those facts at container start, invoked from the top of
-  both `post-create.sh` and `post-start.sh`. Recreates the host-absolute git path as a symlink to
-  `/host-git-common`, points `/etc/localtime` at the host zone, and writes the shared-index config
-  below.
+- `meta/devcontainer-base/scripts/` — the shared library and its `devcontainer-plumbing`
+  dispatcher, which apply those facts at container start: they recreate the host-absolute git
+  path as a symlink to `/host-git-common`, point `/etc/localtime` at the host zone, and write
+  the shared-index config below. Invoked from the top of both `post-create.sh` and
+  `post-start.sh`. This half is what gets published as a shared base image for
+  `Syndic/.dotfiles` to consume — see that directory's README for the interface contract. The
+  hooks currently call it through the workspace; they switch to the image's
+  `/usr/local/bin/devcontainer-plumbing` when this repo's Dockerfile `FROM`s the base.
 
 **The application is deliberately at runtime, not baked into the image.** Nothing forces it to
 build time — the workspace isn't even mounted then — and baking the two per-host facts is the only
@@ -188,16 +192,19 @@ a failure mode that didn't exist while this ran host-side. Docker Desktop and `d
 both map correctly (CI asserts it); rootless-Docker and colima remain unsupported here anyway.
 
 **The plumbing stays shell, and is tested from Python.** It can't be Python: the base image it
-moves into (`mcr.microsoft.com/devcontainers/base:debian`) ships no interpreter, and adding one
-costs the RUN-free property that makes multi-arch builds free. So the decision logic is factored
-into side-effect-free `plumbing_*` / `initialize_*` functions, both scripts guard their imperative
-body on `BASH_SOURCE == $0`, and `.devcontainer/test_plumbing.py` sources them to exercise those
-functions under `bazel test //...`. `shellcheck` covers the rest, wired as both a pre-commit hook
-and a CI job. When adding logic here, put the decision in a pure function and leave only the effect
-at the call site — that is what keeps it testable.
+ships in (`mcr.microsoft.com/devcontainers/base:debian`) has no interpreter, and adding one costs
+the RUN-free property that makes multi-arch builds free. So the decision logic is factored into
+side-effect-free `plumbing_*` / `initialize_*` functions, and the tests source the scripts to
+exercise those functions under `bazel test //...`: `meta/devcontainer-base/test_plumbing.py` for
+the shared library, `.devcontainer/test_initialize.py` for the host stub — each next to the code it
+covers. `initialize.sh` guards its imperative body on `BASH_SOURCE == $0`; `lib.sh` needs no guard
+because it is purely a library. `shellcheck` covers the rest, wired as both a pre-commit hook and a
+CI job. When adding logic here, put the decision in a pure function and leave only the effect at
+the call site — that is what keeps it testable.
 
-Two ordering facts the code depends on. `plumbing.sh` must run at the *top* of `post-create.sh`,
-because everything below it runs git against the worktree. And it must re-run at `postStart`:
+Two ordering facts the code depends on. `devcontainer-plumbing` must run at the *top* of
+`post-create.sh`, because everything below it runs git against the worktree. And it must re-run
+at `postStart`:
 `devcontainer up` re-runs `initializeCommand` and can rewrite the path file even for an existing
 container, but `postCreate` does not re-run. Every step is idempotent so the double application is
 free — including the `/etc/environment` `TZ=` line, which is rewritten rather than appended.
@@ -245,7 +252,7 @@ symlinks `python3`/`python` onto PATH. The CI `Devcontainer` job caches the buil
 reused across runs rather than rebuilt cold; this needs the workflow's `packages: write`.
 
 `.git-plumbing/` is tracked via its README; the files inside are gitignored and rewritten on every
-`up`. `plumbing.sh` guards each step on `[ -s ... ]`, so a missing or empty file is a clean no-op
+`up`. The library guards each step on `[ -s ... ]`, so a missing or empty file is a clean no-op
 (no git checkout → no symlink and no shared-index config; no zone → the container keeps its
 default).
 
@@ -260,7 +267,7 @@ rebase, merge, branch switch — refuse with "your local changes would be overwr
 tree. Plain commits never hit this (no checkout involved), which is why the breakage only surfaced
 on an in-container rebase.
 
-`plumbing.sh` therefore sets `core.checkstat = minimal` and `core.trustctime = false` in the
+The shared library therefore sets `core.checkstat = minimal` and `core.trustctime = false` in the
 repo-local config. That config lives in the common dir, so one write covers both sides and every
 worktree — which is also why it can be written from the container side at all. `minimal` reduces
 the stat check to whole-second mtime + file size — the two fields the bind mount preserves —
@@ -269,9 +276,9 @@ against ctime-only divergence from metadata changes (chmod/chown) one side doesn
 trade-off: a same-size edit landing in the same second as the last index refresh can evade stat
 detection; git's racy-index protection (entries at least as new as the index itself get
 content-checked) covers the realistic window. CI's smoke job asserts both settings landed — proof
-that `post-create.sh` reached `plumbing.sh`. That `devcontainers/ci` runs `initializeCommand` at
-all (plain `devcontainer build` doesn't) is pinned separately, by asserting the host-written
-artifacts in `.git-plumbing/` are present.
+that `post-create.sh` reached the shared plumbing. That `devcontainers/ci` runs
+`initializeCommand` at all (plain `devcontainer build` doesn't) is pinned separately, by
+asserting the host-written artifacts in `.git-plumbing/` are present.
 
 ## .devcontainer signed commits under CLI
 

@@ -1,12 +1,14 @@
-#!/usr/bin/env bash
-set -euo pipefail
-
-# Apply the host facts initialize.sh dropped in .git-plumbing/ to the running container.
-# Called at the top of both post-create.sh and post-start.sh; every step is idempotent.
-# See ".devcontainer worktree + timezone plumbing" in .claude/CLAUDE.md.
+# shellcheck shell=bash
 #
-# The `plumbing_*` functions are pure decisions, split out from the effects they drive so
-# test_plumbing.py can source this file and exercise them without privileged writes.
+# Shared devcontainer host-plumbing library. Sourced by devcontainer-plumbing.sh, and by
+# meta/devcontainer-base/test_plumbing.py to exercise the pure decisions directly.
+#
+# Deliberately does NOT set -e/-o pipefail: it is sourced into callers that own their own
+# shell options. The dispatcher sets them.
+#
+# The `plumbing_*_is_safe` / `plumbing_*_action` functions are pure decisions, split from the
+# effects they drive so they can be tested without privileged writes. When adding logic here,
+# put the decision in a pure function and leave only the effect at the call site.
 
 # ── decisions (unit-tested) ───────────────────────────────────────────────────────────────
 
@@ -33,8 +35,8 @@ plumbing_git_common_action() {
   fi
 }
 
-# These files are written by a host-side stub that Phase 2 moves into a *different* repo, so
-# validate rather than trust: both values feed privileged commands below.
+# These files are written by a host-side stub that lives in the *consuming* repo, so validate
+# rather than trust: both values feed privileged commands below.
 plumbing_zone_is_safe() {
   case "$1" in
     "" | /* | *..*) return 1 ;;
@@ -75,7 +77,8 @@ plumbing_sudo() {
 }
 
 # Recreate the host's git common dir at its host-absolute path, pointing at the static path
-# devcontainer.json binds, so a worktree's .git file resolves with no GIT_* overrides.
+# the consumer's devcontainer.json binds, so a worktree's .git file resolves with no GIT_*
+# overrides.
 plumbing_apply_git_common() {
   local plumbing_dir="$1" workspace="$2" p action
   p="$(cat "$plumbing_dir/host-git-common-path")"
@@ -101,7 +104,7 @@ plumbing_apply_git_common() {
       ;;
   esac
 
-  # Fail loud: everything post-create.sh does afterwards runs git against the worktree.
+  # Fail loud: the consumer's postCreate runs git against the worktree right after this.
   if [ ! -d "$p" ]; then
     plumbing_warn "git common dir did not resolve: $p (action=$action)"
     return 1
@@ -112,15 +115,19 @@ plumbing_apply_git_common() {
 # restrict git's stat checks to the fields the bind mount preserves. Repo-local, so the
 # write lands in the common dir and covers both sides and every worktree.
 plumbing_apply_shared_index_config() {
-  git -C "$1" config core.checkstat minimal
-  git -C "$1" config core.trustctime false
+  # &&-chained rather than two statements: these two settings are a pair, and a caller that
+  # invoked this with errexit suspended (inside `if !`, `||`, or a condition) would otherwise
+  # let the first write fail, the second succeed, and the function still return 0 — leaving
+  # the container missing exactly the setting whose absence breaks in-container rebase.
+  git -C "$1" config core.checkstat minimal &&
+    git -C "$1" config core.trustctime false
 }
 
 # Point the container at the host's IANA zone so timestamps don't drift against the host.
 plumbing_apply_timezone() {
   local tz="$1" tmp
-  # Re-validate here, not just where the value was discovered: after Phase 2 the producer
-  # is a different repo's stub and this is where the privileged `ln` happens.
+  # Re-validate here, not just where the value was discovered: the producer is the consuming
+  # repo's host stub, and this is where the privileged `ln` happens.
   if ! plumbing_zone_is_safe "$tz"; then
     plumbing_warn "refusing to apply an unsafe zone name: $tz"
     return 0
@@ -150,31 +157,29 @@ plumbing_apply_timezone() {
   rm -f "$tmp"
 }
 
-plumbing_main() {
-  local phase="${1:?usage: plumbing.sh <post-create|post-start>}"
-  local here workspace plumbing_dir
-  here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  workspace="$(cd "$here/.." && pwd)"
-  plumbing_dir="${PLUMBING_DIR:-$here/.git-plumbing}"
+# Apply everything the host stub presented. Idempotent, so calling it at both postCreate and
+# postStart is free — which is required, because postCreate does not re-run when a container
+# is reused but `devcontainer up` does re-run initializeCommand.
+plumbing_apply_all() {
+  local plumbing_dir="$1" workspace="$2"
 
-  # An empty path file means initialize.sh found no git checkout; git falls back to normal
-  # discovery and the shared-index setting has nowhere to land.
+  # Called bare, NOT as `step || return 1`: bash suspends errexit for the entire body of a
+  # function invoked as the left operand of `||`, so a wrapper would let a step fail partway,
+  # keep running, and still return 0. The dispatcher's `set -e` aborts before the stamp.
   if [ -s "$plumbing_dir/host-git-common-path" ]; then
     plumbing_apply_git_common "$plumbing_dir" "$workspace"
     plumbing_apply_shared_index_config "$workspace"
+  elif [ "${PLUMBING_REQUIRE_GIT_CHECKOUT:-0}" = 1 ]; then
+    # Opt-in policy fork: Syndic/.dotfiles treats a non-git workspace as a bootstrap
+    # failure, while this repo keeps a graceful else-branch. An env flag rather than
+    # divergent copies of the script.
+    plumbing_warn "no host git common dir recorded and PLUMBING_REQUIRE_GIT_CHECKOUT=1"
+    return 1
   fi
 
+  # Timezone is documented as warn-and-continue, and the function returns 0 on every handled
+  # failure. No wrapper here either, for the same errexit reason.
   if [ -s "$plumbing_dir/host-timezone" ]; then
     plumbing_apply_timezone "$(cat "$plumbing_dir/host-timezone")"
   fi
-
-  # Stamp what ran: every other postStart side effect is environment-dependent, so this is
-  # what CI's smoke test can assert against.
-  plumbing_sudo install -d -m 0755 /run/devcontainer-plumbing
-  plumbing_sudo touch "/run/devcontainer-plumbing/$phase.stamp"
 }
-
-# Only run when executed; sourcing (the tests) just loads the functions.
-if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
-  plumbing_main "$@"
-fi

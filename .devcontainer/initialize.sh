@@ -22,9 +22,9 @@ initialize_zone_from_link() {
   esac
 }
 
-# Reject absolute paths and traversal: plumbing.sh builds /usr/share/zoneinfo/$tz from this
-# and feeds it to a privileged `ln`, so a hostile or broken /etc/localtime target must not
-# be able to point that elsewhere. Empty is a safe answer — the apply step then no-ops.
+# Reject absolute paths and traversal: the shared plumbing builds /usr/share/zoneinfo/$tz
+# from this and feeds it to a privileged `ln`, so a hostile or broken /etc/localtime target
+# must not point that elsewhere. Empty is a safe answer — the apply step then no-ops.
 initialize_sanitize_tz() {
   case "$1" in
     /* | *..*) printf '' ;;
@@ -81,7 +81,7 @@ if common="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
 else
   # Not a git checkout (shouldn't happen for this repo, but stay safe): make the
   # mount source a real-but-empty dir so Docker doesn't auto-create a stray path,
-  # and leave the path file empty so plumbing.sh's symlink step no-ops. git then
+  # and leave the path file empty so the symlink step no-ops. git then
   # falls back to normal discovery (which no-ops), and post-create.sh's guarded
   # `pre-commit install` skips.
   rm -rf "$link"
@@ -90,14 +90,14 @@ else
 fi
 
 # Host timezone — discover the IANA zone name (e.g. "America/Los_Angeles") and
-# persist it so plumbing.sh can apply it in-container. Without this, the
+# persist it so the shared plumbing can apply it in-container. Without this, the
 # container defaults to Etc/UTC and timestamps drift hours off the host.
 #
 # Two host shapes:
 #   - /etc/localtime is a symlink into the zoneinfo db (macOS, most modern
 #     Linux). Strip everything up to and including `zoneinfo/` to get the zone.
 #   - /etc/timezone exists as a plain text file (Debian/Ubuntu, some others).
-# An empty result is fine — plumbing.sh guards on `[ -s ]` and falls back to the
+# An empty result is fine — the apply step guards on `[ -s ]` and falls back to the
 # container's default zone.
 tz=""
 if target="$(readlink /etc/localtime 2>/dev/null)"; then

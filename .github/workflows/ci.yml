@@ -136,9 +136,10 @@ jobs:
       - run: ruff check
 
   # shellcheck: mirrors the pre-commit hook of the same name. The runner image ships
-  # shellcheck, so there's nothing to install. Scoped to *.sh, which today is the
-  # devcontainer host plumbing — privileged writes against /etc and host-absolute paths,
-  # where `set -e` foot-guns are worth catching mechanically rather than in review.
+  # shellcheck, so there's nothing to install. Scoped to *.sh, which today means the host stub
+  # in .devcontainer/ and the shared library in meta/devcontainer-base/ — privileged writes
+  # against /etc and host-absolute paths, where `set -e` foot-guns (errexit suspension inside
+  # `||` callees, most recently) are worth catching mechanically rather than in review.
   # The runner's shellcheck and the devcontainer's Debian package are separately versioned
   # with no shared pin, so the two can disagree; CI is authoritative if they ever do.
   shellcheck:
