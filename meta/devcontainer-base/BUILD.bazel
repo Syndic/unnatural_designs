@@ -1,8 +1,99 @@
+load("@rules_oci//oci:defs.bzl", "oci_image", "oci_image_index", "oci_load", "oci_push")
+load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 load("@rules_python//python:defs.bzl", "py_test")
 
 # Shared devcontainer base image, published to GHCR and consumed by Syndic repos.
-# The image itself is built by CI (docker buildx), not Bazel; this target only tests the
-# shell library it ships, so the decisions ride `bazel test //...` like everything else.
+#
+# Assembled by Bazel rather than a Dockerfile so it builds under plain `bazel build //...`, with
+# no Docker daemon involved — this repo's own devcontainer has neither a client nor a socket.
+# `bazel run :load` and `:push` do need a daemon and registry credentials respectively, so those
+# are CI's job (or the host's), not the devcontainer's.
+
+# The dispatcher goes on PATH under its command name; the library sits at the absolute path the
+# dispatcher falls back to when it isn't installed beside it. Modes are explicit because a
+# non-executable dispatcher fails only at container start — which is how it was first shipped.
+pkg_tar(
+    name = "scripts_layer",
+    srcs = ["scripts/lib.sh"],
+    # Reproducibility: pkg_tar defaults to a fixed mtime, so rebuilding produces byte-identical
+    # output and therefore a stable image digest. A `docker build` bakes fresh timestamps into
+    # the image config, which is why the old CI job had to avoid rebuilding the base needlessly.
+    mode = "0644",
+    package_dir = "/usr/local/share/devcontainer-plumbing",
+)
+
+# Renamed by copying rather than pkg_tar's remap_paths, which silently left the suffix on and
+# would have installed the command as `devcontainer-plumbing.sh`. An `outs` filename is
+# unambiguous. The source keeps .sh so shellcheck's `*.sh` selector picks it up; the installed
+# command drops it.
+genrule(
+    name = "dispatcher_command",
+    srcs = ["scripts/devcontainer-plumbing.sh"],
+    outs = ["devcontainer-plumbing"],
+    cmd = "cp $< $@",
+)
+
+pkg_tar(
+    name = "dispatcher_layer",
+    srcs = [":dispatcher_command"],
+    mode = "0755",
+    package_dir = "/usr/local/bin",
+)
+
+# One image per platform, each over that platform's base. No platform transition is needed: the
+# layers are two shell scripts, identical on every architecture.
+[
+    oci_image(
+        name = "image_linux_" + arch,
+        base = "@devcontainers_base_debian_linux_" + arch,
+        labels = {
+            "org.opencontainers.image.description": "Shared devcontainer git/host plumbing for Syndic repos",
+            "org.opencontainers.image.source": "https://github.com/Syndic/unnatural_designs",
+        },
+        tars = [
+            ":scripts_layer",
+            ":dispatcher_layer",
+        ],
+    )
+    for arch in [
+        "amd64",
+        "arm64",
+    ]
+]
+
+# Multi-arch is mandatory, not a nicety: developer hosts are Apple Silicon and CI runners are
+# amd64. Because nothing is executed at build time there is no QEMU involved either way.
+oci_image_index(
+    name = "image",
+    images = [
+        ":image_linux_amd64",
+        ":image_linux_arm64",
+    ],
+)
+
+# `bazel run //meta/devcontainer-base:load` puts the image in the local Docker daemon as
+# devcontainer-base:ci — what CI's smoke test runs, and what Phase 3's BASE_IMAGE override
+# points at when testing a base change against this repo's own devcontainer.
+#
+# Selected by CPU rather than pinned: CI runners are amd64 but developer hosts are Apple
+# Silicon, and loading the wrong architecture gets you a silently emulated container.
+oci_load(
+    name = "load",
+    image = select({
+        "@platforms//cpu:arm64": ":image_linux_arm64",
+        "@platforms//cpu:x86_64": ":image_linux_amd64",
+    }),
+    repo_tags = ["devcontainer-base:ci"],
+)
+
+oci_push(
+    name = "push",
+    image = ":image",
+    repository = "ghcr.io/syndic/unnatural_designs-devcontainer-base",
+)
+
+# The plumbing itself is shell (this image ships no interpreter); its decision logic is
+# unit-tested from Python so it rides the authoritative `bazel test //...` gate.
 py_test(
     name = "test_plumbing",
     size = "small",
@@ -12,4 +103,19 @@ py_test(
         "scripts/lib.sh",
     ],
     main = "test_plumbing.py",
+)
+
+# Asserts the assembled layers put each file where the dispatcher expects it, with the right
+# mode. Reads the tars directly, so it needs no Docker daemon and runs everywhere the rest of
+# the suite does — the `docker run` smoke test in CI covers runtime behaviour instead.
+py_test(
+    name = "test_image_layers",
+    size = "small",
+    srcs = ["test_image_layers.py"],
+    data = [
+        ":dispatcher_layer",
+        ":image",
+        ":scripts_layer",
+    ],
+    main = "test_image_layers.py",
 )

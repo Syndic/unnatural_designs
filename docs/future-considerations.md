@@ -213,12 +213,18 @@ instead of baked by the Dockerfile, the `checkstat`/`trustctime` writes moved th
 `known_hosts`/`allowed_signers` became bind mounts fed by stub-written symlinks rather than
 snapshots — `known_hosts` writable, so a host accepted in one container persists to the host itself.
 
-**Phase 2 is in progress.** The container-side plumbing now lives in `meta/devcontainer-base/` as
-a `lib.sh` plus a `devcontainer-plumbing` dispatcher, built into a RUN-free image that CI publishes
-multi-arch to GHCR on pushes to `main`. This repo's hooks already call that single copy through the
-workspace, so it is dogfooded here, but its Dockerfile does not `FROM` the image yet — a consumer's
-pinned digest cannot resolve until the image exists on `main`, which is why the repoint is phase 3
-rather than part of this one.
+**Phase 2 landed.** The container-side plumbing lives in `meta/devcontainer-base/` as a `lib.sh`
+plus a `devcontainer-plumbing` dispatcher, published multi-arch to GHCR on pushes to `main`. This
+repo's hooks already call that single copy through the workspace, so it is dogfooded here, but its
+Dockerfile does not `FROM` the image yet — a consumer's pinned digest cannot resolve until the
+image exists on `main`, which is why the repoint is phase 3 rather than part of this one.
+
+The image is assembled by **Bazel** (`rules_oci`) rather than a Dockerfile, so it builds under
+plain `bazel build //...` with no Docker daemon — which is what lets it build inside this repo's
+own devcontainer. Two consequences worth keeping: RUN-free stopped being a convention and became a
+property of the toolchain, since `rules_oci` cannot execute a build step at all; and `pkg_tar`'s
+pinned timestamps make rebuilds byte-identical, so the digest is stable across machines where a
+`docker build` would have produced a fresh one each time.
 
 What remains is phase 3 (repoint this repo's Dockerfile at the published digest, switch the hooks to
 `/usr/local/bin/devcontainer-plumbing`, add the `BASE_IMAGE` override so a base change can be

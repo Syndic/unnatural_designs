@@ -177,7 +177,10 @@ per-step rationale lives at each site, not here:
   `post-start.sh`. This half is what gets published as a shared base image for
   `Syndic/.dotfiles` to consume — see that directory's README for the interface contract. The
   hooks currently call it through the workspace; they switch to the image's
-  `/usr/local/bin/devcontainer-plumbing` when this repo's Dockerfile `FROM`s the base.
+  `/usr/local/bin/devcontainer-plumbing` when this repo's Dockerfile `FROM`s the base. The
+  image is a Bazel target (`rules_oci`), so `bazel build //...` covers it and no Docker daemon
+  is involved; `:load` and `:push` are the two escapes that need a daemon and registry
+  credentials respectively, and are CI's job.
 
 **The application is deliberately at runtime, not baked into the image.** Nothing forces it to
 build time — the workspace isn't even mounted then — and baking the two per-host facts is the only
