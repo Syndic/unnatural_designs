@@ -204,12 +204,35 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # When this PR moves the shared base image, build the consumer against the image the PR
+      # *would* publish instead of the digest pinned in the Dockerfile. That is what makes a
+      # base change smoke-tested against a real consumer before it can reach the registry —
+      # otherwise the pin only picks it up a Renovate bump later, after publication.
+      # `:load` produces the `devcontainer-base:ci` tag the BASE_IMAGE env below names.
+      - if: needs.changes.outputs.base == 'true'
+        uses: ./.github/actions/setup-bazel-remote
+        with:
+          buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
+
+      # `--config=linux_x86_64` rather than letting `oci_load`'s select() fall out of host
+      # detection, for the same reason the base-image matrix passes it: the architecture the
+      # consumer is built on stays explicit. This runner is amd64.
+      - if: needs.changes.outputs.base == 'true'
+        name: Load the shared base image into Docker
+        run: bazel run --config=ci --config=linux_x86_64 //meta/devcontainer-base:load
+
       # devcontainers/ci builds with the full feature set (so feature bumps are exercised,
       # not just the Dockerfile) and runs the smoke command inside the resulting container.
       # cacheFrom reuses the previously-built layers; push: filter seeds the cache on pushes
       # to main only (PRs build against the cache but don't publish).
       - if: needs.changes.outputs.changed == 'true'
         uses: devcontainers/ci@513af61f4de4f75d37e4438f184ba4358f0fc1ca # v0.3.1900000450
+        env:
+          # The action has no build-arg input, so the override travels through
+          # devcontainer.json's `build.args` as ${localEnv:BASE_IMAGE}. `pinned-base` is the
+          # Dockerfile's stage alias for the pinned digest, not a registry reference — passing
+          # it explicitly keeps both branches of this expression the same shape.
+          BASE_IMAGE: ${{ needs.changes.outputs.base == 'true' && 'devcontainer-base:ci' || 'pinned-base' }}
         with:
           imageName: ${{ steps.img.outputs.ref }}
           cacheFrom: ${{ steps.img.outputs.ref }}
@@ -218,13 +241,18 @@ jobs:
           # baked into BAZELISK_VERSION, then bootstrap Bazel per .bazelversion.
           # `go version` confirms the `go` feature landed the toolchain on PATH;
           # `python3 --version` confirms the Dockerfile's uv-installed interpreter did.
-          # The rest pins the host-plumbing mechanism — see ".devcontainer worktree +
-          # timezone plumbing" in .claude/CLAUDE.md.
+          # The rest pins the host-plumbing mechanism — see meta/devcontainer-base/README.md.
           runCmd: |
             set -euo pipefail
             bazel --version
             go version
             python3 --version
+
+            # The plumbing arrived via the base image, at the paths the hooks call it by.
+            # Nothing in this repo installs either file, so these fail if the FROM regressed
+            # to a plain Debian base.
+            test -x /usr/local/bin/devcontainer-plumbing
+            test -r /usr/local/share/devcontainer-plumbing/lib.sh
 
             # Only initialize.sh writes these, and only on the host, so they pin the fact
             # that devcontainers/ci runs initializeCommand (plain `devcontainer build`

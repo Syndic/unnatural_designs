@@ -9,14 +9,13 @@ set -euo pipefail
 # Must come first: everything below runs git against the worktree, whose .git file only
 # resolves once the host-absolute common-dir symlink exists.
 #
-# Called through the workspace for now; it moves to the base image's
-# /usr/local/bin/devcontainer-plumbing once this repo's Dockerfile FROMs that image. The env
-# vars are passed explicitly because the script lives outside .devcontainer/ and so can't
-# derive them from its own location — see meta/devcontainer-base/README.md.
+# The command ships in the base image this Dockerfile FROMs. The env vars are passed
+# explicitly because it lives outside the workspace and so can't derive them from its own
+# location — see meta/devcontainer-base/README.md.
 _dc_here="$(cd "$(dirname "$0")" && pwd)"
 PLUMBING_WORKSPACE="$(cd "$_dc_here/.." && pwd)" \
   PLUMBING_DIR="$_dc_here/.git-plumbing" \
-  "$_dc_here/../meta/devcontainer-base/scripts/devcontainer-plumbing.sh" post-create
+  /usr/local/bin/devcontainer-plumbing post-create
 
 # Make the named-volume mounts writable by the non-root user. Docker attaches volumes
 # root-owned on first mount, and the .cache parent of the bazel mount inherits that, so

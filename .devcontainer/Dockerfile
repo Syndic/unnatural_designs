@@ -1,4 +1,10 @@
-FROM mcr.microsoft.com/devcontainers/base:debian
+# The shared plumbing arrives as an image rather than as workspace scripts: this FROMs
+# meta/devcontainer-base/, digest-pinned and Renovate-bumped. That directory's README is the
+# canonical home for the mechanism, this three-line override shape, and why the alias is
+# load-bearing — do not collapse it without reading "Consuming the image" there.
+ARG BASE_IMAGE=pinned-base
+FROM ghcr.io/syndic/unnatural_designs-devcontainer-base:latest@sha256:99e1405fcb245513ab0e033c51b190ee9b27377d0787f89f73dcea6a405d94cb AS pinned-base
+FROM ${BASE_IMAGE}
 
 # renovate: datasource=github-releases depName=bazelbuild/bazelisk
 ARG BAZELISK_VERSION=v1.29.0
@@ -83,6 +89,6 @@ RUN ARCH="$(dpkg --print-architecture)" \
         "https://github.com/bazelbuild/buildtools/releases/download/${BUILDIFIER_VERSION}/buildifier-linux-${ARCH}" \
     && chmod 0755 /usr/local/bin/buildifier
 
-# No host-specific layers here on purpose: the git-common-dir symlink and the host timezone
-# are applied at container start by meta/devcontainer-base/, which keeps this image
-# host-agnostic. See ".devcontainer worktree + timezone plumbing" in .claude/CLAUDE.md.
+# No host-specific layers here on purpose: the git-common-dir symlink and the host timezone are
+# applied at container start by the base image's dispatcher, which keeps this image host-agnostic.
+# See meta/devcontainer-base/README.md.

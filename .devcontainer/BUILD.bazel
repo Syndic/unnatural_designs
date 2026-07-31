@@ -10,3 +10,18 @@ py_test(
     data = ["initialize.sh"],
     main = "test_initialize.py",
 )
+
+# The BASE_IMAGE override spans devcontainer.json and the Dockerfile, and every wrong shape
+# fails at container-build time or not at all — so the coupling is asserted from the files.
+py_test(
+    name = "test_devcontainer_config",
+    size = "small",
+    srcs = ["test_devcontainer_config.py"],
+    data = [
+        "Dockerfile",
+        "devcontainer.json",
+        "post-create.sh",
+        "post-start.sh",
+    ],
+    main = "test_devcontainer_config.py",
+)
