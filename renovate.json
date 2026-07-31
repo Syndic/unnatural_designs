@@ -81,6 +81,13 @@
     {
       "matchManagers": [ "devcontainer" ],
       "pinDigests": false
+    },
+    {
+      "matchManagers": [ "bazel-module" ],
+      "matchDepTypes": [ "oci_pull" ],
+      "matchUpdateTypes": [ "digest" ],
+      "groupName": "devcontainer base image",
+      "automerge": true
     }
   ]
 }
