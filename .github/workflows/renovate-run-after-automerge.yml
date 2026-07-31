@@ -1,0 +1,109 @@
+name: Renovate — run after automerge
+
+# Mend-hosted Renovate never learns that it merged one of its own PRs. Its webhook layer drops
+# events whose sender is `renovate[bot]` — ordinary loop prevention, since Renovate pushes to its
+# own branches constantly — so a `platformAutomerge` merge queues no job at all. Every other open
+# Renovate PR then sits BEHIND the moved base, unmergeable under this repo's ruleset (which
+# requires up-to-date branches), until the next scheduled run.
+#
+# This workflow closes that gap from outside Renovate: when a merge is attributed to
+# `renovate[bot]`, tick the Mend-only "manual job" checkbox on the Dependency Dashboard. That edit
+# is an `issues.edited` webhook from a *different* sender, which Mend does enqueue, and the run it
+# starts rebases the stale branches. Renovate unticks the box itself during that run, so the lever
+# re-arms with no cleanup here.
+#
+# `workflow_dispatch` is deliberate rather than a convenience: it makes the mechanism testable on
+# demand, without waiting for a base-image digest bump to automerge. It is also how to re-test if
+# the sender assumption below ever stops holding.
+#
+# See .claude/CLAUDE.md "Renovate run after automerge" for the evidence, the measured cost, and
+# the alternative considered (`platformAutomerge: false`).
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+  workflow_dispatch:
+
+# Supersede in-flight runs for the same PR; see .claude/CLAUDE.md "Superseding CI runs".
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  request-run:
+    name: Request a Renovate run
+    # `merged` excludes a PR closed without merging. `merged_by.login` is the REST/webhook
+    # spelling of the actor GraphQL reports as `app/renovate` — matching the GraphQL spelling
+    # here would silently never fire.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.merged &&
+      github.event.pull_request.merged_by.login == 'renovate[bot]')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # The whole point: editing the dashboard issue body is what emits the webhook.
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The gh calls below authenticate via GH_TOKEN explicitly; nothing here pushes.
+          persist-credentials: false
+
+      # Same reasoning as renovate-derived-files.yml: the runner's stock python3 lags the repo's
+      # pinned 3.14, and ruff (target-version = py314) is free to emit 3.14-only syntax.
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          # renovate: datasource=python-version depName=python
+          python-version: "3.14"
+
+      # Discovered rather than hardcoded to #1: Renovate opens a fresh dashboard (with a new
+      # number) if the existing one is ever closed.
+      - name: Locate the Dependency Dashboard
+        id: dashboard
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          issue=$(gh issue list --repo "${REPO}" --state open --limit 100 \
+            --json number,title,author \
+            --jq '[.[] | select(.title == "Dependency Dashboard" and .author.login == "app/renovate")]
+                  | .[0].number // empty')
+          if [ -z "${issue}" ]; then
+            echo "::error::No open Dependency Dashboard issue found; cannot request a Renovate run."
+            exit 1
+          fi
+          echo "Dependency Dashboard is issue #${issue}."
+          echo "issue=${issue}" >> "${GITHUB_OUTPUT}"
+          gh api "repos/${REPO}/issues/${issue}" --jq .body > body.md
+
+      - name: Tick the manual-job checkbox
+        id: tick
+        run: python3 meta/scripts/renovate_manual_job.py < body.md > body.new.md
+
+      # Mend owns this checkbox and has removed it before (renovatebot/renovate#20386). Failing
+      # loudly beats a green run that silently stopped requesting anything.
+      - name: Fail if the manual-job checkbox is missing
+        if: steps.tick.outputs.status == 'absent'
+        run: |
+          echo "::error::Dashboard has no '<!-- manual job -->' checkbox — Mend may have changed it."
+          exit 1
+
+      # `already-ticked` means a request is pending and this step is correctly skipped.
+      # jq -Rs builds the JSON string, so a body containing quotes or backslashes survives intact.
+      - name: Request a Renovate run
+        if: steps.tick.outputs.status == 'ticked'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ISSUE: ${{ steps.dashboard.outputs.issue }}
+        run: |
+          set -euo pipefail
+          jq -Rs '{body: .}' < body.new.md \
+            | gh api -X PATCH "repos/${REPO}/issues/${ISSUE}" --input -
+          echo "Requested a Renovate run via the Dependency Dashboard checkbox."
