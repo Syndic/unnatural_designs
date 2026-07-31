@@ -1,7 +1,8 @@
 # Devcontainer host-plumbing artifacts
 
 Holds host state that `../initialize.sh` reads on every `devcontainer up`, for
-the shared plumbing in `meta/devcontainer-base/` to apply inside the container.
+the shared plumbing to apply inside the container (it ships in the base image
+the Dockerfile `FROM`s; its source is `meta/devcontainer-base/`).
 The files are gitignored and rewritten on every `up`; this README is what keeps
 the directory in git.
 
