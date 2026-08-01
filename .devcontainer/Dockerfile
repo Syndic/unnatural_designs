@@ -3,7 +3,7 @@
 # canonical home for the mechanism, this three-line override shape, and why the alias is
 # load-bearing — do not collapse it without reading "Consuming the image" there.
 ARG BASE_IMAGE=pinned-base
-FROM ghcr.io/syndic/unnatural_designs-devcontainer-base:latest@sha256:99e1405fcb245513ab0e033c51b190ee9b27377d0787f89f73dcea6a405d94cb AS pinned-base
+FROM ghcr.io/syndic/unnatural_designs-devcontainer-base:latest@sha256:0f31f38a212f69b1831010aad682bda8f99a6f8a6b2f975aef5b9715331d1376 AS pinned-base
 FROM ${BASE_IMAGE}
 
 # renovate: datasource=github-releases depName=bazelbuild/bazelisk

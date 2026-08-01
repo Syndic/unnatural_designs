@@ -199,6 +199,26 @@ jobs:
         if: (steps.changed.outputs.bazel == 'true' || steps.lock.outputs.moved == 'true') && steps.ratify.outputs.conflicts == ''
         run: bazel mod deps --lockfile_mode=update
 
+      # ── Devcontainer base image: re-derive the consumer's pin ─────────────────────
+      # The shared base image is assembled from MODULE.bazel's `devcontainers_base_debian` pull,
+      # so a bump there changes the digest .devcontainer/Dockerfile pins. That digest is knowable
+      # here rather than after publishing: the build is reproducible, and `oci_push` publishes the
+      # exact index Bazel built. //.devcontainer:test_base_image_pin is the matching check.
+      #
+      # AFTER the lock refresh above, never before: `bazel mod deps` only rewrites the pip `facts`
+      # on a cold output base, and this build would warm it — turning that step into the silent
+      # no-op its own comment warns about.
+      #
+      # `--config=local` because this job deliberately carries no BuildBuddy key (see the
+      # setup-bazel note above), and the default config points every action at a cache it cannot
+      # authenticate to. The image is two shell scripts over a pulled base; building it cold is
+      # cheaper than the round trip.
+      - name: Re-derive the devcontainer base-image pin
+        if: steps.changed.outputs.bazel == 'true' && steps.ratify.outputs.conflicts == ''
+        run: |
+          bazel build --config=local //meta/devcontainer-base:image
+          python3 meta/scripts/sync_base_image_pin.py
+
       # ── Go: tidy each module and sync the workspace ───────────────────────────────
       # Renovate's gomod manager runs `go get`, which bumps go.mod/go.sum but never
       # `go mod tidy` (opt-in) or `go work sync` (vendor-only in Renovate) — so the indirect
@@ -330,6 +350,7 @@ jobs:
             uv.lock
             requirements_lock.txt
             MODULE.bazel.lock
+            .devcontainer/Dockerfile
             .devcontainer/devcontainer-lock.json
             ${{ steps.gotidy.outputs.files }}
           commit-message: "chore(deps): re-derive lock files"
