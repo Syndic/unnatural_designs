@@ -156,13 +156,14 @@ Renovate reacts to the helper's commits as user edits — visible, not load-bear
 
 ## Renovate run after automerge
 
-`.github/workflows/renovate-run-after-automerge.yml` exists because **Mend's webhook layer does
-not enqueue a job for a merge attributed to `renovate[bot]`.** When Renovate automerges one of its
-own PRs, nothing tells it that `main` moved, so every other open Renovate PR sits `BEHIND` — and
-this repo's ruleset requires up-to-date branches, so those PRs are unmergeable — until the next
+`.github/workflows/renovate-run-after-automerge.yml` exists because **a merge attributed to
+`renovate[bot]` does not produce a Renovate job.** When Renovate automerges one of its own PRs,
+nothing tells it that `main` moved, so every other open Renovate PR sits `BEHIND` — and this
+repo's ruleset requires up-to-date branches, so those PRs are unmergeable — until the next
 scheduled run.
 
-The evidence, from the Mend job log (developer.mend.io) and the repo's own event history:
+The observations behind that, from the Mend job log (developer.mend.io) and the repo's own event
+history:
 
 - Every push to `main` by a human that left a Renovate branch behind was followed by a
   `requested` job within 0.4–5 minutes. The one push authored by `renovate[bot]` (PR #221,
@@ -170,10 +171,15 @@ The evidence, from the Mend job log (developer.mend.io) and the repo's own event
   `Reason` was blank, i.e. the schedule.
 - Not a rate limit: eleven human merges landed *closer* behind a previous run than that one did
   (one at 0.0 minutes) and still triggered within ~1 minute.
-- Not a GitHub platform behaviour — GitHub delivers an app its own events; the filtering is
-  Mend's own handler.
+- Whatever suppresses it is on Mend's side, not GitHub's: GitHub delivers an app the events its
+  own actions cause, so the event was sent and not acted on.
 - Schedule-only cadence measured over 73 intervals: **median 6.7 h** (Mend documents 4 h for the
   Community tier). That is the window a stale PR stays unmergeable.
+
+The *mechanism* is inference, not measurement: sender-based filtering is the natural explanation
+(Renovate pushes to its own branches constantly, so a handler that didn't ignore itself would loop),
+but Mend's scheduling layer is not in the OSS image and nothing here proves which rule fired. Treat
+the observation as established and the cause as likely.
 
 The lever is the Mend-only `<!-- manual job -->` checkbox on the Dependency Dashboard — Mend's,
 not OSS Renovate's (`manual job` appears nowhere in the `renovate/renovate` dist), so it can move

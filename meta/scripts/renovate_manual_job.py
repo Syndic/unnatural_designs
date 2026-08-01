@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
 """Tick the Mend "manual job" checkbox in a Renovate Dependency Dashboard issue body.
 
-Mend-hosted Renovate enqueues a job from a webhook, but its webhook layer ignores events whose
-sender is `renovate[bot]` — ordinary loop prevention, since Renovate pushes to its own branches
-constantly. A PR that Renovate automerges is therefore invisible to it: nothing queues a run, and
-every other open Renovate PR sits behind the moved base until the next scheduled one. The
-Dependency Dashboard carries a Mend-only checkbox that requests a run when ticked, and ticking it
-from a *different* sender is the lever out. Full rationale, including the measurements behind it,
-in .claude/CLAUDE.md "Renovate run after automerge".
+A PR that Renovate automerges produces no Renovate job, leaving every other open Renovate PR
+behind the moved base until the next scheduled run; ticking this checkbox requests one. Why that
+is the lever, and the evidence behind it, live in .claude/CLAUDE.md "Renovate run after automerge".
 
-Reads the issue body on stdin, writes the ticked body to stdout, and reports which of three
-states it found to `$GITHUB_OUTPUT` so the caller can skip a no-op API write. `absent` is
-reported rather than raised: the marker is Mend's, not OSS Renovate's, so it can disappear
-without a Renovate release, and the caller decides whether that is fatal.
+Reads the issue body on stdin, writes the ticked body to stdout, and reports which of three states
+it found to `$GITHUB_OUTPUT` so the caller can skip a no-op API write. `absent` is reported rather
+than raised: the marker is Mend's, not OSS Renovate's, so it can disappear without a Renovate
+release, and the caller decides whether that is fatal.
+
+The three status strings are a contract with renovate-run-after-automerge.yml, which gates steps on
+their literal values; test_renovate_manual_job.py pins them.
 
 Usage:
   python3 meta/scripts/renovate_manual_job.py < body.md > body.new.md
@@ -30,7 +29,7 @@ import sys
 # Anchored on the HTML comment rather than the prose: the prose is user-visible text Mend may
 # reword, while the marker is what its webhook handler keys on.
 _MANUAL_JOB_RE = re.compile(
-    r"^(?P<lead>[ \t]*[-*][ \t]+\[)(?P<mark>[ xX])(?P<tail>\][ \t]*<!--[ \t]*manual job[ \t]*-->)",
+    r"^(?:[ \t]*[-*][ \t]+\[)(?P<mark>[ xX])(?:\][ \t]*<!--[ \t]*manual job[ \t]*-->)",
     re.MULTILINE,
 )
 

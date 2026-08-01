@@ -1,23 +1,16 @@
 name: Renovate — run after automerge
 
-# Mend-hosted Renovate never learns that it merged one of its own PRs. Its webhook layer drops
-# events whose sender is `renovate[bot]` — ordinary loop prevention, since Renovate pushes to its
-# own branches constantly — so a `platformAutomerge` merge queues no job at all. Every other open
-# Renovate PR then sits BEHIND the moved base, unmergeable under this repo's ruleset (which
-# requires up-to-date branches), until the next scheduled run.
-#
-# This workflow closes that gap from outside Renovate: when a merge is attributed to
-# `renovate[bot]`, tick the Mend-only "manual job" checkbox on the Dependency Dashboard. That edit
-# is an `issues.edited` webhook from a *different* sender, which Mend does enqueue, and the run it
-# starts rebases the stale branches. Renovate unticks the box itself during that run, so the lever
-# re-arms with no cleanup here.
+# A PR that Renovate automerges produces no Renovate job, so nothing tells it that `main` moved:
+# every other open Renovate PR then sits BEHIND the new base — unmergeable under this repo's
+# ruleset, which requires up-to-date branches — until the next scheduled run. This workflow
+# requests a run instead, by ticking the Mend-only "manual job" checkbox on the Dependency
+# Dashboard, an edit whose webhook Mend does act on.
 #
 # `workflow_dispatch` is deliberate rather than a convenience: it makes the mechanism testable on
-# demand, without waiting for a base-image digest bump to automerge. It is also how to re-test if
-# the sender assumption below ever stops holding.
+# demand, without waiting for an automerge.
 #
-# See .claude/CLAUDE.md "Renovate run after automerge" for the evidence, the measured cost, and
-# the alternative considered (`platformAutomerge: false`).
+# See .claude/CLAUDE.md "Renovate run after automerge" for the evidence, the measured cost, and the
+# alternative considered (`platformAutomerge: false`).
 
 on:
   pull_request:
@@ -25,7 +18,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# Supersede in-flight runs for the same PR; see .claude/CLAUDE.md "Superseding CI runs".
+# Carried for consistency with every other workflow here (see .claude/CLAUDE.md "Superseding CI
+# runs"), though it can't actually supersede anything: `closed` fires once per PR, and a dispatch
+# keys on the unique `run_id`. Keeping the shape uniform beats an exception to explain.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
@@ -51,6 +46,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # Pinned to main rather than the default: on a `pull_request` event `github.ref` is
+          # `refs/pull/<n>/merge`, so the two triggers would otherwise run different trees, and
+          # that ref stops being maintained once the PR closes. This job wants only the script.
+          ref: main
           # The gh calls below authenticate via GH_TOKEN explicitly; nothing here pushes.
           persist-credentials: false
 
@@ -62,8 +61,9 @@ jobs:
           python-version: "3.14"
 
       # Discovered rather than hardcoded to #1: Renovate opens a fresh dashboard (with a new
-      # number) if the existing one is ever closed.
-      - name: Locate the Dependency Dashboard
+      # number) if the existing one is ever closed. Listing rather than `--search` deliberately —
+      # the search index is eventually consistent, and this has to be right immediately.
+      - name: Locate and fetch the Dependency Dashboard
         id: dashboard
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -80,7 +80,9 @@ jobs:
           fi
           echo "Dependency Dashboard is issue #${issue}."
           echo "issue=${issue}" >> "${GITHUB_OUTPUT}"
-          gh api "repos/${REPO}/issues/${issue}" --jq .body > body.md
+          # `jq -j`, not `gh --jq`: the latter appends a trailing newline, which would be PATCHed
+          # back into the body and accumulate one byte per run.
+          gh api "repos/${REPO}/issues/${issue}" | jq -j .body > body.md
 
       - name: Tick the manual-job checkbox
         id: tick
@@ -94,7 +96,13 @@ jobs:
           echo "::error::Dashboard has no '<!-- manual job -->' checkbox — Mend may have changed it."
           exit 1
 
-      # `already-ticked` means a request is pending and this step is correctly skipped.
+      # Expected when a request is already pending, but a box stuck ticked would make every later
+      # automerge a silent no-op — so surface it in the run summary rather than only the step log.
+      - name: Note an already-pending request
+        if: steps.tick.outputs.status == 'already-ticked'
+        run: |
+          echo "::notice::Checkbox already ticked; a Renovate run is pending. If this repeats across automerges, the earlier request never reached Mend."
+
       # jq -Rs builds the JSON string, so a body containing quotes or backslashes survives intact.
       - name: Request a Renovate run
         if: steps.tick.outputs.status == 'ticked'

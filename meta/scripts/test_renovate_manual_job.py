@@ -41,6 +41,15 @@ DASHBOARD = (
 )
 
 
+class TestStatusContract(unittest.TestCase):
+    def test_status_values_are_the_workflow_contract(self):
+        # renovate-run-after-automerge.yml gates steps on these literals
+        # (`steps.tick.outputs.status == 'absent'`). Comparing only against the imported
+        # constants elsewhere would let a rename pass every test while the workflow's
+        # missing-checkbox guard silently stopped firing.
+        self.assertEqual((TICKED, ALREADY_TICKED, ABSENT), ("ticked", "already-ticked", "absent"))
+
+
 class TestTickManualJob(unittest.TestCase):
     def test_ticks_the_footer_checkbox(self):
         body, status = tick_manual_job(DASHBOARD)
