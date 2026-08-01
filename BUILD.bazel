@@ -2,3 +2,12 @@ load("@gazelle//:def.bzl", "gazelle")
 
 # gazelle:prefix github.com/Syndic/unnatural_designs
 gazelle(name = "gazelle")
+
+# Workflows read as *test data*, not built: two tests assert couplings that would otherwise be
+# hand-copies — the classification rules these workflows pass to classify_changed_paths.py, and
+# the env var devcontainer.yml sets for devcontainer.json's BASE_IMAGE override. A stale copy
+# stays green without this, so the tests read the real file.
+exports_files([
+    ".github/workflows/devcontainer.yml",
+    ".github/workflows/renovate-derived-files.yml",
+])

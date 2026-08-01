@@ -49,10 +49,27 @@ jobs:
           else
             base="${{ github.event.before }}"
           fi
+          # MODULE.bazel is in both rules because it is where the base image is *assembled
+          # from*: the `devcontainers_base_debian` oci.pull it sits on, and the rules_oci /
+          # rules_pkg versions that lay it out. Without it, Renovate's automerged digest bump
+          # moves that pin, skips every job here, and never republishes — so the published
+          # image keeps the superseded Debian layers and the bump reaches nothing. It is in
+          # `changed` too so the automerged bump is gated by a real consumer build, which is
+          # what `publish` needs.
+          #
+          # Deliberately the whole file, not a grep for the pull's name. MODULE.bazel moves on
+          # roughly 1 in 6 commits here and most of those cannot touch the image, so the false
+          # positives are real and not cheap: two base-image runners, plus a consumer build
+          # that cold-misses `cacheFrom` from the FROM layer down. Narrowing to one dep name
+          # would trade that for silence on a rules_oci or rules_pkg bump that *does* change
+          # the assembled bytes — the same class of hole this rule exists to close.
+          #
+          # Keep `base` a subset of `changed`: the BASE_IMAGE override below only reaches the
+          # build when both are true.
           python3 meta/scripts/classify_changed_paths.py \
             --base "$base" \
-            --rule 'changed=^\.devcontainer/|^meta/devcontainer-base/|^\.github/workflows/devcontainer\.yml$' \
-            --rule 'base=^meta/devcontainer-base/'
+            --rule 'changed=^\.devcontainer/|^meta/devcontainer-base/|^MODULE\.bazel$|^\.github/workflows/devcontainer\.yml$' \
+            --rule 'base=^meta/devcontainer-base/|^MODULE\.bazel$'
 
   # ── Shared base image ───────────────────────────────────────────────────────────────
   # meta/devcontainer-base/ is published for other Syndic repos to FROM. Bazel assembles it and
@@ -204,12 +221,47 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # When this PR moves the shared base image, build the consumer against the image the PR
+      # *would* publish instead of the digest pinned in the Dockerfile. That is what makes a
+      # base change smoke-tested against a real consumer before it can reach the registry —
+      # otherwise the pin only picks it up a Renovate bump later, after publication.
+      # `:load` produces the `devcontainer-base:ci` tag the BASE_IMAGE env below names.
+      - if: needs.changes.outputs.base == 'true'
+        uses: ./.github/actions/setup-bazel-remote
+        with:
+          buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
+
+      # `--config=linux_x86_64` rather than letting `oci_load`'s select() fall out of host
+      # detection, for the same reason the base-image matrix passes it: the architecture the
+      # consumer is built on stays explicit. This runner is amd64.
+      #
+      # The `.bazelrc.user` removal is not tidiness: setup-bazel-remote writes the BuildBuddy
+      # key into it, in the workspace devcontainers/ci bind-mounts into the container a few
+      # steps below. Nothing here reads it again.
+      - if: needs.changes.outputs.base == 'true'
+        name: Load the shared base image into Docker
+        run: |
+          bazel run --config=ci --config=linux_x86_64 //meta/devcontainer-base:load
+          rm -f .bazelrc.user
+
       # devcontainers/ci builds with the full feature set (so feature bumps are exercised,
       # not just the Dockerfile) and runs the smoke command inside the resulting container.
       # cacheFrom reuses the previously-built layers; push: filter seeds the cache on pushes
       # to main only (PRs build against the cache but don't publish).
+      #
+      # Expect a cold window after a base change merges: that push seeds the cache from
+      # `devcontainer-base:ci`, while the Dockerfile still pins the *previous* digest, so every
+      # PR until Renovate's bump lands misses the cache from the FROM layer down. It re-seeds
+      # itself on the next main push after that bump — slow, not broken.
       - if: needs.changes.outputs.changed == 'true'
         uses: devcontainers/ci@513af61f4de4f75d37e4438f184ba4358f0fc1ca # v0.3.1900000450
+        env:
+          # The action has no build-arg input, so the override travels through
+          # devcontainer.json's `build.args` as ${localEnv:DEVCONTAINER_BASE_IMAGE}.
+          # `pinned-base` is the Dockerfile's stage alias for the pinned digest, not a registry
+          # reference — passing it explicitly keeps both branches of this expression the same
+          # shape.
+          DEVCONTAINER_BASE_IMAGE: ${{ needs.changes.outputs.base == 'true' && 'devcontainer-base:ci' || 'pinned-base' }}
         with:
           imageName: ${{ steps.img.outputs.ref }}
           cacheFrom: ${{ steps.img.outputs.ref }}
@@ -218,13 +270,18 @@ jobs:
           # baked into BAZELISK_VERSION, then bootstrap Bazel per .bazelversion.
           # `go version` confirms the `go` feature landed the toolchain on PATH;
           # `python3 --version` confirms the Dockerfile's uv-installed interpreter did.
-          # The rest pins the host-plumbing mechanism — see ".devcontainer worktree +
-          # timezone plumbing" in .claude/CLAUDE.md.
+          # The rest pins the host-plumbing mechanism — see meta/devcontainer-base/README.md.
           runCmd: |
             set -euo pipefail
             bazel --version
             go version
             python3 --version
+
+            # The plumbing arrived via the base image, at the paths the hooks call it by.
+            # Nothing in this repo installs either file, so these fail if the FROM regressed
+            # to a plain Debian base.
+            test -x /usr/local/bin/devcontainer-plumbing
+            test -r /usr/local/share/devcontainer-plumbing/lib.sh
 
             # Only initialize.sh writes these, and only on the host, so they pin the fact
             # that devcontainers/ci runs initializeCommand (plain `devcontainer build`

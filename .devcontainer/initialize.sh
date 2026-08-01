@@ -9,7 +9,7 @@ set -euo pipefail
 #
 # Everything it writes is gitignored and regenerated every `up`, so the values can
 # never go stale and concurrent worktrees don't collide. Full rationale lives in
-# ".devcontainer worktree + timezone plumbing" in .claude/CLAUDE.md.
+# "What the plumbing solves" in meta/devcontainer-base/README.md.
 #
 # The `initialize_*` functions are pure, split out so test_plumbing.py can source this
 # file and exercise them without touching host state.

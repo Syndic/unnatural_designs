@@ -5,10 +5,10 @@ here="$(cd "$(dirname "$0")" && pwd)"
 
 # Re-apply the host facts on every start: postCreate doesn't re-run when a container is
 # reused, but `devcontainer up` does re-run initializeCommand and can rewrite them. Same
-# through-the-workspace call as post-create.sh; see the note there.
+# base-image command as post-create.sh; see the note there.
 PLUMBING_WORKSPACE="$(cd "$here/.." && pwd)" \
   PLUMBING_DIR="$here/.git-plumbing" \
-  "$here/../meta/devcontainer-base/scripts/devcontainer-plumbing.sh" post-start
+  /usr/local/bin/devcontainer-plumbing post-start
 
 # Docker creates the mount parent root-owned 0755 before any hook runs, and SSH ignores a
 # ~/.ssh it considers unsafe. `install -d` fixes the directory without touching the
@@ -16,7 +16,8 @@ PLUMBING_WORKSPACE="$(cd "$here/.." && pwd)" \
 sudo install -d -m 700 -o "$(id -u)" -g "$(id -g)" "$HOME/.ssh"
 
 # Install host ~/.gitconfig when the Dev Containers extension didn't already copy it in
-# (devcontainer CLI case). See ".devcontainer signed commits under CLI" in .claude/CLAUDE.md.
+# (devcontainer CLI case). See "Signed commits under the devcontainer CLI" in
+# meta/devcontainer-base/README.md.
 src="$here/.git-plumbing/host-gitconfig"
 if [ ! -s "$HOME/.gitconfig" ] && [ -s "$src" ]; then
   cp "$src" "$HOME/.gitconfig"

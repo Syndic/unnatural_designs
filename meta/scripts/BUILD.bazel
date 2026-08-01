@@ -77,6 +77,12 @@ py_test(
     name = "test_classify_changed_paths",
     size = "small",
     srcs = ["test_classify_changed_paths.py"],
+    # The rules under test live in the workflows' `--rule` arguments; read them from there
+    # rather than restating them, so an edit on one side can't drift from the other.
+    data = [
+        "//:.github/workflows/devcontainer.yml",
+        "//:.github/workflows/renovate-derived-files.yml",
+    ],
     main = "test_classify_changed_paths.py",
     deps = [":classify_changed_paths_lib"],
 )

@@ -33,7 +33,7 @@ name: Renovate — re-derive lock files
 #      (vendor-only in Renovate), so the indirect block and go.work.sum are left stale; this
 #      settles them. Gated on no ratify conflicts so the Go files join the single commit.
 #   5. Devcontainer: `devcontainer upgrade` when devcontainer.json moved — see .claude/CLAUDE.md
-#      ".devcontainer worktree + timezone plumbing" for why the lock restales wholesale. Also
+#      ".devcontainer plumbing and feature pins" for why the lock restales wholesale. Also
 #      gated on no ratify conflicts so it rides the single commit.
 #   6. No conflicts: commit every derived file in a single commit. Otherwise: reset
 #      nothing (we won't silently revert Renovate's edit — the commit step is simply
@@ -79,7 +79,7 @@ on:
       - "go.work"
       # The devcontainer feature references; the lock is absent for the same reason
       # MODULE.bazel.lock is (derived). Why full-semver pins are what make this trigger fire at
-      # all: .claude/CLAUDE.md ".devcontainer worktree + timezone plumbing".
+      # all: .claude/CLAUDE.md ".devcontainer plumbing and feature pins".
       - ".devcontainer/devcontainer.json"
 
 # Deliberately NO `concurrency` block, unlike every other workflow here (see .claude/CLAUDE.md

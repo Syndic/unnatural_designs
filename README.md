@@ -39,11 +39,17 @@ devcontainer has a single Python package manager (uv) and no `pip install --user
 Named volumes (`ud-bazel-cache`, `ud-go-cache`) preserve the Bazel and Go caches across container
 rebuilds.
 
+**Base image**: all of that is layered on top of
+[`meta/devcontainer-base/`](meta/devcontainer-base/README.md)'s published image, which this repo
+builds and shares with [Syndic/.dotfiles](https://github.com/Syndic/.dotfiles). It carries the
+container-side git/host plumbing (worktree resolution, host timezone, shared-index config) and is
+pinned by digest in the Dockerfile, bumped by Renovate.
+
 **Feature pinning**: the `ghcr.io/devcontainers/features/*` references in
 [`devcontainer.json`](.devcontainer/devcontainer.json) are pinned to **full semver**
 (`features/go:1.3.4`), not the floating major tags (`:1`) the devcontainer templates emit, and carry
 no digests. Both are load-bearing and both have non-obvious reasons — see
-[`.claude/CLAUDE.md`](.claude/CLAUDE.md), devcontainer plumbing section. The short version: exact
+[`.claude/CLAUDE.md`](.claude/CLAUDE.md), "plumbing and feature pins". The short version: exact
 tags are what make the features Renovate-visible, and that bump is what triggers the
 [`devcontainer-lock.json`](.devcontainer/devcontainer-lock.json) regeneration under
 [Automation](#automation), which CI then verifies.
@@ -314,7 +320,7 @@ setting `groupName` for the same update would be order-dependent. Don't introduc
 
 A fifth rule sets no `groupName` at all: `matchManagers: ["devcontainer"]` with
 `pinDigests: false`, which turns off digest pinning for devcontainer features (the reason is in
-[`.claude/CLAUDE.md`](.claude/CLAUDE.md), under the devcontainer plumbing section). It overlaps the
+[`.claude/CLAUDE.md`](.claude/CLAUDE.md), under "plumbing and feature pins"). It overlaps the
 grouping rules, which is harmless because it is the only rule that touches `pinDigests`; it sits
 last so that stays true if a later rule ever sets the same field.
 
