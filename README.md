@@ -378,3 +378,20 @@ its required permissions, and the recovery procedure if the app is recreated.
 The action also has consumers outside this repo; its
 [README](.github/actions/commit-file-via-app/README.md) documents the compatibility contract,
 the consumer list, and the self-test workflow that exercises it on PRs.
+
+A second workflow closes a gap on the other side of the merge. A PR that Renovate automerges
+produces no Renovate job, so nothing tells it that `main` moved: every other open Renovate PR then
+sits `BEHIND` the new base — unmergeable, since the `main` ruleset requires up-to-date branches —
+until the next scheduled run, a window measured at a 6.7 hour median.
+
+| Workflow | Trigger | Does |
+| --- | --- | --- |
+| [`renovate-run-after-automerge.yml`](.github/workflows/renovate-run-after-automerge.yml) | a PR closed as merged by `renovate[bot]`, or `workflow_dispatch` | ticks the "manual job" checkbox on the Dependency Dashboard, which requests a Renovate run |
+
+That checkbox is Mend's own, not OSS Renovate's, and on the Community tier it is the only way to
+request a run — there is no public trigger API. Renovate unticks it during the run it starts, so
+the lever re-arms itself. The body edit lives in
+[`meta/scripts/renovate_manual_job.py`](meta/scripts/renovate_manual_job.py) under unit tests
+(`bazel test //meta/scripts:test_renovate_manual_job`); the workflow handles only the API calls.
+See [`.claude/CLAUDE.md`](.claude/CLAUDE.md) "Renovate run after automerge" for the evidence and
+for the `platformAutomerge: false` alternative that was considered and rejected.

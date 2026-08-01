@@ -149,6 +149,25 @@ py_test(
 )
 
 py_library(
+    name = "renovate_manual_job_lib",
+    srcs = ["renovate_manual_job.py"],
+)
+
+py_binary(
+    name = "renovate_manual_job",
+    srcs = ["renovate_manual_job.py"],
+    main = "renovate_manual_job.py",
+)
+
+py_test(
+    name = "test_renovate_manual_job",
+    size = "small",
+    srcs = ["test_renovate_manual_job.py"],
+    main = "test_renovate_manual_job.py",
+    deps = [":renovate_manual_job_lib"],
+)
+
+py_library(
     name = "ratify_renovate_proposals_lib",
     srcs = ["ratify_renovate_proposals.py"],
     deps = [requirement("packaging")],
