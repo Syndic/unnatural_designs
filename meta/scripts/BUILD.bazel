@@ -149,6 +149,20 @@ py_test(
 )
 
 py_library(
+    name = "sync_base_image_pin_lib",
+    srcs = ["sync_base_image_pin.py"],
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "test_sync_base_image_pin",
+    size = "small",
+    srcs = ["test_sync_base_image_pin.py"],
+    main = "test_sync_base_image_pin.py",
+    deps = [":sync_base_image_pin_lib"],
+)
+
+py_library(
     name = "renovate_manual_job_lib",
     srcs = ["renovate_manual_job.py"],
 )

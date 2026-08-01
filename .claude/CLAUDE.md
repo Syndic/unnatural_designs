@@ -134,6 +134,12 @@ the `Renovate helper`. Load-bearing facts:
   uv path, there's no "conflict" review: a bump `go mod tidy` can't settle just fails the job.
   MODULE.bazel.lock is *not* in this set — gazelle's `go_deps` extension is reproducible and absent
   from the lockfile, and `use_repo` tracks only direct imports (unchanged by a version bump).
+- **The devcontainer base-image pin rides it too.** `.devcontainer/Dockerfile`'s `FROM` digest
+  is derived from `//meta/devcontainer-base:image`, which is assembled over the
+  `devcontainers_base_debian` pull — so a `MODULE.bazel` bump restales it. The workflow rebuilds
+  the image and rewrites the pin (`meta/scripts/sync_base_image_pin.py`) *after* `bazel mod deps`,
+  never before: that step needs a cold output base, and the build would warm it. Runs
+  `--config=local`, since this job carries no BuildBuddy key.
 - **Devcontainer feature lock rides it too.** `devcontainer upgrade` reruns when
   `devcontainer.json` moves. Like Go, it is *independent* of the uv→Bazel ordering and shares the
   job only so a grouped PR settles in one `expectedHeadOid` mutation. Needs no Docker (OCI metadata
@@ -213,6 +219,13 @@ What is local to this repo:
   top. The `BASE_IMAGE` override and the exact three-line shape it needs are under "Consuming the
   image" in that README; `.devcontainer/test_devcontainer_config.py` asserts the couplings, because
   every wrong shape fails at container-build time or not at all.
+- **That pin is a derived file, not a dependency.** The digest is reproducible from source, so the
+  PR that changes the image carries the new pin: `meta/scripts/sync_base_image_pin.py` writes it,
+  `//.devcontainer:test_base_image_pin` fails when it drifts, and Renovate is configured to ignore
+  the dep. The cost is that a base-editing branch pins an image the registry doesn't have yet; set
+  `DEVCONTAINER_BASE_IMAGE` to the published `:latest` to keep working. Don't reach for
+  `bazel run :load` locally — it needs a Docker daemon the devcontainer doesn't have, which is why
+  that path is CI's.
 - **`.devcontainer/initialize.sh` is the host stub** — the read-and-drop half the image cannot
   carry, since it runs on the host before any container exists. It writes `.git-plumbing/` and the
   `.host-*` symlinks `devcontainer.json` binds.

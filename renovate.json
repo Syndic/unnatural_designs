@@ -87,6 +87,11 @@
       "matchDepTypes": [ "oci_pull" ],
       "matchUpdateTypes": [ "digest" ],
       "groupName": "devcontainer base image"
+    },
+    {
+      "matchDatasources": [ "docker" ],
+      "matchPackageNames": [ "ghcr.io/syndic/unnatural_designs-devcontainer-base" ],
+      "enabled": false
     }
   ]
 }
