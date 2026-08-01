@@ -88,6 +88,11 @@
       "matchUpdateTypes": [ "digest" ],
       "groupName": "devcontainer base image",
       "automerge": true
+    },
+    {
+      "matchDatasources": [ "docker" ],
+      "matchPackageNames": [ "ghcr.io/syndic/unnatural_designs-devcontainer-base" ],
+      "enabled": false
     }
   ]
 }

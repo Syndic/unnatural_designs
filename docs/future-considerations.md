@@ -273,10 +273,10 @@ the irreducibly-per-host residue to a stub:
   Mend-hosted Renovate needs to read its digests; that is safe because the image holds only two
   shell scripts and a Debian base, no host-specific content.
 - **Consume the image here.** ✅ Done in Phase 3 — this repo `FROM`s it and layers go/bazel, so the
-  shared half is dogfooded on every CI run. The pin is a digest Renovate bumps, machinery both
-  repos already run, so a new version arrives as a bump gated by the consumer's own devcontainer
-  smoke check with no new management surface. .dotfiles doing the same, layering ansible/uv, is
-  what remains. The gitconfig install, the `allowedSignersFile` repoint and the socket chown are
+  shared half is dogfooded on every CI run. The pin is derived rather than bumped — the digest is
+  reproducible, so the PR that changes the image also carries the new pin, gated by the consumer's
+  own devcontainer smoke check. .dotfiles, which does not build the image, pins it as an ordinary
+  Renovate-bumped dependency instead; that adoption is what remains. The gitconfig install, the `allowedSignersFile` repoint and the socket chown are
   still in this repo's `post-start.sh`; they move into the shared library when .dotfiles needs
   them too.
 - **What's left on the host is a thin read-and-drop stub:** a handful of reads dropping results

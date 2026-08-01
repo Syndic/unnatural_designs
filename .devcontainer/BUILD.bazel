@@ -26,3 +26,18 @@ py_test(
     ],
     main = "test_devcontainer_config.py",
 )
+
+# The pin is a derived file (see meta/scripts/sync_base_image_pin.py). Asserting it needs the
+# assembled image, which Bazel produces without a daemon — so freshness rides `bazel test //...`
+# rather than a pre-commit hook or a separate CI job.
+py_test(
+    name = "test_base_image_pin",
+    size = "small",
+    srcs = ["test_base_image_pin.py"],
+    data = [
+        "Dockerfile",
+        "//meta/devcontainer-base:image",
+    ],
+    main = "test_base_image_pin.py",
+    deps = ["//meta/scripts:sync_base_image_pin_lib"],
+)

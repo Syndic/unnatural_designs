@@ -42,8 +42,10 @@ rebuilds.
 **Base image**: all of that is layered on top of
 [`meta/devcontainer-base/`](meta/devcontainer-base/README.md)'s published image, which this repo
 builds and shares with [Syndic/.dotfiles](https://github.com/Syndic/.dotfiles). It carries the
-container-side git/host plumbing (worktree resolution, host timezone, shared-index config) and is
-pinned by digest in the Dockerfile, bumped by Renovate.
+container-side git/host plumbing (worktree resolution, host timezone, shared-index config). The
+Dockerfile pins it by digest, and that pin is a *derived file*: the digest is reproducible from
+source, so [`sync_base_image_pin.py`](meta/scripts/sync_base_image_pin.py) writes it and
+`bazel test //...` fails when it drifts — see [Automation](#automation).
 
 **Feature pinning**: the `ghcr.io/devcontainers/features/*` references in
 [`devcontainer.json`](.devcontainer/devcontainer.json) are pinned to **full semver**
@@ -346,7 +348,7 @@ allowlist):
 
 | Workflow | Trigger paths | Re-runs | Commits |
 | --- | --- | --- | --- |
-| [`renovate-derived-files.yml`](.github/workflows/renovate-derived-files.yml) | `pyproject.toml`, `uv.lock`, `requirements_lock.txt`, `MODULE.bazel`, `.bazelversion`, `**/go.mod`, `go.work`, `.devcontainer/devcontainer.json` | [`meta/scripts/ratify_renovate_proposals.py`](meta/scripts/ratify_renovate_proposals.py) (`uv lock --upgrade-package <each>` + `uv export`), then `bazel mod deps --lockfile_mode=update`, `go mod tidy` + `go work sync`, and `devcontainer upgrade` | `uv.lock`, `requirements_lock.txt`, `MODULE.bazel.lock`, the touched `go.mod`/`go.sum` + `go.work.sum`, `.devcontainer/devcontainer-lock.json` |
+| [`renovate-derived-files.yml`](.github/workflows/renovate-derived-files.yml) | `pyproject.toml`, `uv.lock`, `requirements_lock.txt`, `MODULE.bazel`, `.bazelversion`, `**/go.mod`, `go.work`, `.devcontainer/devcontainer.json` | [`meta/scripts/ratify_renovate_proposals.py`](meta/scripts/ratify_renovate_proposals.py) (`uv lock --upgrade-package <each>` + `uv export`), then `bazel mod deps --lockfile_mode=update`, `go mod tidy` + `go work sync`, and `devcontainer upgrade` | `uv.lock`, `requirements_lock.txt`, `MODULE.bazel.lock`, `.devcontainer/Dockerfile` (the base-image pin), the touched `go.mod`/`go.sum` + `go.work.sum`, `.devcontainer/devcontainer-lock.json` |
 
 The uv step runs before the Bazel step, and a Python change triggers the Bazel step when it moves
 `requirements_lock.txt`: `pip.parse` reads that file, and the artifact hashes it resolves are
