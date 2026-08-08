@@ -311,21 +311,7 @@ Consumers pin a digest and Renovate bumps it: its `bazel-module` manager reads `
 `docker` dependency, which is why the base is declared with both a tag and a digest — a digest
 alone would be pinned forever with nothing to compare against.
 
-Those bumps are **reviewed, not automerged**. The `devcontainer base image` rule in
-`renovate.json` now exists to keep them in a PR of their own, not to merge them.
-
-They did automerge, until a consumer started `FROM`ing this image. At that point merging the bump
-stopped being a line change and became a *publish*: `MODULE.bazel` is in the devcontainer
-workflow's path classification, so the merge rebuilds the image and moves `:latest`, and from
-there it reaches every consumer. The checks that gate it — `Base image (all platforms)` plus this
-repo's own devcontainer build — answer "does the dispatcher still run, does the consumer still
-build". That is correctness, not judgement about whether we want a particular upstream base
-underneath every Syndic devcontainer this week. Nothing else in this repo merges without a human
-looking; the image every container is built from is a poor place to make the exception.
-
-Two properties of the rule outlive the automerge and are still load-bearing:
-
-- **The bump has to trigger the base jobs at all.** That is why `MODULE.bazel` is in the path
+- **The bump has to trigger the base jobs.** That is why `MODULE.bazel` is in the path
   classification; without it the bump moves the pin and triggers nothing.
 - **It is deliberately not folded into the `all non-major dependencies` group.** Grouped, a base
   bump would be blocked whenever anything else in that group was red — exactly when you want the
