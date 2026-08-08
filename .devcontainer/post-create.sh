@@ -36,7 +36,7 @@ go install "golang.org/x/tools/gopls@${GOPLS_VERSION}"
 
 # Install delve (Go debugger) — wires up the VS Code "Run & Debug" pane.
 # renovate: datasource=go depName=github.com/go-delve/delve
-DLV_VERSION=v1.27.0
+DLV_VERSION=v1.27.1
 go install "github.com/go-delve/delve/cmd/dlv@${DLV_VERSION}"
 
 # Install gotests — generates table-driven test scaffolds from a function.
