@@ -311,20 +311,11 @@ Consumers pin a digest and Renovate bumps it: its `bazel-module` manager reads `
 `docker` dependency, which is why the base is declared with both a tag and a digest — a digest
 alone would be pinned forever with nothing to compare against.
 
-Those digest bumps **automerge** — the repo's only automerged dependency, via the
-`devcontainer base image` rule in `renovate.json`. Three things make that safe, and it stops
-being safe if any of them change:
-
-- The bump is gated by the same checks as any other PR, including `Base image (all platforms)`
-  and this repo's own devcontainer build, so an upstream base that breaks either can't land. That
-  gating is why `MODULE.bazel` is in the workflow's path classification; without it the bump would
-  move the pin and trigger nothing at all.
-- The change is a digest and nothing else. A digest bump leaves `MODULE.bazel.lock` valid — the
-  `oci` extension records no `moduleExtensions` entry because every pull is digest-pinned and
-  therefore reproducible — so no derived-file regeneration has to race the merge.
-- It is deliberately *not* folded into the `all non-major dependencies` group. Grouped, a base
-  bump could not merge whenever anything else in that group was red, which is exactly when you
-  would want the base moving on its own.
+- **The bump has to trigger the base jobs.** That is why `MODULE.bazel` is in the path
+  classification; without it the bump moves the pin and triggers nothing.
+- **It is deliberately not folded into the `all non-major dependencies` group.** Grouped, a base
+  bump would be blocked whenever anything else in that group was red — exactly when you want the
+  base moving on its own.
 
 The GHCR repository is declared once, on the `oci_push` target in `BUILD.bazel`; it is a
 property of the artifact rather than of the runner, so it does not appear in the workflow.

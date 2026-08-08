@@ -199,14 +199,6 @@ Two things worth knowing before changing this:
   check the job log; the fallback is to make the edit as the `Renovate helper` app instead, which
   would need `Issues: read & write` added to its permissions.
 
-**The alternative, deliberately not taken:** `platformAutomerge: false` on the automerge
-packageRule. Renovate would then merge the PR itself inside a run, and `writeUpdates` returning
-`"automerged"` makes the repository job restart once and rebase the remaining branches in-process
-— no webhook needed, and one line instead of a workflow. It was rejected because Renovate only
-merges a branch whose status is *already* green (`pr/automerge.js` → `BranchNotGreen`), so the PR
-cannot merge in the run that creates it; the bump would wait for the next scheduled run. That
-gives back exactly the speed the `devcontainer base image` automerge rule was added for.
-
 ## .devcontainer plumbing and feature pins
 
 The container-side host plumbing — worktree git resolution, the host timezone, the shared git index
