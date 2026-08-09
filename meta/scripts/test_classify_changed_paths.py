@@ -75,7 +75,10 @@ class TestRuleExtraction(unittest.TestCase):
     def test_regexes_survive_extraction_intact(self):
         # The `--rule` arguments are single-quoted in the workflow, so nothing in a regex needs
         # unescaping — pin that, since a quoting change would land here as a subtly wrong rule.
-        self.assertEqual(RULES_DEVCONTAINER["base"], r"^meta/devcontainer-base/|^MODULE\.bazel$")
+        self.assertEqual(
+            RULES_DEVCONTAINER["base"],
+            r"^meta/devcontainer-base/|^MODULE\.bazel$|^\.bazelversion$",
+        )
 
 
 class TestParseRule(unittest.TestCase):
@@ -252,6 +255,16 @@ class TestClassifyDevcontainer(unittest.TestCase):
             expect_devcontainer(changed=True, base=True),
         )
 
+    def test_bazelversion_fires_both(self):
+        # renovate-derived-files.yml re-derives the base-image pin on a .bazelversion change,
+        # so this workflow has to be willing to rebuild and publish what that pin will name.
+        # Deriving without publishing is the one combination that cannot be recovered from.
+        self.assertEqual(self._run([".bazelversion"]), expect_devcontainer(changed=True, base=True))
+
+    def test_decoy_bazelversion_suffix(self):
+        # `$`-anchored, matching the renovate-derived-files rule's own decoy test.
+        self.assertEqual(self._run([".bazelversion.bak"]), expect_devcontainer())
+
     def test_module_bazel_fires_both(self):
         # MODULE.bazel pins the base image's own base (the devcontainers_base_debian oci.pull),
         # and that bump automerges. Missing it here would move the pin without rebuilding,
@@ -275,6 +288,7 @@ class TestClassifyDevcontainer(unittest.TestCase):
             "meta/devcontainer-base/scripts/lib.sh",
             "meta/devcontainer-base/BUILD.bazel",
             "MODULE.bazel",
+            ".bazelversion",
         ):
             with self.subTest(path=path):
                 result = self._run([path])

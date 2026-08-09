@@ -57,6 +57,11 @@ jobs:
           # `changed` too so the automerged bump is gated by a real consumer build, which is
           # what `publish` needs.
           #
+          # `.bazelversion` is in both for a narrower reason: renovate-derived-files.yml
+          # classifies it as a bazel change and re-derives the pin from it, so leaving it out
+          # here would let a bump write a pin that no job ever publishes — a red PR with no way
+          # to green it. The two classifications have to agree on what feeds the image.
+          #
           # Deliberately the whole file, not a grep for the pull's name. MODULE.bazel moves on
           # roughly 1 in 6 commits here and most of those cannot touch the image, so the false
           # positives are real and not cheap: two base-image runners, plus a consumer build
@@ -68,8 +73,8 @@ jobs:
           # build when both are true.
           python3 meta/scripts/classify_changed_paths.py \
             --base "$base" \
-            --rule 'changed=^\.devcontainer/|^meta/devcontainer-base/|^MODULE\.bazel$|^\.github/workflows/devcontainer\.yml$' \
-            --rule 'base=^meta/devcontainer-base/|^MODULE\.bazel$'
+            --rule 'changed=^\.devcontainer/|^meta/devcontainer-base/|^MODULE\.bazel$|^\.bazelversion$|^\.github/workflows/devcontainer\.yml$' \
+            --rule 'base=^meta/devcontainer-base/|^MODULE\.bazel$|^\.bazelversion$'
 
   # ── Shared base image ───────────────────────────────────────────────────────────────
   # meta/devcontainer-base/ is published for other Syndic repos to FROM. Bazel assembles it and
