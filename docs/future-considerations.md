@@ -276,9 +276,9 @@ the irreducibly-per-host residue to a stub:
   shared half is dogfooded on every CI run. The pin is derived rather than bumped — the digest is
   reproducible, so the PR that changes the image also carries the new pin, gated by the consumer's
   own devcontainer smoke check. .dotfiles, which does not build the image, pins it as an ordinary
-  Renovate-bumped dependency instead; that adoption is what remains. The gitconfig install, the `allowedSignersFile` repoint and the socket chown are
-  still in this repo's `post-start.sh`; they move into the shared library when .dotfiles needs
-  them too.
+  Renovate-bumped dependency instead; that adoption is what remains. The gitconfig install, the
+  `allowedSignersFile` repoint and the socket chown are still in this repo's `post-start.sh`;
+  they move into the shared library when .dotfiles needs them too.
 - **What's left on the host is a thin read-and-drop stub:** a handful of reads dropping results
   into `.git-plumbing/`, plus the one sudo branch (the agent-socket placeholder). It rarely
   changes and is too small to be worth a shared artifact, so it stays hand-copied — cheaply.

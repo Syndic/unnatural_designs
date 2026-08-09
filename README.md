@@ -44,8 +44,9 @@ rebuilds.
 builds and shares with [Syndic/.dotfiles](https://github.com/Syndic/.dotfiles). It carries the
 container-side git/host plumbing (worktree resolution, host timezone, shared-index config). The
 Dockerfile pins it by digest, and that pin is a *derived file*: the digest is reproducible from
-source, so [`sync_base_image_pin.py`](meta/scripts/sync_base_image_pin.py) writes it and
-`bazel test //...` fails when it drifts — see [Automation](#automation).
+source, so a pre-commit hook writes it with
+[`sync_base_image_pin.py`](meta/scripts/sync_base_image_pin.py) and `bazel test //...` fails when
+it drifts — see [Automation](#automation).
 
 **Feature pinning**: the `ghcr.io/devcontainers/features/*` references in
 [`devcontainer.json`](.devcontainer/devcontainer.json) are pinned to **full semver**
