@@ -8,11 +8,15 @@ working devcontainer and one that cannot resolve its base at all, so the cases b
 about refusing to guess when the shape is not exactly what is expected.
 """
 
+import contextlib
+import io
 import json
 import sys
+import tempfile
 import unittest
+from pathlib import Path
 
-from meta.scripts.sync_base_image_pin import index_digest, pinned_digest, replace_pin
+from meta.scripts.sync_base_image_pin import index_digest, main, pinned_digest, replace_pin
 
 _REPO = "ghcr.io/syndic/unnatural_designs-devcontainer-base"
 _OLD = "sha256:" + "a" * 64
@@ -88,6 +92,39 @@ class TestReplacePin(unittest.TestCase):
     def test_refuses_when_the_pin_is_missing(self):
         with self.assertRaises(ValueError):
             replace_pin("FROM debian:bookworm\n", _NEW)
+
+
+class TestPrintPinned(unittest.TestCase):
+    """The mode the publish job reads. It must answer without a build — that job has no Bazel
+    output tree, and a mode that needed one would fail the step for the wrong reason."""
+
+    def _run(self, dockerfile_text: str) -> tuple[int, str]:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "Dockerfile"
+            path.write_text(dockerfile_text, encoding="utf-8")
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                # --layout-dir points at nothing on purpose: reaching it would mean the early
+                # return is gone and the publish job would start depending on a built image.
+                code = main(
+                    [
+                        "--print-pinned",
+                        "--dockerfile",
+                        str(path),
+                        "--layout-dir",
+                        str(Path(tmp) / "no-such-layout"),
+                    ]
+                )
+            return code, out.getvalue().strip()
+
+    def test_prints_the_pinned_digest_without_a_build(self):
+        self.assertEqual(self._run(_DOCKERFILE), (0, _OLD))
+
+    def test_refuses_a_dockerfile_it_cannot_parse(self):
+        # Must raise rather than print nothing: the job compares this against the registry, and
+        # an empty answer would compare two blanks and pass.
+        with self.assertRaises(ValueError):
+            self._run("FROM debian:bookworm\n")
 
 
 if __name__ == "__main__":

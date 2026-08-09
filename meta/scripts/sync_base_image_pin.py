@@ -108,7 +108,19 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Report staleness and exit 1 instead of rewriting.",
     )
+    parser.add_argument(
+        "--print-pinned",
+        action="store_true",
+        help="Print the digest currently pinned and exit; needs no build.",
+    )
     args = parser.parse_args(argv)
+
+    # Deliberately before the layout check: the publish job asks what main pins without
+    # building anything, and reusing this parser is what keeps a Dockerfile shape change from
+    # degrading that check into a silent pass.
+    if args.print_pinned:
+        print(pinned_digest(args.dockerfile.read_text(encoding="utf-8")))
+        return 0
 
     index = args.layout_dir / "index.json"
     if not index.exists():

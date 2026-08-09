@@ -373,3 +373,29 @@ jobs:
           set -euo pipefail
           bazel run --config=ci //meta/devcontainer-base:push -- \
             --tag latest --tag "sha-${GITHUB_SHA}"
+
+      # The one loose end neither the pre-commit hook nor renovate-derived-files.yml can see:
+      # both run before the merge, and this is the step that can fail after it. `crane push`
+      # then one `crane tag` per tag is not atomic, so a failure in between leaves main pinned
+      # to a digest the registry does not serve — silent until someone rebuilds a devcontainer.
+      #
+      # Reads the pin through sync_base_image_pin.py rather than a grep of its own, so the
+      # Dockerfile shape has one parser and this cannot degrade into a check that always passes.
+      - name: Verify the registry serves what main pins
+        run: |
+          set -euo pipefail
+          repo=ghcr.io/syndic/unnatural_designs-devcontainer-base
+          pinned="$(python3 meta/scripts/sync_base_image_pin.py --print-pinned)"
+
+          # The digest is what a consumer's FROM resolves; the tags are what Renovate and any
+          # non-deriving consumer read, and they are the half `crane tag` can leave behind.
+          docker manifest inspect "${repo}@${pinned}" >/dev/null
+          for tag in latest "sha-${GITHUB_SHA}"; do
+            resolved="$(docker buildx imagetools inspect --format '{{.Manifest.Digest}}' "${repo}:${tag}")"
+            if [ "$resolved" != "$pinned" ]; then
+              echo "::error::${repo}:${tag} resolves to ${resolved}, but main pins ${pinned}." \
+                   "Re-run this job — crane tags non-atomically."
+              exit 1
+            fi
+          done
+          echo "${repo}@${pinned} is published and both tags point at it."
