@@ -116,9 +116,10 @@ the `Renovate helper`. Load-bearing facts:
   make it a silent no-op.
 - **`.bazelversion` invalidates the lock too.** `MODULE.bazel.lock`'s `lockFileVersion` (and the
   shape of its recorded extensions) tracks the bazel release, so a Renovate bazel bump leaves the
-  committed lock stale. CI hides it — `--lockfile_mode=update` rewrites in memory and stays green —
-  but the `bazel mod tidy` pre-commit hook rewrites it on disk, so the staleness surfaces as a
-  blocked local commit on any `go.mod`/`MODULE.bazel` change. The workflow therefore triggers on
+  committed lock stale. Builds don't notice — `--lockfile_mode=update` rewrites in memory and stays
+  green — so the staleness surfaces either as a blocked local commit (the `bazel mod tidy`
+  pre-commit hook rewrites it on disk on any `go.mod` change) or as ci.yml's `MODULE.bazel.lock
+  freshness` job, which is the backstop for commits that ran no hook. The workflow therefore triggers on
   `.bazelversion` and folds it into the same `bazel` classification as `MODULE.bazel`: one output,
   one `bazel mod deps` refresh. bazelisk reads the checked-out `.bazelversion`, so the regenerated
   lock is in the bumped version's format.

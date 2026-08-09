@@ -25,6 +25,30 @@ jobs:
           buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
       - run: bazel run --config=ci //:gazelle -- -mode=diff
 
+  # MODULE.bazel.lock is the one derived file with no CI backstop of its own: builds run with
+  # `--lockfile_mode=update`, which rewrites the lock in memory and stays green, so a `bazel mod
+  # tidy` hook that never ran is invisible until it blocks someone's commit. Fail-only on
+  # purpose — the regenerated lock belongs in the authoring commit, not in a CI push.
+  #
+  # `bazel mod tidy` also rewrites MODULE.bazel's `use_repo` lines, so both files are diffed.
+  bazel-lock-check:
+    name: MODULE.bazel.lock freshness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-bazel-remote
+        with:
+          buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
+      - run: |
+          set -euo pipefail
+          bazel mod tidy
+          if ! git diff --exit-code -- MODULE.bazel MODULE.bazel.lock; then
+            MSG="stale — run 'bazel mod tidy' and commit the result."
+            echo "::error file=MODULE.bazel.lock::${MSG}"
+            exit 1
+          fi
+          echo "MODULE.bazel and MODULE.bazel.lock are what 'bazel mod tidy' produces."
+
   # The repo's `meta/scripts/*.py` target Python 3.14 (matches the rules_python
   # toolchain pin in MODULE.bazel and the `target-version` in pyproject.toml's
   # [tool.ruff]). Ubuntu-24.04 still ships 3.12 as `python3`, so the language-
