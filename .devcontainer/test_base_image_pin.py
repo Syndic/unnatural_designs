@@ -2,9 +2,12 @@
 
 The pin is derived, not depended on: the digest is a pure function of `meta/devcontainer-base/`
 plus the upstream base in `MODULE.bazel`, so a change to either restales it in the same commit.
-This is the guard that says so — the same role `bazel mod tidy` plays for `MODULE.bazel.lock`,
-except it can be a plain test because the digest falls out of an already-built artifact and needs
-no daemon.
+The `base-image-pin` pre-commit hook rewrites it, exactly as `bazel mod tidy` does for
+`MODULE.bazel.lock`. This is the backstop under that hook: hooks don't run for `--no-verify`, a
+web edit, or the helper app's API commits, and don't re-run when a branch rebases onto someone
+else's base change — two individually-fresh pins can be jointly stale. It can be a plain test
+rather than a CI job because the digest falls out of an already-built artifact and needs no
+daemon.
 
 Without it, a stale pin is invisible: the devcontainer still builds, from the previous image, and
 the difference only shows up as plumbing that mysteriously predates your change.

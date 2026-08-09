@@ -24,9 +24,10 @@ Usage (the build has to come first — this reads its output, it does not run Ba
     python3 meta/scripts/sync_base_image_pin.py            # rewrite the pin
     python3 meta/scripts/sync_base_image_pin.py --check    # exit 1 if it is stale
 
-`renovate-derived-files.yml` runs the rewrite when MODULE.bazel moves, since the upstream base it
-pins feeds this digest; `//.devcontainer:test_base_image_pin` is the check that keeps a hand edit
-from drifting.
+Three callers, one per source of change: the `base-image-pin` pre-commit hook for our own edits,
+`renovate-derived-files.yml` for Renovate's (it moves the upstream base this digest is assembled
+over), and `//.devcontainer:test_base_image_pin` as the check under both — hooks are bypassable
+and the workflow only fires for Renovate's own PRs.
 """
 
 from __future__ import annotations

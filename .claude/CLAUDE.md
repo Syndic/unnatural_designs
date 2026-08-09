@@ -220,9 +220,10 @@ What is local to this repo:
   image" in that README; `.devcontainer/test_devcontainer_config.py` asserts the couplings, because
   every wrong shape fails at container-build time or not at all.
 - **That pin is a derived file, not a dependency.** The digest is reproducible from source, so the
-  PR that changes the image carries the new pin: `meta/scripts/sync_base_image_pin.py` writes it,
-  `//.devcontainer:test_base_image_pin` fails when it drifts, and Renovate is configured to ignore
-  the dep. The cost is that a base-editing branch pins an image the registry doesn't have yet; set
+  PR that changes the image carries the new pin. Three callers, one per source of change: the
+  `base-image-pin` pre-commit hook for our edits, this workflow for Renovate's, and
+  `//.devcontainer:test_base_image_pin` as the check under both — hooks are bypassable and the
+  workflow only fires for Renovate's own PRs. Renovate is configured to ignore the dep. The cost is that a base-editing branch pins an image the registry doesn't have yet; set
   `DEVCONTAINER_BASE_IMAGE` to the published `:latest` to keep working. Don't reach for
   `bazel run :load` locally — it needs a Docker daemon the devcontainer doesn't have, which is why
   that path is CI's.
