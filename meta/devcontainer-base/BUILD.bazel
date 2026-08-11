@@ -71,7 +71,7 @@ oci_image_index(
     ],
     # Visible so the consumer can assert its own pin against this: the digest here is what
     # //.devcontainer:test_base_image_pin compares the Dockerfile's `FROM` to.
-    visibility = ["//visibility:public"],
+    visibility = ["//.devcontainer:__pkg__"],
 )
 
 # `bazel run //meta/devcontainer-base:load` puts the image in the local Docker daemon as

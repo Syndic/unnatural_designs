@@ -344,9 +344,10 @@ def check_uv_lock_current(root: Path) -> int:
 def check_uv_lock_fresh(root: Path) -> int:
     """Cheap freshness check: re-export the lock and diff against the checked-in file.
 
-    Mirrors the `uv-lock-fresh` pre-commit hook's export invocation exactly so the two
-    cannot disagree about what "fresh" means. Pairs with `check_uv_lock_current`, which
-    covers the lock-vs-manifest half; neither runs a full re-lock, which stays in the hook.
+    Mirrors the `uv-lock-fresh` pre-commit hook's export invocation apart from `--frozen`
+    (see :func:`_uv_export` for why that flag is on this side only), so the two cannot
+    disagree about what "fresh" means. Pairs with `check_uv_lock_current`, which covers the
+    lock-vs-manifest half; neither runs a full re-lock, which stays in the hook.
     """
     checked_in = root / "requirements_lock.txt"
     if not checked_in.is_file():
@@ -389,8 +390,12 @@ def main() -> int:
 
     errors += check_python_workspace_root(root)
     errors += check_python_workspace_members(root, find_python_projects(root))
-    errors += check_uv_lock_current(root)
-    errors += check_uv_lock_fresh(root)
+    # Sequential, not summed: a stale lock makes `uv export --frozen` exit non-zero too, and
+    # that second message names requirements_lock.txt — the innocent file. One cause, one line.
+    uv_errors = check_uv_lock_current(root)
+    if uv_errors == 0:
+        uv_errors = check_uv_lock_fresh(root)
+    errors += uv_errors
 
     if errors == 0:
         print("All modules and workspace invariants are consistent.")

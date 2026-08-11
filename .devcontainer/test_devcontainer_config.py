@@ -22,6 +22,8 @@ import sys
 import unittest
 from pathlib import Path
 
+from meta.scripts.sync_base_image_pin import pinned_digest
+
 # Not .resolve(): devcontainer.yml is a cross-package data dep and lives in the runfiles tree,
 # which a resolved symlink would lead back out of. The rest read fine either way.
 _HERE = Path(__file__).parent
@@ -257,11 +259,15 @@ class TestBaseImageOverride(unittest.TestCase):
     def test_pinned_base_carries_both_a_tag_and_a_digest(self):
         # Digest for reproducibility, tag for Renovate to have something to compare against —
         # the same pairing MODULE.bazel's oci.pull uses for this image's own base.
+        #
+        # The digest half comes from sync_base_image_pin, which owns the pin and rewrites it;
+        # a second regex here would be the copy that silently stops agreeing with the writer.
         _, sentinel = self._global_arg_default()
         image = next(img for _, img, alias in self.froms if alias == sentinel)
-        reference, _, digest = image.partition("@")
-        self.assertRegex(digest, r"\Asha256:[0-9a-f]{64}\Z")
+        reference, _, _ = image.partition("@")
         self.assertRegex(reference, rf"\A{re.escape(_BASE_REPOSITORY)}:[\w][\w.-]*\Z")
+        # Raises if the Dockerfile carries no single well-formed pinned FROM.
+        pinned_digest(_DOCKERFILE.read_text(encoding="utf-8"))
 
     def test_alias_precedes_the_consuming_from(self):
         # Renovate's stage-name check only knows aliases declared above the line it is looking

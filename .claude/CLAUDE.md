@@ -119,8 +119,9 @@ the `Renovate helper`. Load-bearing facts:
   committed lock stale. Builds don't notice — `--lockfile_mode=update` rewrites in memory and stays
   green — so the staleness surfaces either as a blocked local commit (the `bazel mod tidy`
   pre-commit hook rewrites it on disk on any `go.mod` change) or as ci.yml's `MODULE.bazel.lock
-  freshness` job, which is the backstop for commits that ran no hook. The workflow therefore triggers on
-  `.bazelversion` and folds it into the same `bazel` classification as `MODULE.bazel`: one output,
+  freshness` job, which is the backstop for commits that ran no hook. The workflow therefore
+  triggers on `.bazelversion` and folds it into the same `bazel` classification as
+  `MODULE.bazel`: one output,
   one `bazel mod deps` refresh. bazelisk reads the checked-out `.bazelversion`, so the regenerated
   lock is in the bumped version's format.
 - **Go tidy/sync rides the same commit.** Renovate's `go get` bumps `go.mod`/`go.sum` but never
@@ -224,7 +225,8 @@ What is local to this repo:
   PR that changes the image carries the new pin. Three callers, one per source of change: the
   `base-image-pin` pre-commit hook for our edits, this workflow for Renovate's, and
   `//.devcontainer:test_base_image_pin` as the check under both — hooks are bypassable and the
-  workflow only fires for Renovate's own PRs. Renovate is configured to ignore the dep. The cost is that a base-editing branch pins an image the registry doesn't have yet; set
+  workflow only fires for Renovate's own PRs. Renovate is configured to ignore the dep. The cost
+  is that a base-editing branch pins an image the registry doesn't have yet; set
   `DEVCONTAINER_BASE_IMAGE` to the published `:latest` to keep working. Don't reach for
   `bazel run :load` locally — it needs a Docker daemon the devcontainer doesn't have, which is why
   that path is CI's.

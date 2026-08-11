@@ -172,11 +172,13 @@ That does not transfer to a consumer outside this repo. `Syndic/.dotfiles` doesn
 so for it the pin is a genuine dependency: pin the digest, let Renovate's `docker` manager bump it,
 and gate the bump on its own devcontainer check. The derived treatment is available only to the
 repo that assembles the artifact.
+
 CI sets `DEVCONTAINER_BASE_IMAGE=devcontainer-base:ci` — the tag `bazel run :load` produces —
 whenever a PR touches the base, so a base change is smoke-tested against a real consumer *before*
-it publishes, rather than a Renovate bump later. One consequence for a consumer that caches its
-built image: the push that merges a base change seeds that cache from the candidate image while the
-Dockerfile still pins the previous digest, so builds miss the cache until the digest bump lands.
+it publishes. One consequence for a consumer that caches its built image: a base-changing push to
+`main` builds against `devcontainer-base:ci` while every later PR builds against `pinned-base`, so
+the `FROM` reference string differs and the layer cache misses from that line down. It re-seeds on
+the next `main` push that doesn't move the base.
 
 Two freshness facts to keep in mind. `devcontainer up` reuses an existing container, so a base
 bump lands on the next rebuild, not the next `up`. And because this repo's pin is derived, on any

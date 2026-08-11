@@ -41,7 +41,9 @@ jobs:
           buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
       - run: |
           set -euo pipefail
-          bazel mod tidy
+          # `--config=ci` for consistency with gazelle-check next door. It changes nothing
+          # here — `mod tidy` executes no actions, so BES and remote execution are moot.
+          bazel mod tidy --config=ci
           if ! git diff --exit-code -- MODULE.bazel MODULE.bazel.lock; then
             MSG="stale — run 'bazel mod tidy' and commit the result."
             echo "::error file=MODULE.bazel.lock::${MSG}"

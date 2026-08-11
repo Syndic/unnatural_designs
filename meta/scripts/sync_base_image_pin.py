@@ -22,7 +22,6 @@ Usage (the build has to come first — this reads its output, it does not run Ba
 
     bazel build //meta/devcontainer-base:image
     python3 meta/scripts/sync_base_image_pin.py            # rewrite the pin
-    python3 meta/scripts/sync_base_image_pin.py --check    # exit 1 if it is stale
 
 Three callers, one per source of change: the `base-image-pin` pre-commit hook for our own edits,
 `renovate-derived-files.yml` for Renovate's (it moves the upstream base this digest is assembled
@@ -104,11 +103,6 @@ def main(argv: list[str] | None = None) -> int:
         help="OCI layout directory built by //meta/devcontainer-base:image.",
     )
     parser.add_argument(
-        "--check",
-        action="store_true",
-        help="Report staleness and exit 1 instead of rewriting.",
-    )
-    parser.add_argument(
         "--print-pinned",
         action="store_true",
         help="Print the digest currently pinned and exit; needs no build.",
@@ -137,15 +131,6 @@ def main(argv: list[str] | None = None) -> int:
     if current == built:
         print(f"{args.dockerfile} already pins the built image ({built}).")
         return 0
-
-    if args.check:
-        print(f"{args.dockerfile} pins {current}, but this tree builds {built}.", file=sys.stderr)
-        print(
-            "Run `bazel build //meta/devcontainer-base:image && "
-            "python3 meta/scripts/sync_base_image_pin.py` and commit the result.",
-            file=sys.stderr,
-        )
-        return 1
 
     args.dockerfile.write_text(replace_pin(dockerfile, built), encoding="utf-8")
     print(f"{args.dockerfile}: {current} -> {built}")

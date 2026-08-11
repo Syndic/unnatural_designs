@@ -127,5 +127,57 @@ class TestPrintPinned(unittest.TestCase):
             self._run("FROM debian:bookworm\n")
 
 
+class TestRewritePath(unittest.TestCase):
+    """`main()`'s mutating half — what the pre-commit hook and renovate-derived-files.yml run.
+
+    The pure functions above cover the parsing; this covers the driver that decides whether to
+    touch the file at all. The missing-layout case is the one with no backstop anywhere: a
+    `write_text` firing on a half-built tree would pin a digest nothing published.
+    """
+
+    def _tree(self, tmp: str, digest: str | None) -> tuple[Path, Path]:
+        dockerfile = Path(tmp) / "Dockerfile"
+        dockerfile.write_text(_DOCKERFILE, encoding="utf-8")
+        layout = Path(tmp) / "layout"
+        if digest is not None:
+            layout.mkdir()
+            (layout / "index.json").write_text(
+                json.dumps({"manifests": [{"digest": digest}]}), encoding="utf-8"
+            )
+        return dockerfile, layout
+
+    def _run(self, dockerfile: Path, layout: Path) -> tuple[int, str]:
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+            code = main(["--dockerfile", str(dockerfile), "--layout-dir", str(layout)])
+        return code, out.getvalue()
+
+    def test_rewrites_the_pin_to_the_built_digest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dockerfile, layout = self._tree(tmp, _NEW)
+            code, _ = self._run(dockerfile, layout)
+            self.assertEqual(code, 0)
+            self.assertEqual(pinned_digest(dockerfile.read_text(encoding="utf-8")), _NEW)
+
+    def test_rerunning_is_a_no_op(self):
+        # The hook runs on every matching commit, so "already correct" must not be an error —
+        # and must not rewrite, or every commit would carry a spurious Dockerfile diff.
+        with tempfile.TemporaryDirectory() as tmp:
+            dockerfile, layout = self._tree(tmp, _OLD)
+            before = dockerfile.read_bytes()
+            code, _ = self._run(dockerfile, layout)
+            self.assertEqual(code, 0)
+            self.assertEqual(dockerfile.read_bytes(), before)
+
+    def test_missing_layout_refuses_without_touching_the_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dockerfile, layout = self._tree(tmp, None)
+            before = dockerfile.read_bytes()
+            code, out = self._run(dockerfile, layout)
+            self.assertEqual(code, 2)
+            self.assertIn("bazel build", out)
+            self.assertEqual(dockerfile.read_bytes(), before)
+
+
 if __name__ == "__main__":
     sys.exit(0 if unittest.main(exit=False).result.wasSuccessful() else 1)

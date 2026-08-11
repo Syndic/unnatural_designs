@@ -29,6 +29,11 @@ repos:
         # to the base or to the MODULE.bazel pull it sits on restales it in the same commit.
         # Rewrites rather than reports, like the two hooks above; //.devcontainer:test_base_image_pin
         # is the CI-side check for commits that never ran a hook.
+        #
+        # `bazel build` runs under the default --lockfile_mode=update, so on a MODULE.bazel-only
+        # commit — which bazel-mod-tidy above does not cover, its files are go.mod/work/sum —
+        # this can rewrite MODULE.bazel.lock too. pre-commit then blames base-image-pin for
+        # modifying files. The lock really was stale; the attribution is what misleads.
         entry: bash -c 'set -euo pipefail; bazel build //meta/devcontainer-base:image; python3 meta/scripts/sync_base_image_pin.py'
         pass_filenames: false
         # Every input to the image, not just the base directory: MODULE.bazel carries the

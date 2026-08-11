@@ -839,8 +839,10 @@ class TestCheckPythonWorkspaceMembersDefensive(unittest.TestCase):
 # Direct-seam coverage for the argv contract. check_uv_lock_fresh tests mock at the
 # _uv_export boundary, so they can't catch a refactor that silently swaps a flag
 # (e.g. --no-emit-project -> --no-emit-workspace, or --format requirements-txt ->
-# --format json). The freshness check's correctness depends on these flags mirroring
-# the uv-lock-fresh pre-commit hook's invocation; this is the test that catches drift.
+# --format json). The freshness check's correctness depends on these flags matching the
+# uv-lock-fresh pre-commit hook's invocation everywhere except `--frozen`, which is
+# deliberately on this side only — the hook re-locks first, a check must not. This is the
+# test that catches drift in either direction, including someone "restoring" the symmetry.
 
 
 class TestUvExport(unittest.TestCase):
@@ -969,16 +971,31 @@ class TestMain(unittest.TestCase):
         self.assertIn("consistent", out)
 
     def test_aggregates_error_counts(self):
+        # uv_current stays 0 here: the two uv checks are sequential, not summed, so a case
+        # with both set would measure the suppression below rather than the aggregation.
         rc, _ = self._run(
-            configs_go=2,
-            configs_python=1,
-            matrices=3,
-            py_root=1,
-            py_members=2,
-            uv_lock=1,
-            uv_current=1,
+            configs_go=2, configs_python=1, matrices=3, py_root=1, py_members=2, uv_lock=1
         )
-        self.assertEqual(rc, 11)
+        self.assertEqual(rc, 10)
+
+    def test_a_stale_lock_suppresses_the_export_diff(self):
+        # `uv export --frozen` also fails when the lock is stale, and its message names
+        # requirements_lock.txt — the innocent file. One cause must produce one message.
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.object(check_modules, "workspace_root", return_value=Path(tmp)),
+            mock.patch.object(check_modules, "check_module_configs", return_value=0),
+            mock.patch.object(check_modules, "check_workflow_matrices", return_value=0),
+            mock.patch.object(check_modules, "check_python_workspace_root", return_value=0),
+            mock.patch.object(check_modules, "check_python_workspace_members", return_value=0),
+            mock.patch.object(check_modules, "check_uv_lock_current", return_value=1),
+            mock.patch.object(check_modules, "check_uv_lock_fresh", return_value=1) as fresh,
+            mock.patch("sys.stdout", new_callable=io.StringIO),
+        ):
+            rc = check_modules.main()
+
+        self.assertEqual(rc, 1)
+        fresh.assert_not_called()
 
     def test_success_message_suppressed_on_any_error(self):
         rc, out = self._run(uv_lock=1)

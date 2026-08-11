@@ -25,6 +25,7 @@ py_test(
         "//:.github/workflows/devcontainer.yml",
     ],
     main = "test_devcontainer_config.py",
+    deps = ["//meta/scripts:sync_base_image_pin_lib"],
 )
 
 # The pin is a derived file (see meta/scripts/sync_base_image_pin.py). The `base-image-pin`
