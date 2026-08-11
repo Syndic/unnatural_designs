@@ -120,10 +120,9 @@ the `Renovate helper`. Load-bearing facts:
   green — so the staleness surfaces either as a blocked local commit (the `bazel mod tidy`
   pre-commit hook rewrites it on disk on any `go.mod` change) or as ci.yml's `MODULE.bazel.lock
   freshness` job, which is the backstop for commits that ran no hook. The workflow therefore
-  triggers on `.bazelversion` and folds it into the same `bazel` classification as
-  `MODULE.bazel`: one output,
-  one `bazel mod deps` refresh. bazelisk reads the checked-out `.bazelversion`, so the regenerated
-  lock is in the bumped version's format.
+  triggers on `.bazelversion` and folds it into the same `bazel` classification as `MODULE.bazel`:
+  one output, one `bazel mod deps` refresh. bazelisk reads the checked-out `.bazelversion`, so the
+  regenerated lock is in the bumped version's format.
 - **Go tidy/sync rides the same commit.** Renovate's `go get` bumps `go.mod`/`go.sum` but never
   runs `go mod tidy` (opt-in) or `go work sync` (Renovate does it only when vendoring, which this
   repo doesn't) — so the indirect block and `go.work.sum` are left stale. The workflow runs
