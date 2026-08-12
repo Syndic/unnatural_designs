@@ -399,6 +399,7 @@ jobs:
           repo=ghcr.io/syndic/unnatural_designs-devcontainer-base
           pinned="$(python3 meta/scripts/sync_base_image_pin.py --print-pinned)"
           err="${RUNNER_TEMP}/imagetools-inspect.err"
+          attempts=3
 
           # `@digest` is what a consumer's FROM resolves; the tags are what Renovate and any
           # non-deriving consumer read, and they are the half `crane tag` can leave behind.
@@ -406,17 +407,19 @@ jobs:
           # `docker manifest` is still nominally an experimental CLI command.
           for ref in "@${pinned}" ":latest" ":sha-${GITHUB_SHA}"; do
             resolved=""
-            for attempt in 1 2 3; do
+            for attempt in $(seq "$attempts"); do
               # stderr is kept rather than dropped: propagation lag, an auth failure and an
               # unreachable registry all look like the same empty answer without it.
               resolved="$(timeout 60 docker buildx imagetools inspect \
                 --format '{{.Manifest.Digest}}' "${repo}${ref}" 2>"$err" || true)"
               [ "$resolved" = "$pinned" ] && break
-              sleep $((attempt * 5))
+              # `||` rather than `&&`: a failing `&&` guard returns 1, which set -e traps.
+              [ "$attempt" -eq "$attempts" ] || sleep $((attempt * 5))
             done
             if [ "$resolved" != "$pinned" ]; then
-              echo "::error::${repo}${ref} resolved to '${resolved:-nothing}' after 3 attempts," \
-                   "but main pins ${pinned}. Re-run this job — crane tags non-atomically."
+              echo "::error::${repo}${ref} resolved to '${resolved:-nothing}' after" \
+                   "${attempts} attempts, but main pins ${pinned}." \
+                   "Re-run this job — crane tags non-atomically."
               echo "Last stderr from imagetools inspect:"
               cat "$err"
               exit 1
