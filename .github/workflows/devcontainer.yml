@@ -407,11 +407,14 @@ jobs:
           # `docker manifest` is still nominally an experimental CLI command.
           for ref in "@${pinned}" ":latest" ":sha-${GITHUB_SHA}"; do
             resolved=""
+            rc=0
             for attempt in $(seq "$attempts"); do
-              # stderr is kept rather than dropped: propagation lag, an auth failure and an
-              # unreachable registry all look like the same empty answer without it.
+              # stderr and the exit status are both kept: propagation lag, an auth failure and
+              # an unreachable registry otherwise look alike, and a `timeout` kill writes no
+              # stderr at all, so the status is the only thing that names that one.
+              rc=0
               resolved="$(timeout 60 docker buildx imagetools inspect \
-                --format '{{.Manifest.Digest}}' "${repo}${ref}" 2>"$err" || true)"
+                --format '{{.Manifest.Digest}}' "${repo}${ref}" 2>"$err")" || rc=$?
               [ "$resolved" = "$pinned" ] && break
               # `||` rather than `&&`: a failing `&&` guard returns 1, which set -e traps.
               [ "$attempt" -eq "$attempts" ] || sleep $((attempt * 5))
@@ -420,7 +423,7 @@ jobs:
               echo "::error::${repo}${ref} resolved to '${resolved:-nothing}' after" \
                    "${attempts} attempts, but main pins ${pinned}." \
                    "Re-run this job — crane tags non-atomically."
-              echo "Last stderr from imagetools inspect:"
+              echo "Last attempt exited ${rc}; its stderr follows (124 = timed out):"
               cat "$err"
               exit 1
             fi
