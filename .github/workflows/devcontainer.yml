@@ -423,7 +423,9 @@ jobs:
               echo "::error::${repo}${ref} resolved to '${resolved:-nothing}' after" \
                    "${attempts} attempts, but main pins ${pinned}." \
                    "Re-run this job — crane tags non-atomically."
-              echo "Last attempt exited ${rc}; its stderr follows (124 = timed out):"
+              hint=""
+              [ "$rc" -ne 124 ] || hint=" (timed out)"
+              echo "Last attempt exited ${rc}${hint}; its stderr follows:"
               cat "$err"
               exit 1
             fi
