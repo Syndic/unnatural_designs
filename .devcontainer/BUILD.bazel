@@ -25,4 +25,22 @@ py_test(
         "//:.github/workflows/devcontainer.yml",
     ],
     main = "test_devcontainer_config.py",
+    deps = ["//meta/scripts:sync_base_image_pin_lib"],
+)
+
+# The pin is a derived file (see meta/scripts/sync_base_image_pin.py). The `base-image-pin`
+# pre-commit hook keeps it fresh; this is the half that cannot be bypassed — hooks don't run for
+# `--no-verify`, a web edit, or the helper app's API commits, and don't re-run on a rebase.
+# Asserting it needs only the assembled image, which Bazel produces without a daemon, so it rides
+# `bazel test //...` instead of costing a CI job of its own.
+py_test(
+    name = "test_base_image_pin",
+    size = "small",
+    srcs = ["test_base_image_pin.py"],
+    data = [
+        "Dockerfile",
+        "//meta/devcontainer-base:image",
+    ],
+    main = "test_base_image_pin.py",
+    deps = ["//meta/scripts:sync_base_image_pin_lib"],
 )

@@ -16,6 +16,7 @@ Verifies cross-language module/project invariants:
     4. Every discovered per-project pyproject.toml matches a glob in [tool.uv.workspace].members
        so workspace resolution and member iteration agree.
     5. requirements_lock.txt is fresh relative to uv.lock (cheap diff via `uv export`).
+    6. uv.lock itself still satisfies pyproject.toml (`uv lock --check`).
 
 Polyglot replacement for the former check_go_modules.py. Matrix-list parsing is driven
 by LanguageSpec.matrix_key; today only Go has a matrix key (`go_module`), and Python's
@@ -276,6 +277,12 @@ def _uv_export(root: Path) -> str | None:
     stripping in :func:`_strip_header` handles the invocation-path difference at compare
     time. Returns None if uv is not on PATH (skipped silently — the pre-commit hook is the
     durable enforcement; this check is the CI safety net).
+
+    `--frozen` because a check must not edit what it checks: `uv export` otherwise updates
+    uv.lock first, so a stale lock would be silently repaired in the runner and this would
+    compare against a file the commit does not contain. The pre-commit hook re-locks before
+    exporting, which is why it needs no such flag; when the lock is current both produce
+    identical output, and `check_uv_lock_current` is what says whether it is.
     """
     with tempfile.NamedTemporaryFile(mode="w+", suffix=".txt", delete=False) as tmp:
         tmp_path = Path(tmp.name)
@@ -285,6 +292,7 @@ def _uv_export(root: Path) -> str | None:
                 [
                     "uv",
                     "export",
+                    "--frozen",
                     "--format",
                     "requirements-txt",
                     "--no-emit-project",
@@ -303,13 +311,43 @@ def _uv_export(root: Path) -> str | None:
         tmp_path.unlink(missing_ok=True)
 
 
+def check_uv_lock_current(root: Path) -> int:
+    """Assert `uv.lock` still satisfies `pyproject.toml`, the half the export diff can't see.
+
+    `check_uv_lock_fresh` compares requirements_lock.txt against the lock; both stay
+    consistent with each other while the *lock* drifts from the manifest, which is what a
+    bypassed `uv-lock-fresh` hook leaves behind. `uv lock --check` validates the existing
+    resolution instead of redoing it, so this is not the re-lock that was deliberately kept
+    out of CI — it measured under a millisecond on the current graph.
+    """
+    try:
+        subprocess.run(
+            ["uv", "lock", "--check"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except FileNotFoundError:
+        # Same posture as the export check: no uv, nothing to say.
+        return 0
+    except subprocess.CalledProcessError as e:
+        detail = " / ".join((e.stderr or e.stdout or str(e)).strip().splitlines()) or str(e)
+        print(
+            "uv.lock:1:1-2: stale — out of sync with pyproject.toml. Re-run `uv lock` "
+            f"(or rely on the uv-lock-fresh pre-commit hook). uv said: {detail}"
+        )
+        return 1
+    return 0
+
+
 def check_uv_lock_fresh(root: Path) -> int:
     """Cheap freshness check: re-export the lock and diff against the checked-in file.
 
-    Mirrors the `uv-lock-fresh` pre-commit hook's export invocation exactly so the two
-    cannot disagree about what "fresh" means. The full re-lock (`uv lock`) lives in the
-    hook alone — running it in CI would cost network and resolution time we already spend
-    at commit time. The export step is local-only and fast.
+    Mirrors the `uv-lock-fresh` pre-commit hook's export invocation apart from `--frozen`
+    (see :func:`_uv_export` for why that flag is on this side only), so the two cannot
+    disagree about what "fresh" means. Pairs with `check_uv_lock_current`, which covers the
+    lock-vs-manifest half; neither runs a full re-lock, which stays in the hook.
     """
     checked_in = root / "requirements_lock.txt"
     if not checked_in.is_file():
@@ -352,7 +390,12 @@ def main() -> int:
 
     errors += check_python_workspace_root(root)
     errors += check_python_workspace_members(root, find_python_projects(root))
-    errors += check_uv_lock_fresh(root)
+    # Sequential, not summed: a stale lock makes `uv export --frozen` exit non-zero too, and
+    # that second message names requirements_lock.txt — the innocent file. One cause, one line.
+    uv_errors = check_uv_lock_current(root)
+    if uv_errors == 0:
+        uv_errors = check_uv_lock_fresh(root)
+    errors += uv_errors
 
     if errors == 0:
         print("All modules and workspace invariants are consistent.")

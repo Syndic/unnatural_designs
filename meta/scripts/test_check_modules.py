@@ -839,8 +839,10 @@ class TestCheckPythonWorkspaceMembersDefensive(unittest.TestCase):
 # Direct-seam coverage for the argv contract. check_uv_lock_fresh tests mock at the
 # _uv_export boundary, so they can't catch a refactor that silently swaps a flag
 # (e.g. --no-emit-project -> --no-emit-workspace, or --format requirements-txt ->
-# --format json). The freshness check's correctness depends on these flags mirroring
-# the uv-lock-fresh pre-commit hook's invocation; this is the test that catches drift.
+# --format json). The freshness check's correctness depends on these flags matching the
+# uv-lock-fresh pre-commit hook's invocation everywhere except `--frozen`, which is
+# deliberately on this side only — the hook re-locks first, a check must not. This is the
+# test that catches drift in either direction, including someone "restoring" the symmetry.
 
 
 class TestUvExport(unittest.TestCase):
@@ -860,7 +862,49 @@ class TestUvExport(unittest.TestCase):
         self.assertEqual(cmd[:2], ["uv", "export"])
         self.assertNotIn("--no-hashes", cmd)
         self.assertIn("--no-emit-project", cmd)
+        # Without this the check re-locks the tree it is checking, repairing staleness in the
+        # runner and comparing against a file the commit does not contain.
+        self.assertIn("--frozen", cmd)
         self.assertEqual(cmd[cmd.index("--format") + 1], "requirements-txt")
+
+
+# ── TestCheckUvLockCurrent ─────────────────────────────────────────────────────
+# The argv contract matters as much as the return code: `uv lock` without --check
+# would *rewrite* the lock from a CI job instead of reporting it, which is the
+# behaviour this backstop exists to avoid.
+
+
+class TestCheckUvLockCurrent(unittest.TestCase):
+    def _run_with(self, side_effect):
+        with (
+            mock.patch("subprocess.run", side_effect=side_effect) as run,
+            mock.patch("sys.stdout", new_callable=io.StringIO) as stdout,
+        ):
+            rc = check_modules.check_uv_lock_current(Path("/fake"))
+        return rc, stdout.getvalue(), run
+
+    def test_passes_and_only_checks(self):
+        rc, _, run = self._run_with(lambda *a, **k: mock.Mock(returncode=0))
+        self.assertEqual(rc, 0)
+        self.assertEqual(run.call_args.args[0], ["uv", "lock", "--check"])
+
+    def test_stale_lock_reports_and_names_the_fix(self):
+        def fake(*_a, **_k):
+            raise subprocess.CalledProcessError(2, ["uv"], "", "the lockfile is not up-to-date")
+
+        rc, out, _ = self._run_with(fake)
+        self.assertEqual(rc, 1)
+        self.assertIn("uv.lock", out)
+        self.assertIn("uv lock", out)
+
+    def test_missing_uv_is_not_a_failure(self):
+        # Same posture as the export check: this runs wherever check_modules.py runs, and a
+        # host without uv has nothing to say about the lock.
+        def fake(*_a, **_k):
+            raise FileNotFoundError
+
+        rc, _, _ = self._run_with(fake)
+        self.assertEqual(rc, 0)
 
 
 # ── TestMain ───────────────────────────────────────────────────────────────────
@@ -875,7 +919,7 @@ class TestMain(unittest.TestCase):
         """Run check_modules.main() with mocks for every check function.
 
         return_values keys: 'configs_go', 'configs_python', 'matrices', 'py_root',
-        'py_members', 'uv_lock'. Missing keys default to 0.
+        'py_members', 'uv_lock', 'uv_current'. Missing keys default to 0.
         """
         configs_results = {
             "go": return_values.get("configs_go", 0),
@@ -909,6 +953,13 @@ class TestMain(unittest.TestCase):
                 "check_uv_lock_fresh",
                 return_value=return_values.get("uv_lock", 0),
             ),
+            # Mocked like the rest, and load-bearing: unmocked it would shell out to `uv`
+            # against the real workspace from inside a unit test.
+            mock.patch.object(
+                check_modules,
+                "check_uv_lock_current",
+                return_value=return_values.get("uv_current", 0),
+            ),
             mock.patch("sys.stdout", new_callable=io.StringIO) as stdout,
         ):
             rc = check_modules.main()
@@ -920,10 +971,31 @@ class TestMain(unittest.TestCase):
         self.assertIn("consistent", out)
 
     def test_aggregates_error_counts(self):
+        # uv_current stays 0 here: the two uv checks are sequential, not summed, so a case
+        # with both set would measure the suppression below rather than the aggregation.
         rc, _ = self._run(
             configs_go=2, configs_python=1, matrices=3, py_root=1, py_members=2, uv_lock=1
         )
         self.assertEqual(rc, 10)
+
+    def test_a_stale_lock_suppresses_the_export_diff(self):
+        # `uv export --frozen` also fails when the lock is stale, and its message names
+        # requirements_lock.txt — the innocent file. One cause must produce one message.
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.object(check_modules, "workspace_root", return_value=Path(tmp)),
+            mock.patch.object(check_modules, "check_module_configs", return_value=0),
+            mock.patch.object(check_modules, "check_workflow_matrices", return_value=0),
+            mock.patch.object(check_modules, "check_python_workspace_root", return_value=0),
+            mock.patch.object(check_modules, "check_python_workspace_members", return_value=0),
+            mock.patch.object(check_modules, "check_uv_lock_current", return_value=1),
+            mock.patch.object(check_modules, "check_uv_lock_fresh", return_value=1) as fresh,
+            mock.patch("sys.stdout", new_callable=io.StringIO),
+        ):
+            rc = check_modules.main()
+
+        self.assertEqual(rc, 1)
+        fresh.assert_not_called()
 
     def test_success_message_suppressed_on_any_error(self):
         rc, out = self._run(uv_lock=1)

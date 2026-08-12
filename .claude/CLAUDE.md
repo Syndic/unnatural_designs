@@ -116,12 +116,13 @@ the `Renovate helper`. Load-bearing facts:
   make it a silent no-op.
 - **`.bazelversion` invalidates the lock too.** `MODULE.bazel.lock`'s `lockFileVersion` (and the
   shape of its recorded extensions) tracks the bazel release, so a Renovate bazel bump leaves the
-  committed lock stale. CI hides it — `--lockfile_mode=update` rewrites in memory and stays green —
-  but the `bazel mod tidy` pre-commit hook rewrites it on disk, so the staleness surfaces as a
-  blocked local commit on any `go.mod`/`MODULE.bazel` change. The workflow therefore triggers on
-  `.bazelversion` and folds it into the same `bazel` classification as `MODULE.bazel`: one output,
-  one `bazel mod deps` refresh. bazelisk reads the checked-out `.bazelversion`, so the regenerated
-  lock is in the bumped version's format.
+  committed lock stale. Builds don't notice — `--lockfile_mode=update` rewrites in memory and stays
+  green — so the staleness surfaces either as a blocked local commit (the `bazel mod tidy`
+  pre-commit hook rewrites it on disk on any `go.mod` change) or as ci.yml's `MODULE.bazel.lock
+  freshness` job, which is the backstop for commits that ran no hook. The workflow therefore
+  triggers on `.bazelversion` and folds it into the same `bazel` classification as `MODULE.bazel`:
+  one output, one `bazel mod deps` refresh. bazelisk reads the checked-out `.bazelversion`, so the
+  regenerated lock is in the bumped version's format.
 - **Go tidy/sync rides the same commit.** Renovate's `go get` bumps `go.mod`/`go.sum` but never
   runs `go mod tidy` (opt-in) or `go work sync` (Renovate does it only when vendoring, which this
   repo doesn't) — so the indirect block and `go.work.sum` are left stale. The workflow runs
@@ -134,6 +135,12 @@ the `Renovate helper`. Load-bearing facts:
   uv path, there's no "conflict" review: a bump `go mod tidy` can't settle just fails the job.
   MODULE.bazel.lock is *not* in this set — gazelle's `go_deps` extension is reproducible and absent
   from the lockfile, and `use_repo` tracks only direct imports (unchanged by a version bump).
+- **The devcontainer base-image pin rides it too.** `.devcontainer/Dockerfile`'s `FROM` digest
+  is derived from `//meta/devcontainer-base:image`, which is assembled over the
+  `devcontainers_base_debian` pull — so a `MODULE.bazel` bump restales it. The workflow rebuilds
+  the image and rewrites the pin (`meta/scripts/sync_base_image_pin.py`) *after* `bazel mod deps`,
+  never before: that step needs a cold output base, and the build would warm it. Runs
+  `--config=local`, since this job carries no BuildBuddy key.
 - **Devcontainer feature lock rides it too.** `devcontainer upgrade` reruns when
   `devcontainer.json` moves. Like Go, it is *independent* of the uv→Bazel ordering and shares the
   job only so a grouped PR settles in one `expectedHeadOid` mutation. Needs no Docker (OCI metadata
@@ -213,6 +220,15 @@ What is local to this repo:
   top. The `BASE_IMAGE` override and the exact three-line shape it needs are under "Consuming the
   image" in that README; `.devcontainer/test_devcontainer_config.py` asserts the couplings, because
   every wrong shape fails at container-build time or not at all.
+- **That pin is a derived file, not a dependency.** The digest is reproducible from source, so the
+  PR that changes the image carries the new pin. Three callers, one per source of change: the
+  `base-image-pin` pre-commit hook for our edits, this workflow for Renovate's, and
+  `//.devcontainer:test_base_image_pin` as the check under both — hooks are bypassable and the
+  workflow only fires for Renovate's own PRs. Renovate is configured to ignore the dep. The cost
+  is that a base-editing branch pins an image the registry doesn't have yet; set
+  `DEVCONTAINER_BASE_IMAGE` to the published `:latest` to keep working. Don't reach for
+  `bazel run :load` locally — it needs a Docker daemon the devcontainer doesn't have, which is why
+  that path is CI's.
 - **`.devcontainer/initialize.sh` is the host stub** — the read-and-drop half the image cannot
   carry, since it runs on the host before any container exists. It writes `.git-plumbing/` and the
   `.host-*` symlinks `devcontainer.json` binds.

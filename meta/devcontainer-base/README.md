@@ -159,14 +159,40 @@ Every line of that is load-bearing, and the shapes it rules out fail quietly:
 
 This repo is the first consumer, so its `.devcontainer/` is the worked example, and
 `.devcontainer/test_devcontainer_config.py` asserts the couplings above from the files themselves.
+
+**Inside this repo the pin is a derived file, not a dependency.** The digest is a pure function of
+the source — reproducible layers, and `oci_push` publishes the exact index Bazel built — so the
+value a merge will publish is knowable in the PR that changes the image. `sync_base_image_pin.py`
+writes it, `//.devcontainer:test_base_image_pin` fails when it drifts, and
+`renovate-derived-files.yml` re-derives it when a `MODULE.bazel` bump moves the upstream base.
+Renovate is told to leave that dep alone; a bump PR would only ever restate what the tree already
+determines, one publish later.
+
+That does not transfer to a consumer outside this repo. `Syndic/.dotfiles` doesn't build the image,
+so for it the pin is a genuine dependency: pin the digest, let Renovate's `docker` manager bump it,
+and gate the bump on its own devcontainer check. The derived treatment is available only to the
+repo that assembles the artifact.
+
 CI sets `DEVCONTAINER_BASE_IMAGE=devcontainer-base:ci` — the tag `bazel run :load` produces —
 whenever a PR touches the base, so a base change is smoke-tested against a real consumer *before*
-it publishes, rather than a Renovate bump later. One consequence for a consumer that caches its
-built image: the push that merges a base change seeds that cache from the candidate image while the
-Dockerfile still pins the previous digest, so builds miss the cache until the digest bump lands.
+it publishes. One consequence for a consumer that caches its built image: a base-changing push to
+`main` builds against `devcontainer-base:ci` while every later PR builds against `pinned-base`, so
+the `FROM` reference string differs and the layer cache misses from that line down. It re-seeds on
+the next `main` push that doesn't move the base.
 
-Note the freshness trade-off the image channel buys: `devcontainer up` reuses an existing
-container, so a base bump lands on the next rebuild, not the next `up`.
+Two freshness facts to keep in mind. `devcontainer up` reuses an existing container, so a base
+bump lands on the next rebuild, not the next `up`. And because this repo's pin is derived, on any
+branch that edits the base — and on `main` until the publish job finishes, a couple of minutes
+after the merge — the pinned digest names an image the registry does not have yet. Point the
+override at the last published one to get a working container meanwhile:
+
+```
+DEVCONTAINER_BASE_IMAGE=ghcr.io/syndic/unnatural_designs-devcontainer-base:latest \
+  devcontainer up --workspace-folder .
+```
+
+That runs the previous plumbing, which is the right trade for getting work done: validating the
+candidate is CI's job, and `bazel run :load` needs a Docker daemon the devcontainer doesn't have.
 
 ### Signed commits under the devcontainer CLI
 
@@ -307,9 +333,10 @@ Publishing happens on pushes to `main` only, in a job gated on both smoke jobs, 
 failed on either architecture never reaches the registry. `oci_push` publishes the exact index
 Bazel built rather than rebuilding it.
 
-Consumers pin a digest and Renovate bumps it: its `bazel-module` manager reads `oci.pull` as a
-`docker` dependency, which is why the base is declared with both a tag and a digest — a digest
-alone would be pinned forever with nothing to compare against.
+The image's *own* base is a dependency, and Renovate bumps it: its `bazel-module` manager reads
+`oci.pull` as a `docker` dependency, which is why that base is declared with both a tag and a
+digest — a digest alone would be pinned forever with nothing to compare against. (Not to be
+confused with the consumer pin above, which is derived here.)
 
 - **The bump has to trigger the base jobs.** That is why `MODULE.bazel` is in the path
   classification; without it the bump moves the pin and triggers nothing.

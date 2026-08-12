@@ -57,6 +57,19 @@ jobs:
           # `changed` too so the automerged bump is gated by a real consumer build, which is
           # what `publish` needs.
           #
+          # `.bazelversion` is in both for a narrower reason: renovate-derived-files.yml
+          # classifies it as a bazel change and re-derives the pin from it, so leaving it out
+          # here would let a bump write a pin that no job ever publishes — a red PR with no way
+          # to green it. The two classifications have to agree on what feeds the image.
+          #
+          # This one is the expensive direction, deliberately, and it cuts against the
+          # false-positive argument below: the bazel version cannot enter `pkg_tar` layers over
+          # a pulled base, so every bazelisk bump buys a publish of a byte-identical index. The
+          # cheap alternative — drop it from the re-derivation instead and let
+          # //.devcontainer:test_base_image_pin fail if the digest ever does move — leaves the
+          # recovery path needing a config change at the moment someone is already confused.
+          # A recurring known cost beats a rare unrecoverable one.
+          #
           # Deliberately the whole file, not a grep for the pull's name. MODULE.bazel moves on
           # roughly 1 in 6 commits here and most of those cannot touch the image, so the false
           # positives are real and not cheap: two base-image runners, plus a consumer build
@@ -68,8 +81,8 @@ jobs:
           # build when both are true.
           python3 meta/scripts/classify_changed_paths.py \
             --base "$base" \
-            --rule 'changed=^\.devcontainer/|^meta/devcontainer-base/|^MODULE\.bazel$|^\.github/workflows/devcontainer\.yml$' \
-            --rule 'base=^meta/devcontainer-base/|^MODULE\.bazel$'
+            --rule 'changed=^\.devcontainer/|^meta/devcontainer-base/|^MODULE\.bazel$|^\.bazelversion$|^\.github/workflows/devcontainer\.yml$' \
+            --rule 'base=^meta/devcontainer-base/|^MODULE\.bazel$|^\.bazelversion$'
 
   # ── Shared base image ───────────────────────────────────────────────────────────────
   # meta/devcontainer-base/ is published for other Syndic repos to FROM. Bazel assembles it and
@@ -368,3 +381,53 @@ jobs:
           set -euo pipefail
           bazel run --config=ci //meta/devcontainer-base:push -- \
             --tag latest --tag "sha-${GITHUB_SHA}"
+
+      # The one loose end neither the pre-commit hook nor renovate-derived-files.yml can see:
+      # both run before the merge, and this is the step that can fail after it. `crane push`
+      # then one `crane tag` per tag is not atomic, so a failure in between leaves main pinned
+      # to a digest the registry does not serve — silent until someone rebuilds a devcontainer.
+      #
+      # Reads the pin with sync_base_image_pin.py rather than a grep of its own, so the digest
+      # has one parser and this cannot degrade into a check that always passes.
+      #
+      # Retried because GHCR does not document tag resolution as read-your-writes and this runs
+      # seconds after `crane tag`. A transient miss would turn main red for exactly the reason
+      # the step exists to rule out, and tell the reader to re-run a job that was fine.
+      - name: Verify the registry serves what main pins
+        run: |
+          set -euo pipefail
+          repo=ghcr.io/syndic/unnatural_designs-devcontainer-base
+          pinned="$(python3 meta/scripts/sync_base_image_pin.py --print-pinned)"
+          err="${RUNNER_TEMP}/imagetools-inspect.err"
+          attempts=3
+
+          # `@digest` is what a consumer's FROM resolves; the tags are what Renovate and any
+          # non-deriving consumer read, and they are the half `crane tag` can leave behind.
+          # One tool for all three: `imagetools inspect` takes a digest reference too, and
+          # `docker manifest` is still nominally an experimental CLI command.
+          for ref in "@${pinned}" ":latest" ":sha-${GITHUB_SHA}"; do
+            resolved=""
+            rc=0
+            for attempt in $(seq "$attempts"); do
+              # stderr and the exit status are both kept: propagation lag, an auth failure and
+              # an unreachable registry otherwise look alike, and a `timeout` kill writes no
+              # stderr at all, so the status is the only thing that names that one.
+              rc=0
+              resolved="$(timeout 60 docker buildx imagetools inspect \
+                --format '{{.Manifest.Digest}}' "${repo}${ref}" 2>"$err")" || rc=$?
+              [ "$resolved" = "$pinned" ] && break
+              # `||` rather than `&&`: a failing `&&` guard returns 1, which set -e traps.
+              [ "$attempt" -eq "$attempts" ] || sleep $((attempt * 5))
+            done
+            if [ "$resolved" != "$pinned" ]; then
+              echo "::error::${repo}${ref} resolved to '${resolved:-nothing}' after" \
+                   "${attempts} attempts, but main pins ${pinned}." \
+                   "Re-run this job — crane tags non-atomically."
+              hint=""
+              [ "$rc" -ne 124 ] || hint=" (timed out)"
+              echo "Last attempt exited ${rc}${hint}; its stderr follows:"
+              cat "$err"
+              exit 1
+            fi
+          done
+          echo "${repo}@${pinned} is published and both tags point at it."
