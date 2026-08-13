@@ -180,10 +180,9 @@ jobs:
       # resolves module versions and writes the lock file. Avoids the BuildBuddy key
       # plumbing the main `setup-bazel-remote` composite action requires.
       #
-      # These two cache flags are the only safe ones here. `bazel mod deps` refreshes the
-      # pip extension's `facts` only when it re-evaluates the extension, which needs a cold
-      # output base. Adding `disk-cache` or an output-base cache would make the refresh a
-      # silent no-op: no diff to commit, job still green, MODULE.bazel.lock left stale.
+      # These two are the flags worth setting here; `disk-cache` would be inert, since
+      # `mod deps` executes no actions. Cache state does not affect the pip `facts` refresh
+      # either way — see .claude/CLAUDE.md "Renovate auto-commit helper".
       #
       # Runs when the `bazel` output fired (MODULE.bazel or .bazelversion moved) OR
       # requirements_lock.txt moved (parenthesized because GitHub Actions binds && tighter
@@ -205,9 +204,9 @@ jobs:
       # here rather than after publishing: the build is reproducible, and `oci_push` publishes the
       # exact index Bazel built. //.devcontainer:test_base_image_pin is the matching check.
       #
-      # AFTER the lock refresh above, never before: `bazel mod deps` only rewrites the pip `facts`
-      # on a cold output base, and this build would warm it — turning that step into the silent
-      # no-op its own comment warns about.
+      # Ordered after the lock refresh above; not load-bearing for the pip `facts`, whose original
+      # cold-output-base rationale was wrong (.claude/CLAUDE.md "Renovate auto-commit helper").
+      # Nothing else is known to need this order — verify before reordering.
       #
       # `--config=local` because this job deliberately carries no BuildBuddy key (see the
       # setup-bazel note above), and the default config points every action at a cache it cannot

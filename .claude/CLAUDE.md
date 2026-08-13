@@ -111,9 +111,12 @@ the `Renovate helper`. Load-bearing facts:
   commits both in one mutation — two separate workflows couldn't order the steps and would race two
   mutations on `expectedHeadOid`. A Python PR triggers the Bazel refresh only when it actually moves
   `requirements_lock.txt` from the merge base (a pyproject-only edit that re-resolves the same is a
-  no-op). The Bazel refresh only rewrites the pip `facts` on a cold Bazel output base, so the
-  workflow's `setup-bazel` sets only `bazelisk-cache`/`repository-cache` — adding `disk-cache` would
-  make it a silent no-op.
+  no-op). The refresh does not depend on Bazel's cache state: rules_python's pip extension declares
+  `extension_metadata(reproducible = True)`, so — like gazelle's `go_deps` below — it is absent
+  from the lockfile's `moduleExtensions` and re-evaluated on every invocation, rewriting the
+  top-level `facts` from whatever `requirements_lock.txt` currently says. `bazel mod deps` also
+  executes no actions, so an action cache cannot reach it. Verified on Bazel 9.2.0: a warm output
+  base, and an explicit `--disk_cache`, both still produce the correct `facts` rewrite.
 - **`.bazelversion` invalidates the lock too.** `MODULE.bazel.lock`'s `lockFileVersion` (and the
   shape of its recorded extensions) tracks the bazel release, so a Renovate bazel bump leaves the
   committed lock stale. Builds don't notice — `--lockfile_mode=update` rewrites in memory and stays
@@ -138,8 +141,9 @@ the `Renovate helper`. Load-bearing facts:
 - **The devcontainer base-image pin rides it too.** `.devcontainer/Dockerfile`'s `FROM` digest
   is derived from `//meta/devcontainer-base:image`, which is assembled over the
   `devcontainers_base_debian` pull — so a `MODULE.bazel` bump restales it. The workflow rebuilds
-  the image and rewrites the pin (`meta/scripts/sync_base_image_pin.py`) *after* `bazel mod deps`,
-  never before: that step needs a cold output base, and the build would warm it. Runs
+  the image and rewrites the pin (`meta/scripts/sync_base_image_pin.py`) after `bazel mod deps`.
+  That order was justified by a cold-output-base requirement that does not exist (see the uv→Bazel
+  bullet); it is kept, but nothing is known to depend on it — verify before reordering. Runs
   `--config=local`, since this job carries no BuildBuddy key.
 - **Devcontainer feature lock rides it too.** `devcontainer upgrade` reruns when
   `devcontainer.json` moves. Like Go, it is *independent* of the uv→Bazel ordering and shares the
