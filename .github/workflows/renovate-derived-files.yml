@@ -184,10 +184,10 @@ jobs:
       # executes no actions. Cache state does not affect the pip `facts` refresh either way —
       # see .claude/CLAUDE.md "Renovate auto-commit helper".
       #
-      # `external-cache` restores the materialized `external/` dir, which is what a GitHub
-      # release-asset outage reaches: #227 died fetching buildozer/toml.bzl/rules_apple/
-      # pybind11_bazel. It does NOT make the step network-free — the pip extension is
-      # reproducible, so it re-evaluates and hits files.pythonhosted.org on every run.
+      # `cache-version` namespaces the repository cache per workflow — without it this job
+      # restores an entry written by whichever job won the race, which is how #227 ended up
+      # fetching buildozer/toml.bzl/rules_apple/pybind11_bazel from a 503ing GitHub. See
+      # .claude/CLAUDE.md "Bazel cache namespacing".
       #
       # Runs when the `bazel` output fired (MODULE.bazel or .bazelversion moved) OR
       # requirements_lock.txt moved (parenthesized because GitHub Actions binds && tighter
@@ -198,7 +198,7 @@ jobs:
         with:
           bazelisk-cache: true
           repository-cache: true
-          external-cache: true
+          cache-version: ${{ github.workflow }}
 
       - name: Re-update MODULE.bazel.lock
         if: (steps.changed.outputs.bazel == 'true' || steps.lock.outputs.moved == 'true') && steps.ratify.outputs.conflicts == ''

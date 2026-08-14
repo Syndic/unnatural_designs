@@ -94,6 +94,39 @@ concurrency:
 `renovate-derived-files.yml` is the deliberate exception; the reason is at that file's own
 `concurrency` note, since it is a property of that workflow rather than of the convention.
 
+## Bazel cache namespacing
+
+Every `setup-bazel` call site passes `cache-version: ${{ github.workflow }}`. It looks like a
+version knob and is really a namespace: the action builds
+`setup-bazel-<cache-version>-<os>-<arch>` as the base key for *all* of its caches, so the value
+is the only thing separating one workflow's entries from another's. `disk-cache` accepts a
+separator string of its own; `repository-cache` does not — its string form names files whose
+contents feed the key hash — so `cache-version` is the only lever that can namespace it.
+
+Sharing one repository-cache entry across workflows is not merely wasteful, it is wrong, because
+two GitHub behaviours compose badly:
+
+- The key is derived from `MODULE.bazel`/`WORKSPACE` contents, so it stays fixed between manifest
+  bumps — days at a time.
+- Actions cache entries are **immutable per key**: the first writer wins and every later save is
+  a silent no-op.
+
+So whichever job finishes first freezes its own repo footprint under a key every other job then
+restores. The narrowest job reliably wins that race, and the result hits fetching whatever it
+did not need. Measured on the 2026-08-08 main run: `Gazelle BUILD file check` finished 21:48:03
+and wrote the entry; `Build and test (linux_x86_64)` started 21:48:07 and logged a cache hit, so
+its far richer cache was never saved. For the next four days every job restored gazelle's 471MB
+footprint. Reproduced locally: priming a repository cache with exactly
+`bazel run //:gazelle -- -mode=diff`, then running `bazel mod deps --repository_disable_download`
+against it, fails on exactly `buildozer`, `pybind11_bazel`, `rules_apple` and `toml.bzl` — the
+four archives whose GitHub 503s broke the re-derive job on #227.
+
+The cost is one set of cache entries per workflow instead of one shared set, against the repo's
+10GB budget. Eviction under pressure is graceful — a miss just downloads, which is the old
+behaviour. This narrows network exposure; it does not remove it. rules_python's pip extension is
+reproducible (see "Renovate auto-commit helper"), so it re-evaluates and reaches
+`files.pythonhosted.org` on every invocation no matter what is cached.
+
 ## Renovate auto-commit helper (`Renovate helper` app)
 
 `.github/workflows/renovate-derived-files.yml` regenerates the derived files Renovate can't
