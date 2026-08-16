@@ -114,6 +114,7 @@ jobs:
       - uses: ./.github/actions/setup-bazel-remote
         with:
           buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
+          cache-namespace: devcontainer-base
 
       # `:push` is otherwise only ever executed after merge. Building it stages both arches'
       # blobs as runfiles — the part `:load` (one architecture) does not cover — and needs no
@@ -243,6 +244,7 @@ jobs:
         uses: ./.github/actions/setup-bazel-remote
         with:
           buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
+          cache-namespace: devcontainer-base
 
       # `--config=linux_x86_64` rather than letting `oci_load`'s select() fall out of host
       # detection, for the same reason the base-image matrix passes it: the architecture the
@@ -369,6 +371,7 @@ jobs:
       - uses: ./.github/actions/setup-bazel-remote
         with:
           buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
+          cache-namespace: devcontainer-base
 
       # oci_push's registry client reads the docker config this writes.
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0

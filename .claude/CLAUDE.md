@@ -96,34 +96,48 @@ concurrency:
 
 ## Bazel cache namespacing
 
-Every `setup-bazel` call site passes `cache-version: ${{ github.workflow }}`. It looks like a
-version knob and is really a namespace: the action builds
-`setup-bazel-<cache-version>-<os>-<arch>` as the base key for *all* of its caches, so the value
-is the only thing separating one workflow's entries from another's. `disk-cache` accepts a
-separator string of its own; `repository-cache` does not — its string form names files whose
-contents feed the key hash — so `cache-version` is the only lever that can namespace it.
+Every `setup-bazel` call site names a **repo-footprint class** via `cache-version` —
+`gazelle`, `mod`, `build`, `devcontainer-base`. It looks like a version knob and is really a
+namespace: the action builds `setup-bazel-<cache-version>-<os>-<arch>` as the base key for *all*
+of its caches, so the value is the only thing separating one set of entries from another.
+`disk-cache` accepts a separator string of its own; `repository-cache` does not — its string form
+names files whose contents feed the key hash — so `cache-version` is the only lever for it.
 
-Sharing one repository-cache entry across workflows is not merely wasteful, it is wrong, because
-two GitHub behaviours compose badly:
+Sharing one entry across jobs that fetch different repos is not merely wasteful, it is wrong,
+because two GitHub behaviours compose badly:
 
 - The key is derived from `MODULE.bazel`/`WORKSPACE` contents, so it stays fixed between manifest
   bumps — days at a time.
 - Actions cache entries are **immutable per key**: the first writer wins and every later save is
   a silent no-op.
 
-So whichever job finishes first freezes its own repo footprint under a key every other job then
-restores. The narrowest job reliably wins that race, and the result hits fetching whatever it
-did not need. Measured on the 2026-08-08 main run: `Gazelle BUILD file check` finished 21:48:03
-and wrote the entry; `Build and test (linux_x86_64)` started 21:48:07 and logged a cache hit, so
-its far richer cache was never saved. For the next four days every job restored gazelle's 471MB
-footprint. Reproduced locally: priming a repository cache with exactly
-`bazel run //:gazelle -- -mode=diff`, then running `bazel mod deps --repository_disable_download`
-against it, fails on exactly `buildozer`, `pybind11_bazel`, `rules_apple` and `toml.bzl` — the
-four archives whose GitHub 503s broke the re-derive job on #227.
+So whichever job finishes first freezes its own footprint under a key every other job then
+restores, and the narrowest job reliably wins. Measured on the 2026-08-08 main run:
+`Gazelle BUILD file check` finished 21:48:03 and wrote the entry; `Build and test (linux_x86_64)`
+started 21:48:07 and logged a cache hit, so its far richer cache was never saved. For the next
+four days every job restored gazelle's 471MB footprint — including the re-derive job on #227,
+which then had to fetch `buildozer`, `pybind11_bazel`, `rules_apple` and `toml.bzl` from a
+503ing GitHub. Note both jobs are in the **same workflow**, so a per-workflow namespace would not
+have separated them; the class has to track what a job fetches.
 
-The cost is one set of cache entries per workflow instead of one shared set, against the repo's
-10GB budget. Eviction under pressure is graceful — a miss just downloads, which is the old
-behaviour. This narrows network exposure; it does not remove it. rules_python's pip extension is
+Two rules govern the values:
+
+- **Jobs sharing a class must fetch the same repos.** Measured by priming a repository cache with
+  one command and running another against it under `--repository_disable_download`.
+- **Every class needs a producer that runs on `main`.** A `pull_request` run saves to
+  `refs/pull/N/merge`, invisible to every other PR, so a class only PR jobs write can never be
+  warm. This is why the Renovate re-derive job — whose workflow is `pull_request`-only — uses
+  `mod` rather than a namespace of its own.
+
+`mod` is an imperfect fit for that job, deliberately: its producer runs `bazel mod tidy` and the
+consumer runs `bazel mod deps`, which evaluates every module extension including ones no build
+target needs. Measured coverage of the four archives above — `mod tidy` supplies `buildozer` and
+`toml.bzl`, `bazel fetch //...` supplies only `toml.bzl`, and neither supplies `pybind11_bazel`
+or `rules_apple`. Closing that gap needs a main-running producer that runs `mod deps` itself.
+
+The cost is one set of entries per class rather than one shared set, against the repo's 10GB
+budget. Eviction under pressure is graceful — a miss just downloads, which is the old behaviour.
+This narrows network exposure; it does not remove it. rules_python's pip extension is
 reproducible (see "Renovate auto-commit helper"), so it re-evaluates and reaches
 `files.pythonhosted.org` on every invocation no matter what is cached.
 

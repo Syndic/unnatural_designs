@@ -184,10 +184,11 @@ jobs:
       # executes no actions. Cache state does not affect the pip `facts` refresh either way —
       # see .claude/CLAUDE.md "Renovate auto-commit helper".
       #
-      # `cache-version` namespaces the repository cache per workflow — without it this job
-      # restores an entry written by whichever job won the race, which is how #227 ended up
-      # fetching buildozer/toml.bzl/rules_apple/pybind11_bazel from a 503ing GitHub. See
-      # .claude/CLAUDE.md "Bazel cache namespacing".
+      # `cache-version` names the repo-footprint class whose cache this job restores. `mod` is
+      # seeded by ci.yml's `MODULE.bazel.lock freshness` job on every push to main — this
+      # workflow runs only on pull_request, so a namespace of its own could never be warm
+      # (PR-run saves are scoped to refs/pull/N/merge). `mod tidy` does not fetch quite
+      # everything `mod deps` does; see .claude/CLAUDE.md "Bazel cache namespacing".
       #
       # Runs when the `bazel` output fired (MODULE.bazel or .bazelversion moved) OR
       # requirements_lock.txt moved (parenthesized because GitHub Actions binds && tighter
@@ -198,7 +199,7 @@ jobs:
         with:
           bazelisk-cache: true
           repository-cache: true
-          cache-version: ${{ github.workflow }}
+          cache-version: mod
 
       - name: Re-update MODULE.bazel.lock
         if: (steps.changed.outputs.bazel == 'true' || steps.lock.outputs.moved == 'true') && steps.ratify.outputs.conflicts == ''
