@@ -94,6 +94,8 @@ jobs:
           # go.work pins the toolchain so a workspace-level `go X.Y.Z` directive doesn't trip
           # GOTOOLCHAIN=local.
           go-version-file: go.work
+          # Scoped to this matrix leg's module, not the whole workspace — see .claude/CLAUDE.md
+          # "Go module cache in CI".
           cache-dependency-path: |
             go.work.sum
             ${{ matrix.go_module }}/go.sum

@@ -233,9 +233,11 @@ jobs:
         if: steps.changed.outputs.go == 'true' && steps.ratify.outputs.conflicts == ''
         with:
           go-version-file: go.work
-          # No module cache: this is a metadata-only tidy, not a build, so the cache would save
-          # little and a workspace cache-dependency-path is the only thing it needs configured.
-          cache: false
+          # `go mod tidy` downloads module content, and a warm cache cannot change what it
+          # writes; see .claude/CLAUDE.md "Go module cache in CI" for that argument.
+          cache-dependency-path: |
+            go.work.sum
+            **/go.sum
 
       - name: Tidy Go modules and sync the workspace
         id: gotidy
