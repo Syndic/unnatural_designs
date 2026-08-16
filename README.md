@@ -37,7 +37,8 @@ Container_ from the Command Palette. First build takes a few minutes; subsequent
 tools (`ruff`, `ty`, `pre-commit`) are installed via `uv tool install` at image build time, so the
 devcontainer has a single Python package manager (uv) and no `pip install --user` in post-create.
 Named volumes preserve the two cache roots across container rebuilds: `ud-cache` (`~/.cache` —
-Bazel, bazelisk, `go build`, uv, pre-commit) and `ud-go-cache` (`$GOPATH`, i.e. `/go`).
+Bazel, bazelisk, `go build`, uv, pre-commit) and `ud-go-pkg-cache` (`$GOPATH/pkg` — the Go
+module and checksum-db caches, i.e. `/go/pkg`).
 
 **Base image**: all of that is layered on top of
 [`meta/devcontainer-base/`](meta/devcontainer-base/README.md)'s published image, which this repo

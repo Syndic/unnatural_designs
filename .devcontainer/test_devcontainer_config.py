@@ -11,8 +11,9 @@ Four couplings live across those files and none of them fails loudly:
     instead still works here — the scripts are checked in — so the mistake would only surface
     in Syndic/.dotfiles, which has no such copy.
   - Each cache volume is mounted at a cache *root*, and post-create.sh chowns exactly the set
-    of volume targets. A mount at a per-tool subdirectory leaves its siblings ephemeral, and a
-    target with no chown entry comes up root-owned; both are silent.
+    of volume targets. Too narrow a target leaves the siblings ephemeral, too wide a one
+    shadows image content with a stale volume copy, and a target with no chown entry comes up
+    root-owned. All three are silent.
 
 The rationale for the first three is in meta/devcontainer-base/README.md, "Consuming the
 image"; for the mounts — which are this repo's, not the base image's — it is in
@@ -46,11 +47,11 @@ _HOST_ENV_VAR = "DEVCONTAINER_BASE_IMAGE"
 _PLUMBING_COMMAND = "/usr/local/bin/devcontainer-plumbing"
 _BASE_REPOSITORY = "ghcr.io/syndic/unnatural_designs-devcontainer-base"
 
-# The cache roots the volumes persist. `/go` is not a guess: the `features/go` feature exports
-# GOPATH=/go via containerEnv, so `~/go` — the mount target before this set was corrected — is
-# a directory nothing in the container ever writes. Nothing readable from this repo states the
-# feature's value, so the constant is the pin against silently drifting back.
-_GOPATH = "/go"
+# The cache roots the volumes persist. `$GOPATH/pkg` is derivable from nothing in this repo —
+# `features/go` bakes GOPATH=/go into the image ENV — so this constant is the pin. None of its
+# neighbours belongs here: `~/go` is not GOPATH and nothing writes it; `/go` holds image-built
+# tools in `bin/` that a volume would shadow; `/go/pkg/mod` omits the sibling `sumdb` cache.
+_GOPATH_PKG = "/go/pkg"
 _XDG_CACHE_HOME = "~/.cache"
 
 _LOCAL_ENV_RE = re.compile(
@@ -374,10 +375,11 @@ class TestCacheVolumes(unittest.TestCase):
         ]
 
     def test_the_volume_targets_are_the_two_cache_roots(self):
-        # Exactly the roots. A target one level in — `~/.cache/bazel`, which is what this
-        # replaces — persists one tool and leaves every sibling (go-build, bazelisk, uv,
-        # pre-commit) ephemeral, silently, until someone thinks to add another mount.
-        self.assertCountEqual(self.targets, [expand_home(_XDG_CACHE_HOME, self.home), _GOPATH])
+        # Exactly the roots, and the failure is silent in both directions. Too narrow —
+        # `~/.cache/bazel`, which this replaces — persists one tool and leaves every sibling
+        # (go-build, bazelisk, uv, pre-commit) ephemeral. Too wide — `/go` rather than the
+        # `pkg/` inside it — shadows image content with a stale volume copy.
+        self.assertCountEqual(self.targets, [expand_home(_XDG_CACHE_HOME, self.home), _GOPATH_PKG])
 
     def test_post_create_chowns_exactly_the_volume_targets(self):
         # A volume whose target the image has no directory for arrives root-owned, so a mount

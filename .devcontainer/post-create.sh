@@ -22,11 +22,13 @@ PLUMBING_WORKSPACE="$(cd "$_dc_here/.." && pwd)" \
 # Every volume target in devcontainer.json needs an entry here — one without comes up
 # unwritable — which test_devcontainer_config.py asserts. postCreateCommand reruns on every
 # rebuild, so this self-heals UID drift if remoteUser later changes (assuming the new user has
-# sudo). If chown fails loudly here, recover with `docker volume rm ud-cache ud-go-cache`.
+# sudo). If chown fails loudly here, recover with `docker volume rm ud-cache ud-go-pkg-cache`.
+# The image has no /go/pkg — the go feature purges the module cache after building its tools —
+# so that mount is the one that actually arrives root-owned.
 #
 # Guarded rather than unconditional: warm, these hold tens of GB, and recursing them on every
 # rebuild spends minutes re-asserting ownership that is already correct.
-for volume_target in "$HOME/.cache" /go; do
+for volume_target in "$HOME/.cache" /go/pkg; do
   if [ "$(stat -c '%u' "$volume_target")" != "$(id -u)" ]; then
     sudo chown -R "$(id -u):$(id -g)" "$volume_target"
   fi

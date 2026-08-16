@@ -286,31 +286,44 @@ Two named volumes carry derived state across a container rebuild, and both are m
 cache **root** rather than at a per-tool directory:
 
 - `ud-cache` → `/home/vscode/.cache`
-- `ud-go-cache` → `/go`
+- `ud-go-pkg-cache` → `/go/pkg` (`$GOPATH/pkg`; `features/go` bakes `GOPATH=/go` into the image
+  ENV, so this is not under `$HOME` at all)
 
-Mounting the root is the load-bearing choice. The per-tool alternative only persists the tools
-someone remembered to enumerate, and nothing fails when one is missed — the container just
-rebuilds that cache every time, which reads as "devcontainers are slow" rather than as a bug. It
-had already happened: the previous mount was `~/.cache/bazel`, so its four siblings —
-`go-build` (967M), `bazelisk` (61M), `pre-commit` (13M), `uv` — were rebuilt on every recreate.
-Nothing under either root should stay ephemeral: every entry is content-addressed or
+**A mount too narrow loses caches silently.** It only persists the tools someone remembered to
+enumerate, and nothing fails when one is missed — the container just rebuilds that cache every
+time, which reads as "devcontainers are slow" rather than as a bug. That had already happened:
+the mount was `~/.cache/bazel`, so its four siblings — `go-build` (967M), `bazelisk` (61M),
+`pre-commit` (13M), `uv` — were rebuilt on every recreate. Narrow mounts also break outright
+when the omitted sibling is not optional: mounting `/go/pkg/mod` rather than `/go/pkg` leaves
+the checksum-db cache (`/go/pkg/sumdb`) out, and Docker creates the `/go/pkg` mountpoint parent
+root-owned, so the first `go install` fails on `open /go/pkg/sumdb/…: no such file or
+directory`.
+
+**A mount too wide shadows image content, also silently.** Docker seeds a named volume from the
+image only while the volume is empty; after that the volume wins. So a volume over all of `/go`
+would freeze `/go/bin` at whatever the image held on first mount, and a later `features/go` bump
+would install tools nobody ever sees. `/go/bin` is image content — the feature builds ten tools
+there at image-build time — while `/go/pkg` does not exist in the image at all, because the
+feature purges the module cache afterwards. So `pkg/` is the derived half of GOPATH and `bin/`
+is the artifact half, and only `pkg/` is mounted. `post-create.sh` reinstalls its six pinned
+tools over the image's copies on every create, which is why persisting `/go/bin` would buy
+nothing even without the shadowing.
+
+Nothing under either mount should stay ephemeral: every entry is content-addressed or
 key-validated by its own tool, and CI builds cold, so a stale local cache can't reach `main`.
-
-`/go`, not `~/go`: `features/go` exports `GOPATH=/go` via containerEnv, so `~/go` is a directory
-nothing writes. The old `ud-go-cache` mount pointed there and had persisted an empty directory
-since it was added — GOMODCACHE (`/go/pkg/mod`) and the six `go install`ed tools (`/go/bin`) were
-being discarded on every rebuild.
 
 Two couplings, both asserted by `.devcontainer/test_devcontainer_config.py`:
 
 - **post-create.sh must chown every volume target.** Docker attaches a volume root-owned unless
-  the image has a directory at the target to seed ownership from, so a mount added without a
-  chown entry is simply unwritable by `remoteUser`. The chown is guarded on current ownership:
-  warm, `~/.cache` is tens of GB, and recursing it on every rebuild is minutes of re-asserting
-  what is already right.
-- **`/go` is not derivable from anything in this repo** — it is the go feature's own
-  containerEnv value — so the test pins it as a constant.
+  the image has a directory at the target to seed ownership from — which is exactly the
+  `/go/pkg` case — so a mount added without a chown entry is unwritable by `remoteUser`. The
+  chown is guarded on current ownership: warm, `~/.cache` is tens of GB, and recursing it on
+  every rebuild is minutes of re-asserting what is already right.
+- **`$GOPATH/pkg` is not derivable from anything in this repo** — `GOPATH` is the go feature's
+  own value, baked into the image ENV — so the test pins it as a constant.
 
 The volumes are per-host, not per-worktree, and shared by every checkout of this repo. That is
-fine for both: Bazel namespaces its output base by workspace path, and the Go caches are
-content-addressed.
+fine for both: Bazel namespaces its output base by workspace path, and the module cache is
+content-addressed. It does mean a mount-target change is visible from other worktrees' running
+containers, which still mount the old volume at the old path — a volume's content is shared, its
+mount point is per-container.
