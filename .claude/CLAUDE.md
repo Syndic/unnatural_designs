@@ -190,8 +190,10 @@ the `Renovate helper`. Load-bearing facts:
   `devcontainers_base_debian` pull — so a `MODULE.bazel` bump restales it. The workflow rebuilds
   the image and rewrites the pin (`meta/scripts/sync_base_image_pin.py`) after `bazel mod deps`.
   That order was justified by a cold-output-base requirement that does not exist (see the uv→Bazel
-  bullet); it is kept, but nothing is known to depend on it — verify before reordering. Runs
-  `--config=local`, since this job carries no BuildBuddy key.
+  bullet); it is kept, but nothing is known to depend on it — verify before reordering. Runs with
+  no `--config`: the job carries the BuildBuddy key via `setup-bazel-remote`, so .bazelrc's default
+  `--remote_cache` applies, while `--config=ci` would add remote execution and BES this build has
+  no use for.
 - **Devcontainer feature lock rides it too.** `devcontainer upgrade` reruns when
   `devcontainer.json` moves. Like Go, it is *independent* of the uv→Bazel ordering and shares the
   job only so a grouped PR settles in one `expectedHeadOid` mutation. Needs no Docker (OCI metadata
