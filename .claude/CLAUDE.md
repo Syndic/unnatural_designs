@@ -279,3 +279,38 @@ in the "Language toolchain SDKs" group alongside the `MODULE.bazel` and `setup-p
 symlinks `python3`/`python` onto PATH. The CI `Devcontainer` job caches the built image in GHCR
 (`imageName`/`cacheFrom`, `push: filter` seeds it on pushes to main), so the feature layers are
 reused across runs rather than rebuilt cold; this needs the workflow's `packages: write`.
+
+## Devcontainer cache volumes
+
+Two named volumes carry derived state across a container rebuild, and both are mounted at a
+cache **root** rather than at a per-tool directory:
+
+- `ud-cache` → `/home/vscode/.cache`
+- `ud-go-cache` → `/go`
+
+Mounting the root is the load-bearing choice. The per-tool alternative only persists the tools
+someone remembered to enumerate, and nothing fails when one is missed — the container just
+rebuilds that cache every time, which reads as "devcontainers are slow" rather than as a bug. It
+had already happened: the previous mount was `~/.cache/bazel`, so its four siblings —
+`go-build` (967M), `bazelisk` (61M), `pre-commit` (13M), `uv` — were rebuilt on every recreate.
+Nothing under either root should stay ephemeral: every entry is content-addressed or
+key-validated by its own tool, and CI builds cold, so a stale local cache can't reach `main`.
+
+`/go`, not `~/go`: `features/go` exports `GOPATH=/go` via containerEnv, so `~/go` is a directory
+nothing writes. The old `ud-go-cache` mount pointed there and had persisted an empty directory
+since it was added — GOMODCACHE (`/go/pkg/mod`) and the six `go install`ed tools (`/go/bin`) were
+being discarded on every rebuild.
+
+Two couplings, both asserted by `.devcontainer/test_devcontainer_config.py`:
+
+- **post-create.sh must chown every volume target.** Docker attaches a volume root-owned unless
+  the image has a directory at the target to seed ownership from, so a mount added without a
+  chown entry is simply unwritable by `remoteUser`. The chown is guarded on current ownership:
+  warm, `~/.cache` is tens of GB, and recursing it on every rebuild is minutes of re-asserting
+  what is already right.
+- **`/go` is not derivable from anything in this repo** — it is the go feature's own
+  containerEnv value — so the test pins it as a constant.
+
+The volumes are per-host, not per-worktree, and shared by every checkout of this repo. That is
+fine for both: Bazel namespaces its output base by workspace path, and the Go caches are
+content-addressed.

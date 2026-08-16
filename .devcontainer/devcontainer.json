@@ -44,8 +44,11 @@
   // meta/devcontainer-base/scripts/ carry the per-step commentary.
   "initializeCommand": ".devcontainer/initialize.sh",
   "mounts": [
-    "source=ud-bazel-cache,target=/home/vscode/.cache/bazel,type=volume",
-    "source=ud-go-cache,target=/home/vscode/go,type=volume",
+    // One volume per cache *root*, not per tool: every tool that caches under XDG is covered
+    // without an edit here. See ".claude/CLAUDE.md", "Devcontainer cache volumes".
+    "source=ud-cache,target=/home/vscode/.cache,type=volume",
+    // /go, not ~/go — the go feature sets GOPATH=/go, so nothing ever writes ~/go.
+    "source=ud-go-cache,target=/go,type=volume",
     // Bind the symlink (a static, workspace-relative SOURCE) to the static
     // container path the shared plumbing points the host-absolute path at. Docker
     // follows the symlink host-side, so this resolves to wherever the real git
