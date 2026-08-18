@@ -1,6 +1,6 @@
-"""Tests for the wiring between devcontainer.json, the Dockerfile, and the base image.
+"""Tests for the wiring between devcontainer.json, the Dockerfile, the base image, and .vscode.
 
-Three couplings live across those files and none of them fails loudly:
+Four couplings live across those files and none of them fails loudly:
 
   - The `BASE_IMAGE` override has an exact working shape. Every nearby shape either breaks
     every local `devcontainer up` (an empty `--build-arg` overriding the Dockerfile default)
@@ -10,8 +10,11 @@ Three couplings live across those files and none of them fails loudly:
   - The lifecycle hooks call the command the base image installs. Calling the workspace copy
     instead still works here — the scripts are checked in — so the mistake would only surface
     in Syndic/.dotfiles, which has no such copy.
+  - An extension this repo configures is installed by devcontainer.json. Settings for an
+    absent extension bind to nothing, so the feature is missing with no error anywhere.
 
-The rationale for all three is in meta/devcontainer-base/README.md, "Consuming the image".
+The rationale for the first three is in meta/devcontainer-base/README.md, "Consuming the
+image".
 The parsing helpers are pure so they can be exercised directly, same split as the shell tests
 in this directory.
 """
@@ -28,7 +31,7 @@ from meta.scripts.sync_base_image_pin import pinned_digest
 # which a resolved symlink would lead back out of. The rest read fine either way.
 _HERE = Path(__file__).parent
 _DEVCONTAINER_JSON = _HERE / "devcontainer.json"
-_EXTENSIONS_JSON = _HERE.parent / ".vscode" / "extensions.json"
+_SETTINGS_JSON = _HERE.parent / ".vscode" / "settings.json"
 _DOCKERFILE = _HERE / "Dockerfile"
 _HOOKS = (_HERE / "post-create.sh", _HERE / "post-start.sh")
 _DEVCONTAINER_WORKFLOW = _HERE.parent / ".github" / "workflows" / "devcontainer.yml"
@@ -172,32 +175,98 @@ class TestJsoncReader(unittest.TestCase):
         )
 
 
-class TestRecommendedExtensions(unittest.TestCase):
-    """Two extension lists, and only one of them installs anything.
+# Settings namespace -> the extension that contributes it. There is no offline registry for
+# this — the link lives in each extension's own package.json — so it is a hand-kept table, and
+# test_no_stale_mappings keeps it from rotting.
+_CONFIGURED_BY = {
+    "bazel": "bazelbuild.vscode-bazel",
+    "coverage-gutters": "ryanluker.vscode-coverage-gutters",
+    "go": "golang.go",
+    "prettier": "esbenp.prettier-vscode",
+    "python": "ms-python.python",
+    "shellcheck": "timonwong.shellcheck",
+    "taskManager": "cnshenj.vscode-task-manager",
+    "todo-tree": "gruntfuggly.todo-tree",
+    "triggerTaskOnSave": "Gruntfuggly.triggertaskonsave",
+    "yaml": "redhat.vscode-yaml",
+}
 
-    `.vscode/extensions.json` produces a dismissable "install recommended extensions?" prompt;
-    devcontainer.json's `customizations.vscode.extensions` is what the CLI actually installs.
-    A recommendation missing from the second leaves any settings that configure it bound to
-    nothing — documented, configured, and absent, with no error anywhere.
+# VS Code's own namespaces, which no extension has to supply.
+_BUILT_IN = frozenset({"editor", "files"})
+
+
+def settings_namespaces(settings: dict) -> set[str]:
+    """First segment of every real setting key. `// ...` are doc keys, `[lang]` are blocks."""
+    return {
+        key.split(".")[0]
+        for key in settings
+        if not key.startswith("//") and not key.startswith("[")
+    }
+
+
+def named_formatters(settings: dict) -> set[str]:
+    """Extension ids named outright as a formatter, at top level or in a [language] block."""
+    found = set()
+    for key, value in settings.items():
+        if key == "editor.defaultFormatter" and isinstance(value, str):
+            found.add(value)
+        elif key.startswith("[") and isinstance(value, dict):
+            found |= named_formatters(value)
+    return found
+
+
+class TestConfiguredExtensions(unittest.TestCase):
+    """Settings wire the editor to extensions; only devcontainer.json installs them.
+
+    `.vscode/extensions.json` is a recommendation list — a dismissable prompt — and is
+    deliberately not asserted against the install list in either direction. Recommending
+    something the container does not bundle is a legitimate thing to do, and the container
+    bundles one the list does not recommend (the task manager, which is container-only).
+
+    What has to hold is narrower: an extension this repo *configures* must be installed, or
+    the settings bind to nothing. That is how the shellcheck wiring first shipped — settings
+    and docs in place, extension absent, nothing raising a word about it.
     """
 
     @classmethod
     def setUpClass(cls):
         config = json.loads(strip_jsonc(_DEVCONTAINER_JSON.read_text(encoding="utf-8")))
-        cls.installed = config["customizations"]["vscode"]["extensions"]
-        recommendations = json.loads(strip_jsonc(_EXTENSIONS_JSON.read_text(encoding="utf-8")))
-        cls.recommended = recommendations["recommendations"]
+        vscode = config["customizations"]["vscode"]
+        cls.installed = {name.casefold() for name in vscode["extensions"]}
+        cls.settings = (
+            json.loads(strip_jsonc(_SETTINGS_JSON.read_text(encoding="utf-8"))),
+            vscode["settings"],
+        )
+        cls.namespaces = set().union(*(settings_namespaces(s) for s in cls.settings))
 
-    def test_every_recommendation_is_installed_in_the_container(self):
-        # Folded: marketplace ids are case-insensitive and these two files already disagree on
-        # the case of one (`Gruntfuggly.triggertaskonsave`), which is fine and must stay fine.
-        installed = {name.casefold() for name in self.installed}
-        missing = [name for name in self.recommended if name.casefold() not in installed]
+    def test_every_configured_extension_is_installed(self):
+        configured = {_CONFIGURED_BY[ns] for ns in self.namespaces if ns in _CONFIGURED_BY}
+        missing = sorted(e for e in configured if e.casefold() not in self.installed)
         self.assertEqual(
             missing,
             [],
-            "recommended in .vscode/extensions.json but not installed by devcontainer.json",
+            "configured in settings but not in devcontainer.json's extensions list",
         )
+
+    def test_every_settings_namespace_is_accounted_for(self):
+        """Without this, a new extension's settings simply miss the table and go unchecked."""
+        unknown = sorted(self.namespaces - set(_CONFIGURED_BY) - _BUILT_IN)
+        self.assertEqual(
+            unknown,
+            [],
+            "settings namespaces that are neither mapped in _CONFIGURED_BY nor listed in "
+            "_BUILT_IN — add each to whichever it is",
+        )
+
+    def test_no_stale_mappings(self):
+        stale = sorted(set(_CONFIGURED_BY) - self.namespaces)
+        self.assertEqual(stale, [], "_CONFIGURED_BY entries whose settings are gone")
+
+    def test_extensions_named_as_formatters_are_installed(self):
+        """`editor.defaultFormatter` names an extension by id rather than by namespace."""
+        named = set().union(*(named_formatters(s) for s in self.settings))
+        missing = sorted(n for n in named if n.casefold() not in self.installed)
+        self.assertEqual(missing, [], "named as editor.defaultFormatter but not installed")
 
 
 class TestLocalEnvParsing(unittest.TestCase):

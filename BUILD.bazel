@@ -19,6 +19,6 @@ exports_files([
     "README.md",
 ])
 
-# The recommendation list is a hand-copy of devcontainer.json's install list, and only the
-# latter installs anything — see //.devcontainer:test_devcontainer_config.
-exports_files([".vscode/extensions.json"])
+# Editor settings name extensions that only devcontainer.json installs — see
+# //.devcontainer:test_devcontainer_config.
+exports_files([".vscode/settings.json"])
