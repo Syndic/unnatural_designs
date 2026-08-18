@@ -1,8 +1,9 @@
 # meta/scripts
 
 Repo-health gates. Each `check_*.py` enforces a cross-cutting invariant that doesn't fit inside a
-single language toolchain — they run in CI, in pre-commit (where they fix or block), and on save
-in the editor (where they surface findings without blocking).
+single language toolchain. All of them run in CI; the table says which also run in pre-commit
+(where a check can fix or block) and which run on save in the editor (where they surface findings
+without blocking).
 
 | Script                  | Enforces                                                                                       | CI job (`.github/workflows/`) | Pre-commit hook       | On-save (`.vscode/settings.json`) |
 | ----------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------- | --------------------- | --------------------------------- |

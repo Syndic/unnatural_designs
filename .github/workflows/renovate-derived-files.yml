@@ -66,7 +66,8 @@ on:
       # A bazel version bump re-derives the lock too: `lockFileVersion` and the recorded
       # extension shape track the bazel release, so a bumped `.bazelversion` leaves the
       # committed lock stale. CI hides that (`--lockfile_mode=update` rewrites in memory),
-      # but the `bazel mod tidy` pre-commit hook rewrites it on disk and blocks the commit.
+      # but the `base-image-pin` pre-commit hook — the one whose `files` selects `.bazelversion`
+      # — rewrites it on disk as a side effect of its `bazel build` and blocks the commit.
       - ".bazelversion"
       - "pyproject.toml"
       - "uv.lock"

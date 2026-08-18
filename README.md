@@ -33,11 +33,11 @@ Container_ from the Command Palette. First build takes a few minutes; subsequent
 [`gh`](https://cli.github.com), [`uv`](https://docs.astral.sh/uv/) (Python package manager),
 [`ruff`](https://docs.astral.sh/ruff/) (Python format + lint),
 [`ty`](https://docs.astral.sh/ty/) (Python type checker, alpha),
-[pre-commit](https://pre-commit.com), and [`golangci-lint`](https://golangci-lint.run). All Python
-tools (`ruff`, `ty`, `pre-commit`) are installed via `uv tool install` at image build time, so the
-devcontainer has a single Python package manager (uv) and no `pip install --user` in post-create.
-Named volumes (`ud-bazel-cache`, `ud-go-cache`) preserve the Bazel and Go caches across container
-rebuilds.
+[pre-commit](https://pre-commit.com), [`golangci-lint`](https://golangci-lint.run), and
+[`shellcheck`](https://www.shellcheck.net) (shell lint). All Python tools (`ruff`, `ty`,
+`pre-commit`) are installed via `uv tool install` at image build time, so the devcontainer has a
+single Python package manager (uv) and no `pip install --user` in post-create. Named volumes
+(`ud-bazel-cache`, `ud-go-cache`) preserve the Bazel and Go caches across container rebuilds.
 
 **Base image**: all of that is layered on top of
 [`meta/devcontainer-base/`](meta/devcontainer-base/README.md)'s published image, which this repo
@@ -215,22 +215,29 @@ each commit. To install:
 pre-commit install
 ```
 
-Only hooks that either fix the problem they detect (`bazel-mod-tidy`, `gazelle`, `uv-lock-fresh`,
-`ruff-check`, `ruff-format`) or prevent unsafe content from entering the repo (`check-secrets-dir`)
-run here. Verification-only checks live in the editor instead (see **Editor integration** below) so
-they can surface findings without blocking a commit when you want to switch contexts.
+Hooks that fix the problem they detect (`bazel-mod-tidy`, `uv-lock-fresh`, `base-image-pin`,
+`ruff-check`, `ruff-format`, `gazelle`) or prevent unsafe content from entering the repo
+(`check-secrets-dir`) run here; other verification-only checks live in the editor instead (see
+**Editor integration** below) so they can surface findings without blocking a commit when you want
+to switch contexts. `shellcheck` is the deliberate exception — verification-only, no editor
+counterpart, and blocking; the why is on its hook in
+[`.pre-commit-config.yaml`](.pre-commit-config.yaml). It shares [`.shellcheckrc`](.shellcheckrc)
+with the CI job of the same name.
 
 | Hook                | Triggers on                                  |
 | ------------------- | -------------------------------------------- |
 | `bazel-mod-tidy`    | `go.mod`, `go.work`, `go.sum`                |
 | `uv-lock-fresh`     | `pyproject.toml`, `uv.lock`, `requirements_lock.txt` |
+| `base-image-pin`    | `meta/devcontainer-base/`, `MODULE.bazel`, `.bazelversion` |
 | `ruff-check`        | `*.py` files                                 |
 | `ruff-format`       | `*.py` files                                 |
 | `gazelle`           | `*.go` files                                 |
+| `shellcheck`        | `*.sh` files                                 |
 | `check-secrets-dir` | files under `secrets/`                       |
 
-**Editor integration** (via `.vscode/`) - runs the non-fixing checks on save. Works in VS Code and
-VS Code-derived editors (e.g. Google Antigravity). Recommended extensions
+**Editor integration** (via `.vscode/`) - runs the checks listed below on save, so findings surface
+inline rather than at commit time or in CI. Works in VS Code and VS Code-derived editors (e.g.
+Google Antigravity). Recommended extensions
 (`.vscode/extensions.json`):
 
 - [`golang.go`](https://marketplace.visualstudio.com/items?itemName=golang.go) - runs
