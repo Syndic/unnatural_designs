@@ -8,6 +8,7 @@ gazelle(name = "gazelle")
 # the env var devcontainer.yml sets for devcontainer.json's BASE_IMAGE override. A stale copy
 # stays green without this, so the tests read the real file.
 exports_files([
+    ".github/workflows/ci.yml",
     ".github/workflows/devcontainer.yml",
     ".github/workflows/renovate-derived-files.yml",
 ])

@@ -256,9 +256,11 @@ match CI:
   paints gutter marks in Go files from a local `bazel coverage //...` run.
 - [`timonwong.shellcheck`](https://marketplace.visualstudio.com/items?itemName=timonwong.shellcheck) -
   surfaces `shellcheck` diagnostics inline on save, matching what the CI `shellcheck` job
-  enforces. Config lives in [`.shellcheckrc`](.shellcheckrc), shared with that job, and it runs
-  the container's own `shellcheck`, pinned in `devcontainer.json`. Container-side only: shell is
-  edited in the devcontainer, so a host window gets no shell lint.
+  enforces. Config lives in [`.shellcheckrc`](.shellcheckrc), shared with that job, and the
+  extension is pointed at the container's own `shellcheck` by `devcontainer.json`. Its version
+  is pinned once, as `SHELLCHECK_VERSION` in the Dockerfile, which the CI job reads — so the
+  editor and the gate run the same binary. Container-side only: shell is edited in the
+  devcontainer, so a host window gets no shell lint.
 
 | On-save check        | Triggers on                                |
 | -------------------- | ------------------------------------------ |

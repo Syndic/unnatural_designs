@@ -9,7 +9,8 @@
   // the on-save task scripts all drive tooling that lives in the container. Ruff and ShellCheck
   // are the two that could, since both ship a bundled binary, and are left out deliberately
   // rather than for that reason: Python and shell are edited in the container, where the pinned
-  // versions are the ones CI runs. Their settings are container-scoped to match.
+  // ruff and shellcheck are the same versions CI runs. Their settings are container-scoped to
+  // match.
   "recommendations": [
     "esbenp.prettier-vscode",
     "github.vscode-github-actions",

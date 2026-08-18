@@ -33,6 +33,7 @@ _HERE = Path(__file__).parent
 _DEVCONTAINER_JSON = _HERE / "devcontainer.json"
 _SETTINGS_JSON = _HERE.parent / ".vscode" / "settings.json"
 _EXTENSIONS_JSON = _HERE.parent / ".vscode" / "extensions.json"
+_CI_WORKFLOW = _HERE.parent / ".github" / "workflows" / "ci.yml"
 _DOCKERFILE = _HERE / "Dockerfile"
 _HOOKS = (_HERE / "post-create.sh", _HERE / "post-start.sh")
 _DEVCONTAINER_WORKFLOW = _HERE.parent / ".github" / "workflows" / "devcontainer.yml"
@@ -295,6 +296,48 @@ class TestConfiguredExtensions(unittest.TestCase):
             sorted(n for n in named if n.casefold() not in self.installed),
             [],
             "named as a formatter in .vscode/settings.json but not installed in the container",
+        )
+
+
+class TestPinnedShellcheck(unittest.TestCase):
+    """One binary and one pin across the Dockerfile, devcontainer.json and ci.yml.
+
+    Each reference fails quietly on its own: a wrong `executablePath` makes the extension fail
+    to spawn, so the editor shows no diagnostics and no error worth noticing, and a version
+    restated in ci.yml drifts from the container's, which makes whether a finding exists depend
+    on where you looked. Neither shows up in a build or a green run.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.dockerfile = _DOCKERFILE.read_text(encoding="utf-8")
+        config = json.loads(strip_jsonc(_DEVCONTAINER_JSON.read_text(encoding="utf-8")))
+        cls.settings = config["customizations"]["vscode"]["settings"]
+        cls.workflow = _CI_WORKFLOW.read_text(encoding="utf-8")
+
+    def test_the_extension_points_at_the_binary_the_dockerfile_installs(self):
+        # Pulled out rather than matched in place, so a mismatch reports two paths instead of
+        # the whole Dockerfile.
+        installed = re.search(r'install -m 0755 "[^"]*/shellcheck" (\S+)', self.dockerfile)
+        self.assertIsNotNone(installed, "no shellcheck install line found in the Dockerfile")
+        self.assertEqual(
+            self.settings["shellcheck.executablePath"],
+            installed.group(1),
+            "devcontainer.json points the extension somewhere other than where the Dockerfile "
+            "installs shellcheck",
+        )
+
+    def test_ci_reads_the_pin_instead_of_restating_it(self):
+        self.assertIn(
+            "ARG SHELLCHECK_VERSION=",
+            self.workflow,
+            "ci.yml no longer derives the shellcheck version from the Dockerfile",
+        )
+        restated = re.findall(r"shellcheck-v\d+\.\d+", self.workflow)
+        self.assertEqual(
+            restated,
+            [],
+            "ci.yml names a shellcheck version of its own; it must read the Dockerfile's ARG",
         )
 
 

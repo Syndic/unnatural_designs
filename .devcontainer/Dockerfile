@@ -12,6 +12,9 @@ ARG BAZELISK_VERSION=v1.29.0
 # renovate: datasource=github-releases depName=bazelbuild/buildtools
 ARG BUILDIFIER_VERSION=v8.5.1
 
+# renovate: datasource=github-releases depName=koalaman/shellcheck
+ARG SHELLCHECK_VERSION=v0.11.0
+
 # uv: the workspace's Python package manager. Single source of truth for the
 # uv.lock + requirements_lock.txt chain consumed by rules_python's pip.parse
 # and enforced by the `uv-lock-fresh` pre-commit hook. Installed first so
@@ -73,7 +76,6 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
         ca-certificates \
         curl \
         ripgrep \
-        shellcheck \
         unzip \
         zip \
     && rm -rf /var/lib/apt/lists/*
@@ -88,6 +90,22 @@ RUN ARCH="$(dpkg --print-architecture)" \
     && curl -fsSL -o /usr/local/bin/buildifier \
         "https://github.com/bazelbuild/buildtools/releases/download/${BUILDIFIER_VERSION}/buildifier-linux-${ARCH}" \
     && chmod 0755 /usr/local/bin/buildifier
+
+# shellcheck from upstream rather than Debian's package, so the version is ours to pin: this ARG
+# is the repo's only shellcheck version, and ci.yml reads it out of this file instead of using
+# the runner image's copy. The editor extension is pointed at the binary this installs.
+# Release assets use uname-style arch names, which dpkg's differ from.
+RUN ARCH="$(dpkg --print-architecture)" \
+    && case "${ARCH}" in \
+        amd64) SC_ARCH=x86_64 ;; \
+        arm64) SC_ARCH=aarch64 ;; \
+        *) echo "no shellcheck release for ${ARCH}" >&2; exit 1 ;; \
+    esac \
+    && curl -fsSL \
+        "https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/shellcheck-${SHELLCHECK_VERSION}.linux.${SC_ARCH}.tar.xz" \
+        | tar -xJ -C /tmp \
+    && install -m 0755 "/tmp/shellcheck-${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/shellcheck \
+    && rm -rf "/tmp/shellcheck-${SHELLCHECK_VERSION}"
 
 # No host-specific layers here on purpose: the git-common-dir symlink and the host timezone are
 # applied at container start by the base image's dispatcher, which keeps this image host-agnostic.
