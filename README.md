@@ -236,8 +236,10 @@ against [`.pre-commit-config.yaml`](.pre-commit-config.yaml).
 inline rather than at commit time or in CI. Works in VS Code and VS Code-derived editors (e.g.
 Google Antigravity). These extensions are installed automatically in the devcontainer, via
 `customizations.vscode.extensions` in [`devcontainer.json`](.devcontainer/devcontainer.json);
-[`.vscode/extensions.json`](.vscode/extensions.json) recommends only the subset that also works
-in a host window, since the tooling behind the rest lives in the container:
+[`.vscode/extensions.json`](.vscode/extensions.json) recommends the subset meant for host-window
+editing. The rest are container-side: most because their tooling lives there, and `ruff` and
+`shellcheck` — which ship bundled binaries and would run on a host — by choice, so the versions
+match CI:
 
 - [`golang.go`](https://marketplace.visualstudio.com/items?itemName=golang.go) - runs
   `golangci-lint` on save at package scope, surfacing inline findings that match what CI enforces.
