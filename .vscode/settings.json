@@ -26,8 +26,7 @@
       "source.organizeImports.ruff": "explicit"
     }
   },
-  "// ShellCheck": "timonwong.shellcheck surfaces shellcheck diagnostics inline, matching what the CI `shellcheck` job enforces. executablePath points at the devcontainer's copy rather than the extension's bundled one so the editor and CI can only disagree by the version skew ci.yml already documents. useWorkspaceRootAsCwd is load-bearing: `# shellcheck source=` directives are repo-root-relative and .shellcheckrc lives at the root, so linting from the file's own directory would break both.",
-  "shellcheck.executablePath": "/usr/bin/shellcheck",
+  "// ShellCheck": "timonwong.shellcheck surfaces shellcheck diagnostics inline, matching what the CI `shellcheck` job enforces. Only the host-safe half lives here; the container-only executablePath is in devcontainer.json's customizations.vscode.settings. useWorkspaceRootAsCwd is load-bearing: `# shellcheck source=` directives are repo-root-relative and .shellcheckrc lives at the root, so linting from the file's own directory would break both.",
   "shellcheck.run": "onSave",
   "shellcheck.useWorkspaceRootAsCwd": true,
   "// Task Manager favorites": "Pins the Bazel build/test tasks to the cnshenj.vscode-task-manager sidebar (recommended in the devcontainer; see devcontainer.json). Names must match the `label` fields in tasks.json. The `UnnaturalDesigns/Workspace/` prefix is Task Manager's own scoping convention.",

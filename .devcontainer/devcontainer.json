@@ -91,9 +91,12 @@
         "ms-python.python",
         "redhat.vscode-yaml",
         "ryanluker.vscode-coverage-gutters",
+        "timonwong.shellcheck",
       ],
       "settings": {
-        "todo-tree.ripgrep.ripgrep": "/usr/bin/rg"
+        "todo-tree.ripgrep.ripgrep": "/usr/bin/rg",
+        "// ShellCheck binary": "Container-scoped on purpose: this path exists only in here, and .vscode/settings.json would apply it to a host window too, where the extension fails to spawn rather than falling back. Pinning it means the editor and the CI job can only disagree by the version skew ci.yml documents; a host window uses the extension's bundled copy instead.",
+        "shellcheck.executablePath": "/usr/bin/shellcheck"
       }
     }
   }

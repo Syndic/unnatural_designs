@@ -252,8 +252,9 @@ Google Antigravity). Recommended extensions
   paints gutter marks in Go files from a local `bazel coverage //...` run.
 - [`timonwong.shellcheck`](https://marketplace.visualstudio.com/items?itemName=timonwong.shellcheck) -
   surfaces `shellcheck` diagnostics inline on save, matching what the CI `shellcheck` job
-  enforces. Config lives in [`.shellcheckrc`](.shellcheckrc), shared with that job; the
-  extension is pointed at the devcontainer's own `shellcheck` rather than its bundled copy.
+  enforces. Config lives in [`.shellcheckrc`](.shellcheckrc), shared with that job. In the
+  devcontainer it runs the container's own `shellcheck`, pinned in `devcontainer.json`; a host
+  window falls back to the extension's bundled copy, which can be a different version.
 
 | On-save check        | Triggers on                                |
 | -------------------- | ------------------------------------------ |

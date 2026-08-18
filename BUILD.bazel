@@ -18,3 +18,7 @@ exports_files([
     ".pre-commit-config.yaml",
     "README.md",
 ])
+
+# The recommendation list is a hand-copy of devcontainer.json's install list, and only the
+# latter installs anything — see //.devcontainer:test_devcontainer_config.
+exports_files([".vscode/extensions.json"])

@@ -23,6 +23,7 @@ py_test(
         "post-create.sh",
         "post-start.sh",
         "//:.github/workflows/devcontainer.yml",
+        "//:.vscode/extensions.json",
     ],
     main = "test_devcontainer_config.py",
     deps = ["//meta/scripts:sync_base_image_pin_lib"],

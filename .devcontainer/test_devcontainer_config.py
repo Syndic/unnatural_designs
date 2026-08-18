@@ -28,6 +28,7 @@ from meta.scripts.sync_base_image_pin import pinned_digest
 # which a resolved symlink would lead back out of. The rest read fine either way.
 _HERE = Path(__file__).parent
 _DEVCONTAINER_JSON = _HERE / "devcontainer.json"
+_EXTENSIONS_JSON = _HERE.parent / ".vscode" / "extensions.json"
 _DOCKERFILE = _HERE / "Dockerfile"
 _HOOKS = (_HERE / "post-create.sh", _HERE / "post-start.sh")
 _DEVCONTAINER_WORKFLOW = _HERE.parent / ".github" / "workflows" / "devcontainer.yml"
@@ -168,6 +169,34 @@ class TestJsoncReader(unittest.TestCase):
         self.assertEqual(
             json.loads(strip_jsonc(r'{"a": "he said \"//\"", "b": 2}')),
             {"a": 'he said "//"', "b": 2},
+        )
+
+
+class TestRecommendedExtensions(unittest.TestCase):
+    """Two extension lists, and only one of them installs anything.
+
+    `.vscode/extensions.json` produces a dismissable "install recommended extensions?" prompt;
+    devcontainer.json's `customizations.vscode.extensions` is what the CLI actually installs.
+    A recommendation missing from the second leaves any settings that configure it bound to
+    nothing — documented, configured, and absent, with no error anywhere.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        config = json.loads(strip_jsonc(_DEVCONTAINER_JSON.read_text(encoding="utf-8")))
+        cls.installed = config["customizations"]["vscode"]["extensions"]
+        recommendations = json.loads(strip_jsonc(_EXTENSIONS_JSON.read_text(encoding="utf-8")))
+        cls.recommended = recommendations["recommendations"]
+
+    def test_every_recommendation_is_installed_in_the_container(self):
+        # Folded: marketplace ids are case-insensitive and these two files already disagree on
+        # the case of one (`Gruntfuggly.triggertaskonsave`), which is fine and must stay fine.
+        installed = {name.casefold() for name in self.installed}
+        missing = [name for name in self.recommended if name.casefold() not in installed]
+        self.assertEqual(
+            missing,
+            [],
+            "recommended in .vscode/extensions.json but not installed by devcontainer.json",
         )
 
 
