@@ -16,6 +16,11 @@ without blocking).
 module enumeration). The leading underscore signals it's not a public API; `test__workspace.py`
 covers it directly.
 
+`test_precommit_docs.py` has no script half. It asserts that README's pre-commit hook table, and
+the paragraph that classifies each hook, still agree with `.pre-commit-config.yaml` — a coupling
+between two checked-in files rather than a check over the tree, so the assertion is the whole gate
+and it rides `bazel test //...` instead of costing a CI job.
+
 `smoke_py/` is a transient `py_test` that proves the end-to-end Python plumbing chain
 (`pyproject.toml` → `uv.lock` → `requirements_lock.txt` → `pip.parse` → `@unnatural_designs_pypi//...`) by importing
 `requests` and asserting it loads. Slated for deletion once gazelle_python is wired (see

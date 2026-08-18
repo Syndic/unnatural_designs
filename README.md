@@ -217,12 +217,10 @@ pre-commit install
 
 Hooks that fix the problem they detect (`bazel-mod-tidy`, `uv-lock-fresh`, `base-image-pin`,
 `ruff-check`, `ruff-format`, `gazelle`) or prevent unsafe content from entering the repo
-(`check-secrets-dir`) run here; other verification-only checks live in the editor instead (see
-**Editor integration** below) so they can surface findings without blocking a commit when you want
-to switch contexts. `shellcheck` is the deliberate exception — verification-only, no editor
-counterpart, and blocking; the why is on its hook in
-[`.pre-commit-config.yaml`](.pre-commit-config.yaml). It shares [`.shellcheckrc`](.shellcheckrc)
-with the CI job of the same name.
+(`check-secrets-dir`) run here. Verification-only checks live in the editor instead (see **Editor
+integration** below) so they can surface findings without blocking a commit when you want to switch
+contexts. `//meta/scripts:test_precommit_docs` keeps this list and the table below honest
+against [`.pre-commit-config.yaml`](.pre-commit-config.yaml).
 
 | Hook                | Triggers on                                  |
 | ------------------- | -------------------------------------------- |
@@ -232,7 +230,6 @@ with the CI job of the same name.
 | `ruff-check`        | `*.py` files                                 |
 | `ruff-format`       | `*.py` files                                 |
 | `gazelle`           | `*.go` files                                 |
-| `shellcheck`        | `*.sh` files                                 |
 | `check-secrets-dir` | files under `secrets/`                       |
 
 **Editor integration** (via `.vscode/`) - runs the checks listed below on save, so findings surface
@@ -253,6 +250,10 @@ Google Antigravity). Recommended extensions
   `.vscode/settings.json`).
 - [`ryanluker.vscode-coverage-gutters`](https://marketplace.visualstudio.com/items?itemName=ryanluker.vscode-coverage-gutters) -
   paints gutter marks in Go files from a local `bazel coverage //...` run.
+- [`timonwong.shellcheck`](https://marketplace.visualstudio.com/items?itemName=timonwong.shellcheck) -
+  surfaces `shellcheck` diagnostics inline on save, matching what the CI `shellcheck` job
+  enforces. Config lives in [`.shellcheckrc`](.shellcheckrc), shared with that job; the
+  extension is pointed at the devcontainer's own `shellcheck` rather than its bundled copy.
 
 | On-save check        | Triggers on                                |
 | -------------------- | ------------------------------------------ |
@@ -261,6 +262,7 @@ Google Antigravity). Recommended extensions
 | `ty` (type diagnostics)       | `*.py` files                      |
 | `check-modules`      | `go.mod`, `pyproject.toml`, `uv.lock`, `requirements_lock.txt`, workflow `.yml`, `.golangci.yml` |
 | `check-go-work`      | `go.mod`, `go.work`                        |
+| `shellcheck`         | `*.sh` files                               |
 
 **Viewing coverage locally**: run `bazel coverage //...` from the repo root, then open the Command
 Palette and pick _Coverage Gutters: Display Coverage_ (or _Watch_ for live updates). The merged lcov

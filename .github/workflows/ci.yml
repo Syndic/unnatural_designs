@@ -161,13 +161,16 @@ jobs:
           args: format --check
       - run: ruff check
 
-  # shellcheck: mirrors the pre-commit hook of the same name. The runner image ships
-  # shellcheck, so there's nothing to install. Scoped to *.sh, which today means .devcontainer/'s
+  # shellcheck: the enforcing half. The editor surfaces the same findings inline on save
+  # (timonwong.shellcheck, configured in .vscode/settings.json), but nothing blocks a commit on
+  # them, so this job is where shell lint is actually gated. The runner image ships shellcheck,
+  # so there's nothing to install. Scoped to *.sh, which today means .devcontainer/'s
   # host stub and lifecycle hooks plus meta/devcontainer-base/scripts/ — privileged writes
   # against /etc and host-absolute paths, where `set -e` foot-guns (errexit suspension inside
   # `||` callees, most recently) are worth catching mechanically rather than in review.
-  # The runner's shellcheck and the devcontainer's Debian package are separately versioned
-  # with no shared pin, so the two can disagree; CI is authoritative if they ever do.
+  # The runner's shellcheck and the devcontainer's Debian package (which the editor extension
+  # is pointed at) are separately versioned with no shared pin, so the two can disagree; CI is
+  # authoritative if they ever do.
   shellcheck:
     name: shellcheck
     runs-on: ubuntu-latest

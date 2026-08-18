@@ -1,0 +1,24 @@
+test(pre-commit): guard the README hook table against the config
+
+The table and the paragraph above it name hooks by id, and nothing coupled
+either to .pre-commit-config.yaml -- so a hook added, removed, or renamed
+left the prose stale with every check still green. Four of the six doc
+errors fixed in the previous commit were exactly that.
+
+It reads both real files rather than restating either, in the shape
+//.devcontainer:test_base_image_pin already uses: the coupling is between
+two checked-in files, so the assertion is the whole gate, and it rides
+`bazel test //...` instead of costing a CI job.
+
+Three rules -- the table lists every hook in config order, the prose
+accounts for each one, and the prose names none the config lacks. The scan
+behind that last rule is unit-tested on synthetic text, because writing it
+against the real README first produced a rule that passed vacuously: the
+``` fences in the install snippet are backticks too, and they offset every
+inline-code pair after them into nonsense.
+
+Deliberately not asserted: the "Triggers on" column. It paraphrases each
+`files` regex for a reader, and checking a gloss against a regex would
+either restate the regex in the README or accept anything.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
