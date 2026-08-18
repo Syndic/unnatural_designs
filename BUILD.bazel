@@ -11,3 +11,10 @@ exports_files([
     ".github/workflows/devcontainer.yml",
     ".github/workflows/renovate-derived-files.yml",
 ])
+
+# Same posture for the pre-commit config and the README that documents it: the hook table is a
+# hand-copy of the config's ids, so //meta/scripts:test_precommit_docs reads both real files.
+exports_files([
+    ".pre-commit-config.yaml",
+    "README.md",
+])
