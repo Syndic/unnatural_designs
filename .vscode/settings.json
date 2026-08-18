@@ -47,7 +47,7 @@
       "[]",
       "[x]"
   ],
-  "// Repo-health checks on save": "These scripts run via the VS Code tasks defined in tasks.json, triggered by gruntfuggly.triggertaskonsave (recommended in extensions.json) when the matching files are saved. The matchers in tasks.json turn each `path:line: message` failure into a Problems-panel entry with a squiggle at the offending line.",
+  "// Repo-health checks on save": "These scripts run via the VS Code tasks defined in tasks.json, triggered by gruntfuggly.triggertaskonsave (installed by devcontainer.json; it drives the container's tooling, so it is not among the host-window recommendations) when the matching files are saved. The matchers in tasks.json turn each `path:line: message` failure into a Problems-panel entry with a squiggle at the offending line.",
   "triggerTaskOnSave.tasks": {
     "check: modules": [
       "**/go.mod",

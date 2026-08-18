@@ -1,20 +1,19 @@
 {
+  // Host-window recommendations, not a mirror of what the devcontainer installs. That list is
+  // devcontainer.json's `customizations.vscode.extensions`, which auto-installs inside the
+  // container; this one is a dismissable prompt and is the only list that does anything in a
+  // window that has not reopened in the container.
+  //
+  // So it carries only extensions that work with nothing but the host: the repo's tooling —
+  // go, ruff, ty, bazel, shellcheck, the coverage report, the on-save task scripts — lives in
+  // the container, and an extension recommended without it sits there broken. Editing markdown
+  // or YAML on the host is the case this serves, and .vscode/settings.json's prettier and
+  // todo-tree settings apply there.
   "recommendations": [
-    "astral-sh.ty",
-    "bazelbuild.vscode-bazel",
-    "charliermarsh.ruff",
     "esbenp.prettier-vscode",
     "github.vscode-github-actions",
-    "golang.go",
     "gruntfuggly.todo-tree",
-    "gruntfuggly.triggertaskonsave",
     "mechatroner.rainbow-csv",
-    "ms-azuretools.vscode-containers",
-    "ms-kubernetes-tools.vscode-kubernetes-tools",
-    "ms-python.debugpy",
-    "ms-python.python",
     "redhat.vscode-yaml",
-    "ryanluker.vscode-coverage-gutters",
-    "timonwong.shellcheck",
   ]
 }

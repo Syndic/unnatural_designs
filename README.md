@@ -234,8 +234,10 @@ against [`.pre-commit-config.yaml`](.pre-commit-config.yaml).
 
 **Editor integration** (via `.vscode/`) - runs the checks listed below on save, so findings surface
 inline rather than at commit time or in CI. Works in VS Code and VS Code-derived editors (e.g.
-Google Antigravity). Recommended extensions
-(`.vscode/extensions.json`):
+Google Antigravity). These extensions are installed automatically in the devcontainer, via
+`customizations.vscode.extensions` in [`devcontainer.json`](.devcontainer/devcontainer.json);
+[`.vscode/extensions.json`](.vscode/extensions.json) recommends only the subset that also works
+in a host window, since the tooling behind the rest lives in the container:
 
 - [`golang.go`](https://marketplace.visualstudio.com/items?itemName=golang.go) - runs
   `golangci-lint` on save at package scope, surfacing inline findings that match what CI enforces.
