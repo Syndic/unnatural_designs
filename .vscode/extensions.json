@@ -4,11 +4,12 @@
   // container; this one is a dismissable prompt and is the only list that does anything in a
   // window that has not reopened in the container.
   //
-  // So it carries only extensions that work with nothing but the host: the repo's tooling —
-  // go, ruff, ty, bazel, shellcheck, the coverage report, the on-save task scripts — lives in
-  // the container, and an extension recommended without it sits there broken. Editing markdown
-  // or YAML on the host is the case this serves, and .vscode/settings.json's prettier and
-  // todo-tree settings apply there.
+  // It carries what is useful for editing this repo on the host: markdown, YAML, workflows,
+  // CSVs. Most of the rest cannot work there at all — go, ty, bazel, the coverage report and
+  // the on-save task scripts all drive tooling that lives in the container. Ruff and ShellCheck
+  // are the two that could, since both ship a bundled binary, and are left out deliberately
+  // rather than for that reason: Python and shell are edited in the container, where the pinned
+  // versions are the ones CI runs. Their settings are container-scoped to match.
   "recommendations": [
     "esbenp.prettier-vscode",
     "github.vscode-github-actions",

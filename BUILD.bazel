@@ -19,6 +19,9 @@ exports_files([
     "README.md",
 ])
 
-# Editor settings name extensions that only devcontainer.json installs — see
-# //.devcontainer:test_devcontainer_config.
-exports_files([".vscode/settings.json"])
+# Editor settings name extensions, and which list has to carry one depends on the settings
+# scope — see //.devcontainer:test_devcontainer_config.
+exports_files([
+    ".vscode/extensions.json",
+    ".vscode/settings.json",
+])

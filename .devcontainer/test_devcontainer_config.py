@@ -32,6 +32,7 @@ from meta.scripts.sync_base_image_pin import pinned_digest
 _HERE = Path(__file__).parent
 _DEVCONTAINER_JSON = _HERE / "devcontainer.json"
 _SETTINGS_JSON = _HERE.parent / ".vscode" / "settings.json"
+_EXTENSIONS_JSON = _HERE.parent / ".vscode" / "extensions.json"
 _DOCKERFILE = _HERE / "Dockerfile"
 _HOOKS = (_HERE / "post-create.sh", _HERE / "post-start.sh")
 _DEVCONTAINER_WORKFLOW = _HERE.parent / ".github" / "workflows" / "devcontainer.yml"
@@ -233,11 +234,12 @@ class TestConfiguredExtensions(unittest.TestCase):
         config = json.loads(strip_jsonc(_DEVCONTAINER_JSON.read_text(encoding="utf-8")))
         vscode = config["customizations"]["vscode"]
         cls.installed = {name.casefold() for name in vscode["extensions"]}
-        cls.settings = (
-            json.loads(strip_jsonc(_SETTINGS_JSON.read_text(encoding="utf-8"))),
-            vscode["settings"],
-        )
+        cls.workspace = json.loads(strip_jsonc(_SETTINGS_JSON.read_text(encoding="utf-8")))
+        cls.container = vscode["settings"]
+        cls.settings = (cls.workspace, cls.container)
         cls.namespaces = set().union(*(settings_namespaces(s) for s in cls.settings))
+        recommendations = json.loads(strip_jsonc(_EXTENSIONS_JSON.read_text(encoding="utf-8")))
+        cls.recommended = {name.casefold() for name in recommendations["recommendations"]}
 
     def test_every_configured_extension_is_installed(self):
         configured = {_CONFIGURED_BY[ns] for ns in self.namespaces if ns in _CONFIGURED_BY}
@@ -262,11 +264,38 @@ class TestConfiguredExtensions(unittest.TestCase):
         stale = sorted(set(_CONFIGURED_BY) - self.namespaces)
         self.assertEqual(stale, [], "_CONFIGURED_BY entries whose settings are gone")
 
-    def test_extensions_named_as_formatters_are_installed(self):
+    def test_formatters_named_in_container_settings_are_installed(self):
         """`editor.defaultFormatter` names an extension by id rather than by namespace."""
-        named = set().union(*(named_formatters(s) for s in self.settings))
-        missing = sorted(n for n in named if n.casefold() not in self.installed)
+        missing = sorted(
+            n for n in named_formatters(self.container) if n.casefold() not in self.installed
+        )
         self.assertEqual(missing, [], "named as editor.defaultFormatter but not installed")
+
+    def test_formatters_named_in_workspace_settings_reach_both_windows(self):
+        """Scope decides which list has to carry the extension.
+
+        `editor.defaultFormatter` is the one setting that raises when its extension is absent —
+        "configured as formatter but it is not available", on every save — where an unknown
+        `go.*` or `coverage-gutters.*` key is simply inert. Workspace settings load in a host
+        window as well as in the container, so a formatter named here has to be reachable from
+        both lists.
+
+        Empty today by construction: the [python] block lives in devcontainer.json's
+        container-scoped settings precisely because ruff is not recommended host-side. That is
+        the point — this fires the moment a formatter is named at a scope the host also reads.
+        """
+        named = named_formatters(self.workspace)
+        self.assertEqual(
+            sorted(n for n in named if n.casefold() not in self.recommended),
+            [],
+            "named as a formatter in .vscode/settings.json, which a host window reads, but not "
+            "recommended there — move the block to devcontainer.json or recommend the extension",
+        )
+        self.assertEqual(
+            sorted(n for n in named if n.casefold() not in self.installed),
+            [],
+            "named as a formatter in .vscode/settings.json but not installed in the container",
+        )
 
 
 class TestLocalEnvParsing(unittest.TestCase):

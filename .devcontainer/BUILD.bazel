@@ -23,6 +23,7 @@ py_test(
         "post-create.sh",
         "post-start.sh",
         "//:.github/workflows/devcontainer.yml",
+        "//:.vscode/extensions.json",
         "//:.vscode/settings.json",
     ],
     main = "test_devcontainer_config.py",
