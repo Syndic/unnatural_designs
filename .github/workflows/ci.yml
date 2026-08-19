@@ -115,12 +115,12 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.work
-          # This step only runs `go list -deps` via check_no_cgo.py — no `go build`
-          # of our code, no `go mod download`. With cache enabled (the default),
-          # setup-go searches for go.mod/go.sum at the repo root to build a cache
-          # key and warns when it can't find them (this is a Bazel monorepo with
-          # per-module go.mod files, none at the root).
-          cache: false
+          # check_no_cgo.py runs `go list -deps` in every workspace member, which downloads
+          # module content. Key off the workspace rather than setup-go's root-go.sum default;
+          # see .claude/CLAUDE.md "Go module cache in CI".
+          cache-dependency-path: |
+            go.work.sum
+            **/go.sum
       - run: python3 meta/scripts/check_no_cgo.py
 
   # TEND(lang-expand): this job lints Go only. When a new language is adopted, add a sibling

@@ -94,6 +94,42 @@ concurrency:
 `renovate-derived-files.yml` is the deliberate exception; the reason is at that file's own
 `concurrency` note, since it is a property of that workflow rather than of the convention.
 
+## Go module cache in CI
+
+Every `actions/setup-go` call site leaves the module cache **on** and spells out
+`cache-dependency-path`. There are three of them: `security.yml` (govulncheck), `ci.yml`
+(no-cgo policy check), and `renovate-derived-files.yml` (the Go tidy/sync step).
+
+The rule is one sentence — *always cache; scope the key to the module set the job actually
+touches* — and it has two instantiations:
+
+- **Per-module jobs** name the leg: `go.work.sum` + `${{ matrix.go_module }}/go.sum`. The matrix
+  itself is kept in sync with `go.work` by `check_modules.py`, so the narrower key stays complete.
+- **Whole-workspace jobs** glob: `go.work.sum` + `**/go.sum`. `go.work` is the authoritative
+  member list (`check_go_work.py` verifies every on-disk `go.mod` is registered), so the glob is
+  exactly "every member" and a new module needs no workflow edit.
+
+Two beliefs that used to justify `cache: false` at two of the sites were both wrong, and the
+measurements are the reason the flag is gone:
+
+- **`cache-dependency-path` is the fix for the missing root `go.sum`, not `cache: false`.** This
+  is a Bazel monorepo with per-module `go.mod` and none at the root, so setup-go's default key
+  search finds nothing. Not a warning, either: v7's `findDependencyFile` *throws*
+  ("Dependencies file is not found in …"). Naming the files is what the input is for — and since
+  `restoreCache` also throws on an empty hash, a pattern that matches nothing fails loudly rather
+  than silently disabling the cache.
+- **Neither job is metadata-only.** `go list -deps` and `go mod tidy` both download *and extract*
+  module zips — measured cold at 17MB / 7 modules for `tools/network_infrastructure_maintenance`,
+  the same footprint a build would pull.
+
+**A warm cache cannot change what `go mod tidy` writes**, which is what makes caching safe on the
+derived-files job even though its output is committed. Module content is hash-verified against
+`go.sum` on use, and the tidied graph is computed from the `.mod` files — identical whether served
+from cache or proxy. Nor can the cache supply the *bumped-to* version: no prior run could have
+cached a version Renovate has only just proposed. Verified by simulating a bump (`go get`-shaped
+edit, stale indirect block) and tidying it against a cache primed with the pre-bump graph versus
+an empty one: byte-identical `go.mod` and `go.sum`.
+
 ## Renovate auto-commit helper (`Renovate helper` app)
 
 `.github/workflows/renovate-derived-files.yml` regenerates the derived files Renovate can't
