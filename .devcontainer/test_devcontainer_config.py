@@ -1,6 +1,6 @@
 """Tests for the wiring between devcontainer.json, the Dockerfile, the base image, and .vscode.
 
-Four couplings live across those files and none of them fails loudly:
+Five couplings live across those files and none of them fails loudly:
 
   - The `BASE_IMAGE` override has an exact working shape. Every nearby shape either breaks
     every local `devcontainer up` (an empty `--build-arg` overriding the Dockerfile default)
@@ -12,9 +12,14 @@ Four couplings live across those files and none of them fails loudly:
     in Syndic/.dotfiles, which has no such copy.
   - An extension this repo configures is installed by devcontainer.json. Settings for an
     absent extension bind to nothing, so the feature is missing with no error anywhere.
+  - Each cache volume is mounted at a cache *root*, and post-create.sh chowns exactly the set
+    of volume targets. Too narrow a target leaves the siblings ephemeral, too wide a one
+    shadows image content with a stale volume copy, and a target with no chown entry comes up
+    root-owned.
 
 The rationale for the first three is in meta/devcontainer-base/README.md, "Consuming the
-image".
+image"; for the mounts — which are this repo's, not the base image's — it is in
+.claude/CLAUDE.md, "Devcontainer cache volumes".
 The parsing helpers are pure so they can be exercised directly, same split as the shell tests
 in this directory.
 """
@@ -47,9 +52,31 @@ _HOST_ENV_VAR = "DEVCONTAINER_BASE_IMAGE"
 _PLUMBING_COMMAND = "/usr/local/bin/devcontainer-plumbing"
 _BASE_REPOSITORY = "ghcr.io/syndic/unnatural_designs-devcontainer-base"
 
+# The cache roots the volumes persist. `$GOPATH/pkg` is derivable from nothing in this repo —
+# `features/go` bakes GOPATH=/go into the image ENV — so this constant is the pin. None of its
+# neighbours belongs here: `~/go` is not GOPATH and nothing writes it; `/go` holds image-built
+# tools in `bin/` that a volume would shadow; `/go/pkg/mod` omits the sibling `sumdb` cache.
+_GOPATH_PKG = "/go/pkg"
+_XDG_CACHE_HOME = "~/.cache"
+
 _LOCAL_ENV_RE = re.compile(
     r"\A\$\{localEnv:(?P<var>[A-Za-z_][A-Za-z0-9_]*)(?::(?P<default>.*))?\}\Z"
 )
+
+# post-create.sh's ownership loop, split into the paths it names and the body that has to act
+# on them. `.+?`/`.*?` are lazy so the first `done` at column 0 closes the loop.
+_CHOWN_LOOP_RE = re.compile(
+    r"^for volume_target in (?P<paths>.+?); do\n(?P<body>.*?)^done$",
+    re.MULTILINE | re.DOTALL,
+)
+# The path has to be an argument of the chown itself, not merely a mention on the same line or
+# somewhere below it — hence `[^;&|\n]`, which bounds the gap at both a command separator and a
+# newline. The `\n` is not redundant with the absent DOTALL: `.` stops at a newline but a
+# negated character class does not. Comment lines are stripped before this runs, so a chown
+# that has been commented out — the realistic way this regresses, while someone is testing an
+# ownership hypothesis by hand — does not read as one.
+_CHOWN_OF_LOOP_VAR_RE = re.compile(r'\bchown\b[^;&|\n]*"\$volume_target"')
+_SHELL_COMMENT_LINE_RE = re.compile(r"^\s*#.*$", re.MULTILINE)
 
 
 def scan_outside_comments(text: str):
@@ -120,6 +147,45 @@ def parse_local_env(value: str) -> tuple[str, str | None]:
     if not match:
         raise ValueError(f"not a localEnv substitution: {value!r}")
     return match.group("var"), match.group("default")
+
+
+def parse_mount(spec: str) -> dict[str, str]:
+    """Split one `source=…,target=…,type=…` mount string into its fields.
+
+    Valueless flags (`readonly`) are real mount syntax and come back mapped to `""`.
+    """
+    fields = {}
+    for part in spec.split(","):
+        key, _, value = part.partition("=")
+        fields[key.strip()] = value.strip()
+    return fields
+
+
+def chown_targets(text: str) -> list[str]:
+    """The paths post-create.sh actually makes writable.
+
+    Both halves of the loop are checked, because either on its own is satisfiable without the
+    other: the header names the paths, and the body has to chown the loop variable. A body that
+    chowns a literal — or that stops chowning at all — leaves a volume root-owned with the
+    header still reading exactly right, which is the failure this helper exists to catch.
+
+    Paths come back as written, `$HOME` included — see `expand_home`.
+    """
+    match = _CHOWN_LOOP_RE.search(text)
+    if not match:
+        raise ValueError("post-create.sh has no `for volume_target in …; do … done` loop")
+    body = _SHELL_COMMENT_LINE_RE.sub("", match.group("body"))
+    if not _CHOWN_OF_LOOP_VAR_RE.search(body):
+        raise ValueError('the volume_target loop body does not chown "$volume_target"')
+    return [path.strip().strip('"') for path in match.group("paths").split()]
+
+
+def expand_home(path: str, home: str) -> str:
+    """Resolve `~` / `$HOME` against the *container's* home, never this runner's."""
+    for prefix in ("~", "$HOME", "${HOME}"):
+        if path == prefix or path.startswith(prefix + "/"):
+            return home + path[len(prefix) :]
+    return path
 
 
 def dockerfile_instructions(text: str) -> list[tuple[str, str]]:
@@ -453,6 +519,116 @@ class TestBaseImageOverride(unittest.TestCase):
         # last, the override would resolve and then be ignored.
         _, image, _ = self.froms[-1]
         self.assertEqual(image, "${BASE_IMAGE}")
+
+
+# Loop fixtures for the chown_targets tests: one header, a body swapped per case.
+_LOOP_PATHS = ["$HOME/.cache", "/go/pkg"]
+
+
+def _loop(body: str) -> str:
+    return f'prelude\nfor volume_target in "$HOME/.cache" /go/pkg; do\n{body}\ndone\ntail\n'
+
+
+class TestMountParsing(unittest.TestCase):
+    def test_fields_are_split(self):
+        self.assertEqual(
+            parse_mount("source=ud-cache,target=/home/vscode/.cache,type=volume"),
+            {"source": "ud-cache", "target": "/home/vscode/.cache", "type": "volume"},
+        )
+
+    def test_valueless_flag_is_kept(self):
+        # `readonly` is how the allowed_signers bind spells itself; rejecting it would make
+        # the volume filter below throw on a perfectly valid mount list.
+        self.assertEqual(parse_mount("type=bind,readonly")["readonly"], "")
+
+    def test_chown_targets_are_read_off_the_loop(self):
+        self.assertEqual(chown_targets(_loop('sudo chown -R x "$volume_target"')), _LOOP_PATHS)
+
+    def test_chown_targets_tolerates_a_guarded_body(self):
+        # The real body wraps the chown in an ownership test, so the match cannot require the
+        # chown to be the loop's only — or first — line.
+        body = (
+            '  if [ "$(stat -c \'%u\' "$volume_target")" != "$(id -u)" ]; then\n'
+            '    sudo chown -R "$(id -u):$(id -g)" "$volume_target"\n'
+            "  fi"
+        )
+        self.assertEqual(chown_targets(_loop(body)), _LOOP_PATHS)
+
+    def test_chown_targets_requires_the_loop(self):
+        with self.assertRaises(ValueError):
+            chown_targets("sudo chown -R vscode /home/vscode/.cache\n")
+
+    def test_chown_targets_requires_the_body_to_chown_the_loop_variable(self):
+        # The header alone is not the coupling: these two bodies iterate the right paths and
+        # still leave a volume root-owned.
+        for body in ('  sudo chown -R x "$HOME/.cache"', "  echo skipped"):
+            with self.subTest(body=body), self.assertRaises(ValueError):
+                chown_targets(_loop(body))
+
+    def test_chown_targets_requires_the_chown_and_the_path_on_one_line(self):
+        # A `chown` and a stray mention of the variable further down is not a chown of it.
+        body = '  sudo chown -R x /some/other/path\n  echo "$volume_target"'
+        with self.assertRaises(ValueError):
+            chown_targets(_loop(body))
+
+    def test_chown_targets_ignores_a_commented_out_chown(self):
+        # The realistic regression: someone comments the chown out while testing an ownership
+        # hypothesis by hand — the situation post-create.sh's own guard comment sends them
+        # into — and doesn't restore it. Matched against raw text this reads as a chown.
+        body = '  # sudo chown -R "$(id -u):$(id -g)" "$volume_target"'
+        with self.assertRaises(ValueError):
+            chown_targets(_loop(body))
+
+    def test_chown_targets_requires_the_path_to_be_an_argument_of_the_chown(self):
+        # Same line is not enough: the path has to belong to the chown, not to a command
+        # chained after it.
+        for separator in ("&&", ";", "|"):
+            body = f'  sudo chown -R x /other {separator} echo "$volume_target"'
+            with self.subTest(separator=separator), self.assertRaises(ValueError):
+                chown_targets(_loop(body))
+
+    def test_chown_targets_accepts_a_chown_with_a_trailing_clause(self):
+        # The bound is on what sits *between* `chown` and the path; a `|| true` after it is
+        # still a chown of that path, and must not be rejected.
+        body = '  sudo chown -R x "$volume_target" || true'
+        self.assertEqual(chown_targets(_loop(body)), _LOOP_PATHS)
+
+    def test_home_expansion_uses_the_given_home(self):
+        self.assertEqual(expand_home("$HOME/.cache", "/home/vscode"), "/home/vscode/.cache")
+        self.assertEqual(expand_home("~/.cache", "/home/vscode"), "/home/vscode/.cache")
+        self.assertEqual(expand_home("/go", "/home/vscode"), "/go")
+
+    def test_home_expansion_is_path_segment_wise(self):
+        # `~foo` is another user's home to a shell, not a subdirectory of ours.
+        self.assertEqual(expand_home("~foo/.cache", "/home/vscode"), "~foo/.cache")
+
+
+class TestCacheVolumes(unittest.TestCase):
+    """The volumes that carry derived state across a container rebuild."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.config = json.loads(strip_jsonc(_DEVCONTAINER_JSON.read_text(encoding="utf-8")))
+        cls.home = f"/home/{cls.config['remoteUser']}"
+        cls.targets = [
+            parse_mount(spec)["target"]
+            for spec in cls.config["mounts"]
+            if parse_mount(spec).get("type") == "volume"
+        ]
+
+    def test_the_volume_targets_are_the_two_cache_roots(self):
+        # Exactly the roots, and the failure is silent in both directions. Too narrow —
+        # `~/.cache/bazel`, which this replaces — persists one tool and leaves every sibling
+        # (go-build, bazelisk, uv, pre-commit) ephemeral. Too wide — `/go` rather than the
+        # `pkg/` inside it — shadows image content with a stale volume copy.
+        self.assertCountEqual(self.targets, [expand_home(_XDG_CACHE_HOME, self.home), _GOPATH_PKG])
+
+    def test_post_create_chowns_exactly_the_volume_targets(self):
+        # A volume whose target the image has no directory for arrives root-owned, so a mount
+        # added without a chown entry is simply unwritable by remoteUser.
+        script = (_HERE / "post-create.sh").read_text(encoding="utf-8")
+        chowned = [expand_home(path, self.home) for path in chown_targets(script)]
+        self.assertCountEqual(chowned, self.targets)
 
 
 class TestHooksCallTheInstalledCommand(unittest.TestCase):

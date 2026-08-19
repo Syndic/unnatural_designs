@@ -17,12 +17,25 @@ PLUMBING_WORKSPACE="$(cd "$_dc_here/.." && pwd)" \
   PLUMBING_DIR="$_dc_here/.git-plumbing" \
   /usr/local/bin/devcontainer-plumbing post-create
 
-# Make the named-volume mounts writable by the non-root user. Docker attaches volumes
-# root-owned on first mount, and the .cache parent of the bazel mount inherits that, so
-# the chown covers .cache itself. postCreateCommand reruns on every rebuild, so this
-# self-heals UID drift if remoteUser later changes (assuming the new user has sudo). If
-# chown fails loudly here, recover with `docker volume rm ud-bazel-cache ud-go-cache`.
-sudo chown -R "$(id -u):$(id -g)" "$HOME/.cache" "$HOME/go"
+# Make the named-volume mounts writable by the non-root user: Docker attaches a volume
+# root-owned unless the image has a directory at the target for it to seed ownership from, and
+# it has one at neither of these, so both arrive root-owned on a fresh volume. Every volume
+# target in devcontainer.json needs an entry here — one without comes up unwritable — which
+# test_devcontainer_config.py asserts. If chown fails loudly here (it needs sudo), recover with
+# `docker volume rm ud-cache ud-go-pkg-cache`.
+#
+# Guarded rather than unconditional: warm, these hold tens of GB, and recursing them on every
+# rebuild spends minutes re-asserting ownership that is already correct. The guard reads the
+# mount root only, so what it heals is a volume that arrives wholly root-owned — a fresh one,
+# or one outliving a remoteUser change. It does NOT heal a root-owned entry left *inside* an
+# otherwise-correct tree (a tool run under sudo in here, or an interrupted chown -R, which
+# visits pre-order and so fixes the root first); recover from that by hand with
+# `sudo chown -R "$(id -u):$(id -g)" <path>`.
+for volume_target in "$HOME/.cache" /go/pkg; do
+  if [ "$(stat -c '%u:%g' "$volume_target")" != "$(id -u):$(id -g)" ]; then
+    sudo chown -R "$(id -u):$(id -g)" "$volume_target"
+  fi
+done
 
 # Install golangci-lint. Version is pinned and tracked by Renovate (see renovate.json).
 # renovate: datasource=github-releases depName=golangci/golangci-lint
