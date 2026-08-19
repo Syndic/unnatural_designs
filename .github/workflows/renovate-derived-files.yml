@@ -177,24 +177,24 @@ jobs:
             echo "moved=true" >> "${GITHUB_OUTPUT}"
           fi
 
-      # Plain bazelisk install — no remote cache needed for `bazel mod deps`, which only
-      # resolves module versions and writes the lock file. Avoids the BuildBuddy key
-      # plumbing the main `setup-bazel-remote` composite action requires.
+      # `cache-namespace: mod` is seeded by ci.yml's `MODULE.bazel.lock freshness` job on every
+      # push to main — this workflow runs only on pull_request, so a namespace of its own could
+      # never be warm (PR-run saves are scoped to refs/pull/N/merge). `mod tidy` does not fetch
+      # quite everything `mod deps` does; see .claude/CLAUDE.md "Bazel cache namespacing".
       #
-      # These two cache flags are the only safe ones here. `bazel mod deps` refreshes the
-      # pip extension's `facts` only when it re-evaluates the extension, which needs a cold
-      # output base. Adding `disk-cache` or an output-base cache would make the refresh a
-      # silent no-op: no diff to commit, job still green, MODULE.bazel.lock left stale.
+      # `bazel mod deps` gains nothing from the BuildBuddy cache — it executes no actions — but
+      # the base-image build below does, and one setup path for every Bazel job is worth more
+      # than saving this job a secret reference.
       #
       # Runs when the `bazel` output fired (MODULE.bazel or .bazelversion moved) OR
       # requirements_lock.txt moved (parenthesized because GitHub Actions binds && tighter
       # than ||). Gated on no ratify conflicts either way. bazelisk reads the checked-out
       # .bazelversion, so a version bump regenerates the lock with the bumped bazel.
-      - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+      - uses: ./.github/actions/setup-bazel-remote
         if: (steps.changed.outputs.bazel == 'true' || steps.lock.outputs.moved == 'true') && steps.ratify.outputs.conflicts == ''
         with:
-          bazelisk-cache: true
-          repository-cache: true
+          buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
+          cache-namespace: mod
 
       - name: Re-update MODULE.bazel.lock
         if: (steps.changed.outputs.bazel == 'true' || steps.lock.outputs.moved == 'true') && steps.ratify.outputs.conflicts == ''
@@ -206,18 +206,18 @@ jobs:
       # here rather than after publishing: the build is reproducible, and `oci_push` publishes the
       # exact index Bazel built. //.devcontainer:test_base_image_pin is the matching check.
       #
-      # AFTER the lock refresh above, never before: `bazel mod deps` only rewrites the pip `facts`
-      # on a cold output base, and this build would warm it — turning that step into the silent
-      # no-op its own comment warns about.
+      # Ordered after the lock refresh above; not load-bearing for the pip `facts`, whose original
+      # cold-output-base rationale was wrong (.claude/CLAUDE.md "Renovate auto-commit helper").
+      # Nothing else is known to need this order — verify before reordering.
       #
-      # `--config=local` because this job deliberately carries no BuildBuddy key (see the
-      # setup-bazel note above), and the default config points every action at a cache it cannot
-      # authenticate to. The image is two shell scripts over a pulled base; building it cold is
-      # cheaper than the round trip.
+      # No `--config`: the job now carries the BuildBuddy key (see the setup note above), so
+      # .bazelrc's default `--remote_cache` applies. Deliberately not `--config=ci`, which would
+      # add remote *execution* and BES — this is a two-script image over a pulled base, and only
+      # the cache is wanted.
       - name: Re-derive the devcontainer base-image pin
         if: steps.changed.outputs.bazel == 'true' && steps.ratify.outputs.conflicts == ''
         run: |
-          bazel build --config=local //meta/devcontainer-base:image
+          bazel build //meta/devcontainer-base:image
           python3 meta/scripts/sync_base_image_pin.py
 
       # ── Go: tidy each module and sync the workspace ───────────────────────────────

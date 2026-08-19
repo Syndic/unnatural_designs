@@ -23,6 +23,7 @@ jobs:
       - uses: ./.github/actions/setup-bazel-remote
         with:
           buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
+          cache-namespace: gazelle
       - run: bazel run --config=ci //:gazelle -- -mode=diff
 
   # MODULE.bazel.lock is the one derived file with no CI backstop of its own: builds run with
@@ -39,6 +40,9 @@ jobs:
       - uses: ./.github/actions/setup-bazel-remote
         with:
           buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
+          # Seeds the `mod` namespace on every push to main; the Renovate re-derive job is the
+          # other consumer. See .claude/CLAUDE.md "Bazel cache namespacing".
+          cache-namespace: mod
       - run: |
           set -euo pipefail
           # `--config=ci` for consistency with gazelle-check next door. It changes nothing
@@ -273,6 +277,7 @@ jobs:
       - uses: ./.github/actions/setup-bazel-remote
         with:
           buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
+          cache-namespace: build
       # `--config=ci` brings in remote cache + BES; `--config=<platform>` pins the target
       # platform explicitly. Each row's runner matches its target arch — required for
       # Python (`@pypi` wheel resolution is host-bound; see CLAUDE.md "Python Purity Is
@@ -304,6 +309,8 @@ jobs:
       - uses: ./.github/actions/setup-bazel-remote
         with:
           buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
+          # Same footprint as build-and-test — `bazel coverage //...` over the same targets.
+          cache-namespace: build
       # Coverage-specific flags (--combined_report, --experimental_fetch_all_coverage_outputs,
       # --strategy=CoverageReport=local under :remote_bb) live in .bazelrc under the `coverage`
       # command scope, so `bazel coverage //...` produces an identical report locally and in CI.
