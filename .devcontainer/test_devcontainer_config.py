@@ -328,9 +328,10 @@ class TestPinnedShellcheck(unittest.TestCase):
         )
 
     def test_ci_reads_the_pin_instead_of_restating_it(self):
-        self.assertIn(
-            "ARG SHELLCHECK_VERSION=",
-            self.workflow,
+        # assertTrue, not assertIn: a failing assertIn renders the whole workflow as the
+        # haystack, same reason the path above is pulled out before comparing.
+        self.assertTrue(
+            "ARG SHELLCHECK_VERSION=" in self.workflow,
             "ci.yml no longer derives the shellcheck version from the Dockerfile",
         )
         restated = re.findall(r"shellcheck-v\d+\.\d+", self.workflow)

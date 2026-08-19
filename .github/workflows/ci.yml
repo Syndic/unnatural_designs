@@ -191,6 +191,14 @@ jobs:
             | tar -xJ -C /tmp
           # Ahead of the runner's own copy on PATH.
           sudo install -m 0755 "/tmp/shellcheck-${version}/shellcheck" /usr/local/bin/shellcheck
+          # That ordering is an assumption about the runner image, and the whole point of the
+          # pin is that the gate and the editor cannot disagree — so a shadowed binary has to
+          # fail here rather than lint green under some other version.
+          on_path="$(shellcheck --version | sed -n 's/^version: //p')"
+          if [ "${on_path}" != "${version#v}" ]; then
+            echo "shellcheck on PATH is ${on_path}, expected ${version#v}" >&2
+            exit 1
+          fi
       - run: |
           set -euo pipefail
           shellcheck --version | sed -n '2p'
