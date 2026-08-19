@@ -44,8 +44,13 @@
   // meta/devcontainer-base/scripts/ carry the per-step commentary.
   "initializeCommand": ".devcontainer/initialize.sh",
   "mounts": [
-    "source=ud-bazel-cache,target=/home/vscode/.cache/bazel,type=volume",
-    "source=ud-go-cache,target=/home/vscode/go,type=volume",
+    // A volume per cache *root* — the whole of ~/.cache, not one tool's directory inside it.
+    // See ".claude/CLAUDE.md", "Devcontainer cache volumes".
+    "source=ud-cache,target=/home/vscode/.cache,type=volume",
+    // $GOPATH/pkg — the whole derived half of GOPATH (mod + sumdb), which the go feature puts
+    // at /go. Not all of /go: `bin/` there is image content a volume would shadow. Not
+    // /go/pkg/mod either: that leaves sumdb out and its root-owned parent breaks `go install`.
+    "source=ud-go-pkg-cache,target=/go/pkg,type=volume",
     // Bind the symlink (a static, workspace-relative SOURCE) to the static
     // container path the shared plumbing points the host-absolute path at. Docker
     // follows the symlink host-side, so this resolves to wherever the real git
