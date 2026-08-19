@@ -69,9 +69,14 @@ _CHOWN_LOOP_RE = re.compile(
     r"^for volume_target in (?P<paths>.+?); do\n(?P<body>.*?)^done$",
     re.MULTILINE | re.DOTALL,
 )
-# Deliberately line-bound (no DOTALL): the chown and the path it takes must be one command,
-# not a `chown` on one line and the variable mentioned on some later one.
-_CHOWN_OF_LOOP_VAR_RE = re.compile(r'\bchown\b.*"\$volume_target"')
+# The path has to be an argument of the chown itself, not merely a mention on the same line or
+# somewhere below it — hence `[^;&|\n]`, which bounds the gap at both a command separator and a
+# newline. The `\n` is not redundant with the absent DOTALL: `.` stops at a newline but a
+# negated character class does not. Comment lines are stripped before this runs, so a chown
+# that has been commented out — the realistic way this regresses, while someone is testing an
+# ownership hypothesis by hand — does not read as one.
+_CHOWN_OF_LOOP_VAR_RE = re.compile(r'\bchown\b[^;&|\n]*"\$volume_target"')
+_SHELL_COMMENT_LINE_RE = re.compile(r"^\s*#.*$", re.MULTILINE)
 
 
 def scan_outside_comments(text: str):
@@ -169,7 +174,8 @@ def chown_targets(text: str) -> list[str]:
     match = _CHOWN_LOOP_RE.search(text)
     if not match:
         raise ValueError("post-create.sh has no `for volume_target in …; do … done` loop")
-    if not _CHOWN_OF_LOOP_VAR_RE.search(match.group("body")):
+    body = _SHELL_COMMENT_LINE_RE.sub("", match.group("body"))
+    if not _CHOWN_OF_LOOP_VAR_RE.search(body):
         raise ValueError('the volume_target loop body does not chown "$volume_target"')
     return [path.strip().strip('"') for path in match.group("paths").split()]
 
@@ -564,6 +570,28 @@ class TestMountParsing(unittest.TestCase):
         body = '  sudo chown -R x /some/other/path\n  echo "$volume_target"'
         with self.assertRaises(ValueError):
             chown_targets(_loop(body))
+
+    def test_chown_targets_ignores_a_commented_out_chown(self):
+        # The realistic regression: someone comments the chown out while testing an ownership
+        # hypothesis by hand — the situation post-create.sh's own guard comment sends them
+        # into — and doesn't restore it. Matched against raw text this reads as a chown.
+        body = '  # sudo chown -R "$(id -u):$(id -g)" "$volume_target"'
+        with self.assertRaises(ValueError):
+            chown_targets(_loop(body))
+
+    def test_chown_targets_requires_the_path_to_be_an_argument_of_the_chown(self):
+        # Same line is not enough: the path has to belong to the chown, not to a command
+        # chained after it.
+        for separator in ("&&", ";", "|"):
+            body = f'  sudo chown -R x /other {separator} echo "$volume_target"'
+            with self.subTest(separator=separator), self.assertRaises(ValueError):
+                chown_targets(_loop(body))
+
+    def test_chown_targets_accepts_a_chown_with_a_trailing_clause(self):
+        # The bound is on what sits *between* `chown` and the path; a `|| true` after it is
+        # still a chown of that path, and must not be rejected.
+        body = '  sudo chown -R x "$volume_target" || true'
+        self.assertEqual(chown_targets(_loop(body)), _LOOP_PATHS)
 
     def test_home_expansion_uses_the_given_home(self):
         self.assertEqual(expand_home("$HOME/.cache", "/home/vscode"), "/home/vscode/.cache")
