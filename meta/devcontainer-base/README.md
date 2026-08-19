@@ -293,7 +293,8 @@ file it names — and honours an allowed_signers a user provisioned some other w
   factored into side-effect-free `plumbing_*` / `initialize_*` functions and the tests source the
   scripts to exercise them under `bazel test //...` — `test_plumbing.py` here for the library,
   `.devcontainer/test_initialize.py` for this repo's host stub, each next to the code it covers.
-  `shellcheck` covers the rest, wired as both a pre-commit hook and a CI job.
+  `shellcheck` covers the rest, wired as a CI job in `unnatural_designs` and surfaced inline in
+  the editor there.
 - **`lib.sh` sets no shell options.** It is sourced into callers that own their own; the
   dispatcher sets `-euo pipefail`.
 - **Failure policy is per step.** The git-common bridge fails loud — the consumer's postCreate

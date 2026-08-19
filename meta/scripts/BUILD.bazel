@@ -62,6 +62,19 @@ py_test(
     ],
 )
 
+# No script half: the coupling is between two checked-in files, so the assertion is the whole
+# gate. Rides `bazel test //...` rather than costing a CI job of its own.
+py_test(
+    name = "test_precommit_docs",
+    size = "small",
+    srcs = ["test_precommit_docs.py"],
+    data = [
+        "//:.pre-commit-config.yaml",
+        "//:README.md",
+    ],
+    main = "test_precommit_docs.py",
+)
+
 py_library(
     name = "classify_changed_paths_lib",
     srcs = ["classify_changed_paths.py"],

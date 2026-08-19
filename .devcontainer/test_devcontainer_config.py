@@ -1,6 +1,6 @@
-"""Tests for the wiring between devcontainer.json, the Dockerfile, and the base image.
+"""Tests for the wiring between devcontainer.json, the Dockerfile, the base image, and .vscode.
 
-Three couplings live across those files and none of them fails loudly:
+Four couplings live across those files and none of them fails loudly:
 
   - The `BASE_IMAGE` override has an exact working shape. Every nearby shape either breaks
     every local `devcontainer up` (an empty `--build-arg` overriding the Dockerfile default)
@@ -10,8 +10,11 @@ Three couplings live across those files and none of them fails loudly:
   - The lifecycle hooks call the command the base image installs. Calling the workspace copy
     instead still works here — the scripts are checked in — so the mistake would only surface
     in Syndic/.dotfiles, which has no such copy.
+  - An extension this repo configures is installed by devcontainer.json. Settings for an
+    absent extension bind to nothing, so the feature is missing with no error anywhere.
 
-The rationale for all three is in meta/devcontainer-base/README.md, "Consuming the image".
+The rationale for the first three is in meta/devcontainer-base/README.md, "Consuming the
+image".
 The parsing helpers are pure so they can be exercised directly, same split as the shell tests
 in this directory.
 """
@@ -28,6 +31,9 @@ from meta.scripts.sync_base_image_pin import pinned_digest
 # which a resolved symlink would lead back out of. The rest read fine either way.
 _HERE = Path(__file__).parent
 _DEVCONTAINER_JSON = _HERE / "devcontainer.json"
+_SETTINGS_JSON = _HERE.parent / ".vscode" / "settings.json"
+_EXTENSIONS_JSON = _HERE.parent / ".vscode" / "extensions.json"
+_CI_WORKFLOW = _HERE.parent / ".github" / "workflows" / "ci.yml"
 _DOCKERFILE = _HERE / "Dockerfile"
 _HOOKS = (_HERE / "post-create.sh", _HERE / "post-start.sh")
 _DEVCONTAINER_WORKFLOW = _HERE.parent / ".github" / "workflows" / "devcontainer.yml"
@@ -168,6 +174,171 @@ class TestJsoncReader(unittest.TestCase):
         self.assertEqual(
             json.loads(strip_jsonc(r'{"a": "he said \"//\"", "b": 2}')),
             {"a": 'he said "//"', "b": 2},
+        )
+
+
+# Settings namespace -> the extension that contributes it. There is no offline registry for
+# this — the link lives in each extension's own package.json — so it is a hand-kept table, and
+# test_no_stale_mappings keeps it from rotting.
+_CONFIGURED_BY = {
+    "bazel": "bazelbuild.vscode-bazel",
+    "coverage-gutters": "ryanluker.vscode-coverage-gutters",
+    "go": "golang.go",
+    "prettier": "esbenp.prettier-vscode",
+    "python": "ms-python.python",
+    "shellcheck": "timonwong.shellcheck",
+    "taskManager": "cnshenj.vscode-task-manager",
+    "todo-tree": "gruntfuggly.todo-tree",
+    "triggerTaskOnSave": "Gruntfuggly.triggertaskonsave",
+    "yaml": "redhat.vscode-yaml",
+}
+
+# VS Code's own namespaces, which no extension has to supply.
+_BUILT_IN = frozenset({"editor", "files"})
+
+
+def settings_namespaces(settings: dict) -> set[str]:
+    """First segment of every real setting key. `// ...` are doc keys, `[lang]` are blocks."""
+    return {
+        key.split(".")[0]
+        for key in settings
+        if not key.startswith("//") and not key.startswith("[")
+    }
+
+
+def named_formatters(settings: dict) -> set[str]:
+    """Extension ids named outright as a formatter, at top level or in a [language] block."""
+    found = set()
+    for key, value in settings.items():
+        if key == "editor.defaultFormatter" and isinstance(value, str):
+            found.add(value)
+        elif key.startswith("[") and isinstance(value, dict):
+            found |= named_formatters(value)
+    return found
+
+
+class TestConfiguredExtensions(unittest.TestCase):
+    """Settings wire the editor to extensions; only devcontainer.json installs them.
+
+    `.vscode/extensions.json` is a recommendation list — a dismissable prompt — and is
+    deliberately not asserted against the install list in either direction. Recommending
+    something the container does not bundle is a legitimate thing to do, and the container
+    bundles one the list does not recommend (the task manager, which is container-only).
+
+    What has to hold is narrower: an extension this repo *configures* must be installed, or
+    the settings bind to nothing. That is how the shellcheck wiring first shipped — settings
+    and docs in place, extension absent, nothing raising a word about it.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        config = json.loads(strip_jsonc(_DEVCONTAINER_JSON.read_text(encoding="utf-8")))
+        vscode = config["customizations"]["vscode"]
+        cls.installed = {name.casefold() for name in vscode["extensions"]}
+        cls.workspace = json.loads(strip_jsonc(_SETTINGS_JSON.read_text(encoding="utf-8")))
+        cls.container = vscode["settings"]
+        cls.settings = (cls.workspace, cls.container)
+        cls.namespaces = set().union(*(settings_namespaces(s) for s in cls.settings))
+        recommendations = json.loads(strip_jsonc(_EXTENSIONS_JSON.read_text(encoding="utf-8")))
+        cls.recommended = {name.casefold() for name in recommendations["recommendations"]}
+
+    def test_every_configured_extension_is_installed(self):
+        configured = {_CONFIGURED_BY[ns] for ns in self.namespaces if ns in _CONFIGURED_BY}
+        missing = sorted(e for e in configured if e.casefold() not in self.installed)
+        self.assertEqual(
+            missing,
+            [],
+            "configured in settings but not in devcontainer.json's extensions list",
+        )
+
+    def test_every_settings_namespace_is_accounted_for(self):
+        """Without this, a new extension's settings simply miss the table and go unchecked."""
+        unknown = sorted(self.namespaces - set(_CONFIGURED_BY) - _BUILT_IN)
+        self.assertEqual(
+            unknown,
+            [],
+            "settings namespaces that are neither mapped in _CONFIGURED_BY nor listed in "
+            "_BUILT_IN — add each to whichever it is",
+        )
+
+    def test_no_stale_mappings(self):
+        stale = sorted(set(_CONFIGURED_BY) - self.namespaces)
+        self.assertEqual(stale, [], "_CONFIGURED_BY entries whose settings are gone")
+
+    def test_formatters_named_in_container_settings_are_installed(self):
+        """`editor.defaultFormatter` names an extension by id rather than by namespace."""
+        missing = sorted(
+            n for n in named_formatters(self.container) if n.casefold() not in self.installed
+        )
+        self.assertEqual(missing, [], "named as editor.defaultFormatter but not installed")
+
+    def test_formatters_named_in_workspace_settings_reach_both_windows(self):
+        """Scope decides which list has to carry the extension.
+
+        `editor.defaultFormatter` is the one setting that raises when its extension is absent —
+        "configured as formatter but it is not available", on every save — where an unknown
+        `go.*` or `coverage-gutters.*` key is simply inert. Workspace settings load in a host
+        window as well as in the container, so a formatter named here has to be reachable from
+        both lists.
+
+        Empty today by construction: the [python] block lives in devcontainer.json's
+        container-scoped settings precisely because ruff is not recommended host-side. That is
+        the point — this fires the moment a formatter is named at a scope the host also reads.
+        """
+        named = named_formatters(self.workspace)
+        self.assertEqual(
+            sorted(n for n in named if n.casefold() not in self.recommended),
+            [],
+            "named as a formatter in .vscode/settings.json, which a host window reads, but not "
+            "recommended there — move the block to devcontainer.json or recommend the extension",
+        )
+        self.assertEqual(
+            sorted(n for n in named if n.casefold() not in self.installed),
+            [],
+            "named as a formatter in .vscode/settings.json but not installed in the container",
+        )
+
+
+class TestPinnedShellcheck(unittest.TestCase):
+    """One binary and one pin across the Dockerfile, devcontainer.json and ci.yml.
+
+    Each reference fails quietly on its own: a wrong `executablePath` makes the extension fail
+    to spawn, so the editor shows no diagnostics and no error worth noticing, and a version
+    restated in ci.yml drifts from the container's, which makes whether a finding exists depend
+    on where you looked. Neither shows up in a build or a green run.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.dockerfile = _DOCKERFILE.read_text(encoding="utf-8")
+        config = json.loads(strip_jsonc(_DEVCONTAINER_JSON.read_text(encoding="utf-8")))
+        cls.settings = config["customizations"]["vscode"]["settings"]
+        cls.workflow = _CI_WORKFLOW.read_text(encoding="utf-8")
+
+    def test_the_extension_points_at_the_binary_the_dockerfile_installs(self):
+        # Pulled out rather than matched in place, so a mismatch reports two paths instead of
+        # the whole Dockerfile.
+        installed = re.search(r'install -m 0755 "[^"]*/shellcheck" (\S+)', self.dockerfile)
+        self.assertIsNotNone(installed, "no shellcheck install line found in the Dockerfile")
+        self.assertEqual(
+            self.settings["shellcheck.executablePath"],
+            installed.group(1),
+            "devcontainer.json points the extension somewhere other than where the Dockerfile "
+            "installs shellcheck",
+        )
+
+    def test_ci_reads_the_pin_instead_of_restating_it(self):
+        # assertTrue, not assertIn: a failing assertIn renders the whole workflow as the
+        # haystack, same reason the path above is pulled out before comparing.
+        self.assertTrue(
+            "ARG SHELLCHECK_VERSION=" in self.workflow,
+            "ci.yml no longer derives the shellcheck version from the Dockerfile",
+        )
+        restated = re.findall(r"shellcheck-v\d+\.\d+", self.workflow)
+        self.assertEqual(
+            restated,
+            [],
+            "ci.yml names a shellcheck version of its own; it must read the Dockerfile's ARG",
         )
 
 

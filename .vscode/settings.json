@@ -18,14 +18,9 @@
   "prettier.proseWrap": "always",
   "prettier.trailingComma": "all",
   "python.languageServer": "Default",
-  "// Ruff format-on-save": "charliermarsh.ruff surfaces diagnostics inline; this block makes it the default Python formatter so `editor.formatOnSave` calls ruff format, and runs ruff check --fix + import-organize as save-time code actions. Config is read from `[tool.ruff]` in //:pyproject.toml — single source of truth shared with CI + pre-commit.",
-  "[python]": {
-    "editor.defaultFormatter": "charliermarsh.ruff",
-    "editor.codeActionsOnSave": {
-      "source.fixAll.ruff": "explicit",
-      "source.organizeImports.ruff": "explicit"
-    }
-  },
+  "// ShellCheck": "timonwong.shellcheck surfaces shellcheck diagnostics inline, matching what the CI `shellcheck` job enforces. The extension is container-side only, so executablePath is set in devcontainer.json's customizations.vscode.settings; these two keys are harmless where it is absent, unlike a formatter reference. useWorkspaceRootAsCwd is load-bearing: `# shellcheck source=` directives are repo-root-relative and .shellcheckrc lives at the root, so linting from the file's own directory would break both.",
+  "shellcheck.run": "onSave",
+  "shellcheck.useWorkspaceRootAsCwd": true,
   "// Task Manager favorites": "Pins the Bazel build/test tasks to the cnshenj.vscode-task-manager sidebar (recommended in the devcontainer; see devcontainer.json). Names must match the `label` fields in tasks.json. The `UnnaturalDesigns/Workspace/` prefix is Task Manager's own scoping convention.",
   "taskManager.favorites": [
     "UnnaturalDesigns/Workspace/Bazel Build all",
@@ -44,7 +39,7 @@
       "[]",
       "[x]"
   ],
-  "// Repo-health checks on save": "These scripts run via the VS Code tasks defined in tasks.json, triggered by gruntfuggly.triggertaskonsave (recommended in extensions.json) when the matching files are saved. The matchers in tasks.json turn each `path:line: message` failure into a Problems-panel entry with a squiggle at the offending line.",
+  "// Repo-health checks on save": "These scripts run via the VS Code tasks defined in tasks.json, triggered by gruntfuggly.triggertaskonsave (installed by devcontainer.json; it drives the container's tooling, so it is not among the host-window recommendations) when the matching files are saved. The matchers in tasks.json turn each `path:line: message` failure into a Problems-panel entry with a squiggle at the offending line.",
   "triggerTaskOnSave.tasks": {
     "check: modules": [
       "**/go.mod",

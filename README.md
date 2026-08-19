@@ -33,11 +33,11 @@ Container_ from the Command Palette. First build takes a few minutes; subsequent
 [`gh`](https://cli.github.com), [`uv`](https://docs.astral.sh/uv/) (Python package manager),
 [`ruff`](https://docs.astral.sh/ruff/) (Python format + lint),
 [`ty`](https://docs.astral.sh/ty/) (Python type checker, alpha),
-[pre-commit](https://pre-commit.com), and [`golangci-lint`](https://golangci-lint.run). All Python
-tools (`ruff`, `ty`, `pre-commit`) are installed via `uv tool install` at image build time, so the
-devcontainer has a single Python package manager (uv) and no `pip install --user` in post-create.
-Named volumes (`ud-bazel-cache`, `ud-go-cache`) preserve the Bazel and Go caches across container
-rebuilds.
+[pre-commit](https://pre-commit.com), [`golangci-lint`](https://golangci-lint.run), and
+[`shellcheck`](https://www.shellcheck.net) (shell lint). All Python tools (`ruff`, `ty`,
+`pre-commit`) are installed via `uv tool install` at image build time, so the devcontainer has a
+single Python package manager (uv) and no `pip install --user` in post-create. Named volumes
+(`ud-bazel-cache`, `ud-go-cache`) preserve the Bazel and Go caches across container rebuilds.
 
 **Base image**: all of that is layered on top of
 [`meta/devcontainer-base/`](meta/devcontainer-base/README.md)'s published image, which this repo
@@ -215,23 +215,31 @@ each commit. To install:
 pre-commit install
 ```
 
-Only hooks that either fix the problem they detect (`bazel-mod-tidy`, `gazelle`, `uv-lock-fresh`,
-`ruff-check`, `ruff-format`) or prevent unsafe content from entering the repo (`check-secrets-dir`)
-run here. Verification-only checks live in the editor instead (see **Editor integration** below) so
-they can surface findings without blocking a commit when you want to switch contexts.
+Hooks that fix the problem they detect (`bazel-mod-tidy`, `uv-lock-fresh`, `base-image-pin`,
+`ruff-check`, `ruff-format`, `gazelle`) or prevent unsafe content from entering the repo
+(`check-secrets-dir`) run here. Verification-only checks live in the editor instead (see **Editor
+integration** below) so they can surface findings without blocking a commit when you want to switch
+contexts. `//meta/scripts:test_precommit_docs` keeps this list and the table below honest
+against [`.pre-commit-config.yaml`](.pre-commit-config.yaml).
 
 | Hook                | Triggers on                                  |
 | ------------------- | -------------------------------------------- |
 | `bazel-mod-tidy`    | `go.mod`, `go.work`, `go.sum`                |
 | `uv-lock-fresh`     | `pyproject.toml`, `uv.lock`, `requirements_lock.txt` |
+| `base-image-pin`    | `meta/devcontainer-base/`, `MODULE.bazel`, `.bazelversion` |
 | `ruff-check`        | `*.py` files                                 |
 | `ruff-format`       | `*.py` files                                 |
 | `gazelle`           | `*.go` files                                 |
 | `check-secrets-dir` | files under `secrets/`                       |
 
-**Editor integration** (via `.vscode/`) - runs the non-fixing checks on save. Works in VS Code and
-VS Code-derived editors (e.g. Google Antigravity). Recommended extensions
-(`.vscode/extensions.json`):
+**Editor integration** (via `.vscode/`) - runs the checks listed below on save, so findings surface
+inline rather than at commit time or in CI. Works in VS Code and VS Code-derived editors (e.g.
+Google Antigravity). These extensions are installed automatically in the devcontainer, via
+`customizations.vscode.extensions` in [`devcontainer.json`](.devcontainer/devcontainer.json);
+[`.vscode/extensions.json`](.vscode/extensions.json) recommends the subset meant for host-window
+editing. The rest are container-side: most because their tooling lives there, and `ruff` and
+`shellcheck` — which ship bundled binaries and would run on a host — by choice, so the versions
+match CI:
 
 - [`golang.go`](https://marketplace.visualstudio.com/items?itemName=golang.go) - runs
   `golangci-lint` on save at package scope, surfacing inline findings that match what CI enforces.
@@ -246,6 +254,13 @@ VS Code-derived editors (e.g. Google Antigravity). Recommended extensions
   `.vscode/settings.json`).
 - [`ryanluker.vscode-coverage-gutters`](https://marketplace.visualstudio.com/items?itemName=ryanluker.vscode-coverage-gutters) -
   paints gutter marks in Go files from a local `bazel coverage //...` run.
+- [`timonwong.shellcheck`](https://marketplace.visualstudio.com/items?itemName=timonwong.shellcheck) -
+  surfaces `shellcheck` diagnostics inline on save, matching what the CI `shellcheck` job
+  enforces. Config lives in [`.shellcheckrc`](.shellcheckrc), shared with that job, and the
+  extension is pointed at the container's own `shellcheck` by `devcontainer.json`. Its version
+  is pinned once, as `SHELLCHECK_VERSION` in the Dockerfile, which the CI job reads — so the
+  editor and the gate run the same binary. Container-side only: shell is edited in the
+  devcontainer, so a host window gets no shell lint.
 
 | On-save check        | Triggers on                                |
 | -------------------- | ------------------------------------------ |
@@ -254,6 +269,7 @@ VS Code-derived editors (e.g. Google Antigravity). Recommended extensions
 | `ty` (type diagnostics)       | `*.py` files                      |
 | `check-modules`      | `go.mod`, `pyproject.toml`, `uv.lock`, `requirements_lock.txt`, workflow `.yml`, `.golangci.yml` |
 | `check-go-work`      | `go.mod`, `go.work`                        |
+| `shellcheck`         | `*.sh` files                               |
 
 **Viewing coverage locally**: run `bazel coverage //...` from the repo root, then open the Command
 Palette and pick _Coverage Gutters: Display Coverage_ (or _Watch_ for live updates). The merged lcov

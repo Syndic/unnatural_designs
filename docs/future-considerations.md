@@ -187,8 +187,10 @@ pattern is added.
 
 ## Devcontainer: Docker / Kubernetes Extensions Not Fully Wired
 
-The devcontainer recommends a set of VS Code extensions that mirrors `.vscode/extensions.json`,
-including `ms-azuretools.vscode-containers` and `ms-kubernetes-tools.vscode-kubernetes-tools`. These extensions install cleanly but are **not
+The devcontainer installs a set of VS Code extensions (`customizations.vscode.extensions` in
+`devcontainer.json` — no longer a mirror of `.vscode/extensions.json`, which now recommends only
+what works in a host window), including `ms-azuretools.vscode-containers` and
+`ms-kubernetes-tools.vscode-kubernetes-tools`. These extensions install cleanly but are **not
 functional inside the container**:
 
 - The container extension needs access to a Docker daemon. We have not added Docker-outside-of-Docker

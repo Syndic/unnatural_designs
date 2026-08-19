@@ -117,12 +117,13 @@ the `Renovate helper`. Load-bearing facts:
 - **`.bazelversion` invalidates the lock too.** `MODULE.bazel.lock`'s `lockFileVersion` (and the
   shape of its recorded extensions) tracks the bazel release, so a Renovate bazel bump leaves the
   committed lock stale. Builds don't notice — `--lockfile_mode=update` rewrites in memory and stays
-  green — so the staleness surfaces either as a blocked local commit (the `bazel mod tidy`
-  pre-commit hook rewrites it on disk on any `go.mod` change) or as ci.yml's `MODULE.bazel.lock
-  freshness` job, which is the backstop for commits that ran no hook. The workflow therefore
-  triggers on `.bazelversion` and folds it into the same `bazel` classification as `MODULE.bazel`:
-  one output, one `bazel mod deps` refresh. bazelisk reads the checked-out `.bazelversion`, so the
-  regenerated lock is in the bumped version's format.
+  green — so the staleness surfaces either as a blocked local commit (`base-image-pin` selects
+  `.bazelversion` itself and rewrites the lock as a side effect of its `bazel build`;
+  `bazel mod tidy` does the same, but only on a `go.mod`/`go.work`/`go.sum` change) or as ci.yml's
+  `MODULE.bazel.lock freshness` job, which is the backstop for commits that ran no hook. The
+  workflow therefore triggers on `.bazelversion` and folds it into the same `bazel` classification
+  as `MODULE.bazel`: one output, one `bazel mod deps` refresh. bazelisk reads the checked-out
+  `.bazelversion`, so the regenerated lock is in the bumped version's format.
 - **Go tidy/sync rides the same commit.** Renovate's `go get` bumps `go.mod`/`go.sum` but never
   runs `go mod tidy` (opt-in) or `go work sync` (Renovate does it only when vendoring, which this
   repo doesn't) — so the indirect block and `go.work.sum` are left stale. The workflow runs

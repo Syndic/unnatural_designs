@@ -1,8 +1,9 @@
 # meta/scripts
 
 Repo-health gates. Each `check_*.py` enforces a cross-cutting invariant that doesn't fit inside a
-single language toolchain — they run in CI, in pre-commit (where they fix or block), and on save
-in the editor (where they surface findings without blocking).
+single language toolchain. All of them run in CI; the table says which also run in pre-commit
+(where a check can fix or block) and which run on save in the editor (where they surface findings
+without blocking).
 
 | Script                  | Enforces                                                                                       | CI job (`.github/workflows/`) | Pre-commit hook       | On-save (`.vscode/settings.json`) |
 | ----------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------- | --------------------- | --------------------------------- |
@@ -14,6 +15,11 @@ in the editor (where they surface findings without blocking).
 `_workspace.py` is a private shared helper for the four guards above (Bazel workspace discovery,
 module enumeration). The leading underscore signals it's not a public API; `test__workspace.py`
 covers it directly.
+
+`test_precommit_docs.py` has no script half. It asserts that README's pre-commit hook table, and
+the paragraph that classifies each hook, still agree with `.pre-commit-config.yaml` — a coupling
+between two checked-in files rather than a check over the tree, so the assertion is the whole gate
+and it rides `bazel test //...` instead of costing a CI job.
 
 `smoke_py/` is a transient `py_test` that proves the end-to-end Python plumbing chain
 (`pyproject.toml` → `uv.lock` → `requirements_lock.txt` → `pip.parse` → `@unnatural_designs_pypi//...`) by importing

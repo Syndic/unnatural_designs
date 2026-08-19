@@ -1,19 +1,21 @@
 {
+  // Host-window recommendations, not a mirror of what the devcontainer installs. That list is
+  // devcontainer.json's `customizations.vscode.extensions`, which auto-installs inside the
+  // container; this one is a dismissable prompt and is the only list that does anything in a
+  // window that has not reopened in the container.
+  //
+  // It carries what is useful for editing this repo on the host: markdown, YAML, workflows,
+  // CSVs. Most of the rest cannot work there at all — go, ty, bazel, the coverage report and
+  // the on-save task scripts all drive tooling that lives in the container. Ruff and ShellCheck
+  // are the two that could, since both ship a bundled binary, and are left out deliberately
+  // rather than for that reason: Python and shell are edited in the container, where the pinned
+  // ruff and shellcheck are the same versions CI runs. Their settings are container-scoped to
+  // match.
   "recommendations": [
-    "astral-sh.ty",
-    "bazelbuild.vscode-bazel",
-    "charliermarsh.ruff",
     "esbenp.prettier-vscode",
     "github.vscode-github-actions",
-    "golang.go",
     "gruntfuggly.todo-tree",
-    "gruntfuggly.triggertaskonsave",
     "mechatroner.rainbow-csv",
-    "ms-azuretools.vscode-containers",
-    "ms-kubernetes-tools.vscode-kubernetes-tools",
-    "ms-python.debugpy",
-    "ms-python.python",
     "redhat.vscode-yaml",
-    "ryanluker.vscode-coverage-gutters",
   ]
 }

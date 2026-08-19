@@ -1,0 +1,6 @@
+# Follow `# shellcheck source=` directives into files outside the invocation's argument list.
+# Without this, whether SC1091 fires depends on how the caller batches its arguments: ci.yml
+# passes every tracked *.sh at once, so lib.sh counts as an input and the source is followed,
+# while the editor lints the open buffer alone and would flag devcontainer-plumbing.sh on every
+# save. An rc file rather than `-x` per caller so both read one config.
+external-sources=true
