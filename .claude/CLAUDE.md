@@ -328,3 +328,20 @@ fine for both: Bazel namespaces its output base by workspace path, and the modul
 content-addressed. It does mean a mount-target change is visible from other worktrees' running
 containers, which still mount the old volume at the old path — a volume's content is shared, its
 mount point is per-container.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues on `Syndic/unnatural_designs`, driven via the `gh` CLI. See
+`docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical triage roles, each label string equal to its name. See
+`docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Multi-context: a root `CONTEXT-MAP.md` points at a per-context `CONTEXT.md`, one per Bazel package
+tree. See `docs/agents/domain.md`.
