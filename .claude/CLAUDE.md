@@ -293,7 +293,7 @@ cache **root** rather than at a per-tool directory:
 **A mount too narrow loses caches silently.** It only persists the tools someone remembered to
 enumerate, and nothing fails when one is missed — the container just rebuilds that cache every
 time, which reads as "devcontainers are slow" rather than as a bug. That had already happened:
-the mount was `~/.cache/bazel`, so its four siblings — `go-build` (967M), `bazelisk` (61M),
+the mount was `~/.cache/bazel`, so its four siblings — `go-build` (1.9G), `bazelisk` (61M),
 `pre-commit` (13M), `uv` — were rebuilt on every recreate. Narrow mounts also break outright
 when the omitted sibling is not optional: mounting `/go/pkg/mod` rather than `/go/pkg` leaves
 the checksum-db cache (`/go/pkg/sumdb`) out, and Docker creates the `/go/pkg` mountpoint parent

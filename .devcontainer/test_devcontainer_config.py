@@ -63,6 +63,16 @@ _LOCAL_ENV_RE = re.compile(
     r"\A\$\{localEnv:(?P<var>[A-Za-z_][A-Za-z0-9_]*)(?::(?P<default>.*))?\}\Z"
 )
 
+# post-create.sh's ownership loop, split into the paths it names and the body that has to act
+# on them. `.+?`/`.*?` are lazy so the first `done` at column 0 closes the loop.
+_CHOWN_LOOP_RE = re.compile(
+    r"^for volume_target in (?P<paths>.+?); do\n(?P<body>.*?)^done$",
+    re.MULTILINE | re.DOTALL,
+)
+# Deliberately line-bound (no DOTALL): the chown and the path it takes must be one command,
+# not a `chown` on one line and the variable mentioned on some later one.
+_CHOWN_OF_LOOP_VAR_RE = re.compile(r'\bchown\b.*"\$volume_target"')
+
 
 def scan_outside_comments(text: str):
     """Yield `(char, in_string)` for every character of `text` that is not in a comment.
@@ -147,14 +157,20 @@ def parse_mount(spec: str) -> dict[str, str]:
 
 
 def chown_targets(text: str) -> list[str]:
-    """The paths post-create.sh makes writable, read off its `for … in <paths>; do` header.
+    """The paths post-create.sh actually makes writable.
 
-    Reads the loop list rather than the `chown` line so a future edit cannot make the two
-    disagree. Paths come back as written, `$HOME` included — see `expand_home`.
+    Both halves of the loop are checked, because either on its own is satisfiable without the
+    other: the header names the paths, and the body has to chown the loop variable. A body that
+    chowns a literal — or that stops chowning at all — leaves a volume root-owned with the
+    header still reading exactly right, which is the failure this helper exists to catch.
+
+    Paths come back as written, `$HOME` included — see `expand_home`.
     """
-    match = re.search(r"^for volume_target in (?P<paths>.+?); do$", text, re.MULTILINE)
+    match = _CHOWN_LOOP_RE.search(text)
     if not match:
-        raise ValueError("post-create.sh has no `for volume_target in …; do` loop")
+        raise ValueError("post-create.sh has no `for volume_target in …; do … done` loop")
+    if not _CHOWN_OF_LOOP_VAR_RE.search(match.group("body")):
+        raise ValueError('the volume_target loop body does not chown "$volume_target"')
     return [path.strip().strip('"') for path in match.group("paths").split()]
 
 
@@ -499,6 +515,14 @@ class TestBaseImageOverride(unittest.TestCase):
         self.assertEqual(image, "${BASE_IMAGE}")
 
 
+# Loop fixtures for the chown_targets tests: one header, a body swapped per case.
+_LOOP_PATHS = ["$HOME/.cache", "/go/pkg"]
+
+
+def _loop(body: str) -> str:
+    return f'prelude\nfor volume_target in "$HOME/.cache" /go/pkg; do\n{body}\ndone\ntail\n'
+
+
 class TestMountParsing(unittest.TestCase):
     def test_fields_are_split(self):
         self.assertEqual(
@@ -512,14 +536,34 @@ class TestMountParsing(unittest.TestCase):
         self.assertEqual(parse_mount("type=bind,readonly")["readonly"], "")
 
     def test_chown_targets_are_read_off_the_loop(self):
-        self.assertEqual(
-            chown_targets('prelude\nfor volume_target in "$HOME/.cache" /go; do\nbody\n'),
-            ["$HOME/.cache", "/go"],
+        self.assertEqual(chown_targets(_loop('sudo chown -R x "$volume_target"')), _LOOP_PATHS)
+
+    def test_chown_targets_tolerates_a_guarded_body(self):
+        # The real body wraps the chown in an ownership test, so the match cannot require the
+        # chown to be the loop's only — or first — line.
+        body = (
+            '  if [ "$(stat -c \'%u\' "$volume_target")" != "$(id -u)" ]; then\n'
+            '    sudo chown -R "$(id -u):$(id -g)" "$volume_target"\n'
+            "  fi"
         )
+        self.assertEqual(chown_targets(_loop(body)), _LOOP_PATHS)
 
     def test_chown_targets_requires_the_loop(self):
         with self.assertRaises(ValueError):
             chown_targets("sudo chown -R vscode /home/vscode/.cache\n")
+
+    def test_chown_targets_requires_the_body_to_chown_the_loop_variable(self):
+        # The header alone is not the coupling: these two bodies iterate the right paths and
+        # still leave a volume root-owned.
+        for body in ('  sudo chown -R x "$HOME/.cache"', "  echo skipped"):
+            with self.subTest(body=body), self.assertRaises(ValueError):
+                chown_targets(_loop(body))
+
+    def test_chown_targets_requires_the_chown_and_the_path_on_one_line(self):
+        # A `chown` and a stray mention of the variable further down is not a chown of it.
+        body = '  sudo chown -R x /some/other/path\n  echo "$volume_target"'
+        with self.assertRaises(ValueError):
+            chown_targets(_loop(body))
 
     def test_home_expansion_uses_the_given_home(self):
         self.assertEqual(expand_home("$HOME/.cache", "/home/vscode"), "/home/vscode/.cache")
