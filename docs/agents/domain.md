@@ -36,9 +36,9 @@ directories documented in the README (`//apps/`, `//libs/`, `//services/`, `//to
     └── docs/adr/
 ```
 
-Only `//meta/` and `//tools/network_infrastructure_maintenance/` hold code today; the other
-top-level directories are scaffolding. Add a context's `CONTEXT.md` when that context gains code,
-and register it in `CONTEXT-MAP.md` at the same time.
+Which directories are contexts, which are scaffolding awaiting one, and which will never be one is
+recorded in `CONTEXT-MAP.md`. Add a context's `CONTEXT.md` when that context gains code, and
+register it there in the same change.
 
 Markdown docs are not Bazel targets, so adding one needs no `BUILD.bazel` edit. If a test ever reads
 one as data, add it to an `exports_files` block in that package.
