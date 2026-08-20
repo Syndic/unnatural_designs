@@ -7,6 +7,8 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 - **Create an issue**: `gh issue create --title "..." --body "..."`. Use a heredoc for multi-line bodies.
 - **Read an issue**: `gh issue view <number> --comments`, filtering comments by `jq` and also fetching labels.
 - **List issues**: `gh issue list --state open --json number,title,body,labels,comments --jq '[.[] | {number, title, body, labels: [.labels[].name], comments: [.comments[].body]}]'` with appropriate `--label` and `--state` filters.
+- **List agent-grabbable issues**: `gh issue list --state open --label ready-for-agent --search "-label:blocked"`. The exclusion is required, not optional: `blocked` is orthogonal to the state role, so a fully-specified issue waiting on an upstream release still carries `ready-for-agent`. See [triage-labels.md](triage-labels.md).
+- **List blocked issues for a trigger sweep**: `gh issue list --state open --label blocked`.
 - **Comment on an issue**: `gh issue comment <number> --body "..."`
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
 - **Close**: `gh issue close <number> --comment "..."`
