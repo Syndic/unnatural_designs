@@ -12,6 +12,11 @@ Scope is that coupling plus the matrix entries it hangs off. The language list i
 rather than a hand-copy of anything in the repo, so it is not asserted; the build modes are, since
 a language that cannot use `none` is a language that needs a toolchain installed for it — and an
 entry that names no mode at all is the same case wearing a default.
+
+The `codeql-all` fan-in is here for the same reason. It is the name the ruleset requires, so it is
+what makes every matrix row required — but only while it depends on the matrix and runs when the
+matrix fails. Drop `if: always()` and the job is skipped rather than failed, which branch
+protection reads as a pass: the gate is still listed, still green, and no longer gating.
 """
 
 import re
@@ -100,6 +105,33 @@ class MatrixTest(unittest.TestCase):
             "codeql-action/init, the way the setup-go step does for Go — wire one up (and widen "
             "that step's `if:`) before adding it here",
         )
+
+
+class FanInTest(unittest.TestCase):
+    """The job the ruleset names, and the properties that make requiring it mean something."""
+
+    def setUp(self):
+        self.fan_in = job_block(_WORKFLOW.read_text(encoding="utf-8"), "codeql-all")
+
+    def test_fan_in_depends_on_the_matrix_job(self):
+        self.assertIn(
+            "needs: [codeql]",
+            self.fan_in,
+            "`codeql-all` is the required check; a matrix row it does not depend on is a row "
+            "nothing gates",
+        )
+
+    def test_fan_in_runs_even_when_the_matrix_fails(self):
+        self.assertIn(
+            "if: always()",
+            self.fan_in,
+            "without `if: always()` a failed matrix skips `codeql-all`, and branch protection "
+            "counts a skipped required check as passed",
+        )
+
+    def test_fan_in_accepts_only_success(self):
+        """`skipped` must not pass here, unlike devcontainer.yml's gated `base-image-all`."""
+        self.assertIn('!= "success"', self.fan_in)
 
 
 class ToolchainStepTest(unittest.TestCase):

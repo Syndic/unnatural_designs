@@ -63,7 +63,7 @@ jobs:
   # purpose — see .claude/CLAUDE.md "CodeQL runs as advanced setup" for what GitHub's managed
   # default setup could not do, and for the repo setting that has to stay off for this to run.
   codeql:
-    name: Analyze (${{ matrix.language }})
+    name: CodeQL Analysis (${{ matrix.language }})
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -113,6 +113,24 @@ jobs:
           # The string default setup uploaded under; it is what separates one language's
           # results from another's within a tool.
           category: "/language:${{ matrix.language }}"
+
+  # Fan-in for the ruleset; the pattern's reasoning is at devcontainer.yml's `base-image-all`.
+  # Strict on `skipped` unlike that one, since nothing gates this matrix. `if: always()` is
+  # load-bearing: without it a failed matrix skips this job, and a skipped check counts as
+  # passing. //meta/scripts:test_codeql_toolchain keeps both.
+  codeql-all:
+    name: CodeQL Analysis (all languages)
+    runs-on: ubuntu-latest
+    needs: [codeql]
+    if: always()
+    steps:
+      - name: Verify all codeql jobs passed
+        run: |
+          if [ "${{ needs.codeql.result }}" != "success" ]; then
+            echo "codeql result: ${{ needs.codeql.result }}"
+            exit 1
+          fi
+          echo "All codeql jobs passed"
 
   # ── Dependency CVE Scanning ───────────────────────────────────────────────────
   # Per-language scanners that flag known-vulnerable third-party dependencies. The signal model

@@ -325,3 +325,38 @@ workflow's path classification. A consumer that forgets the equivalent gets a pi
 image that never rebuilds.
 
 ---
+
+## CodeQL Alerts Do Not Gate Merges
+
+Requiring `CodeQL Analysis (all languages)` gates on the analysis *running and succeeding*, not on
+what it found. Alert-level gating is a separate ruleset rule — `code_scanning` — which currently
+names one tool:
+
+```json
+{ "tool": "Trivy", "alerts_threshold": "errors", "security_alerts_threshold": "high_or_higher" }
+```
+
+CodeQL uploads under the tool name `CodeQL` (confirmed against `/code-scanning/analyses`, which
+records the three categories `/language:actions`, `/language:go`, `/language:python`), so adding a
+sibling entry is the whole change.
+
+It was left out of [PR #236](https://github.com/Syndic/unnatural_designs/pull/236) deliberately.
+That PR's job was to stop Go analysis failing, and making a newly-workflow-managed engine a merge
+blocker in the same change conflates two questions: does it run, and do we accept what it says.
+
+Two things make the second worth deciding on its own. There is no baseline — the switch landed
+with zero open alerts, so the first finding at or above the threshold would block every open PR at
+once, including unrelated ones, with no triage habit or dismissal workflow yet to absorb it. And
+unlike Trivy's, CodeQL's alerts are findings in our own source rather than dependency CVEs that a
+version bump fixes; `actions` in particular reports on workflow permissions and untrusted-input
+patterns, which are judgement calls.
+
+The two rules are independent rather than alternatives, and it is worth keeping both: the required
+status check catches an analysis that never ran, `code_scanning` catches one that ran and found
+something. A repo with only the latter reports green when extraction breaks — which is the failure
+#236 was written to fix.
+
+**Trigger to revisit:** the first CodeQL alert that gets triaged, or once enough weekly scans have
+run to show the steady state is quiet.
+
+---
