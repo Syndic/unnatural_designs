@@ -39,7 +39,7 @@ done
 
 # Install golangci-lint. Version is pinned and tracked by Renovate (see renovate.json).
 # renovate: datasource=github-releases depName=golangci/golangci-lint
-GOLANGCI_LINT_VERSION=v2.12.2
+GOLANGCI_LINT_VERSION=v2.13.1
 go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}"
 
 # Install gopls (Go language server) for hover, jump-to-definition, refactor.
