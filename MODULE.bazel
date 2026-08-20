@@ -25,7 +25,7 @@ buildbuddy = use_extension("@toolchains_buildbuddy//:extensions.bzl", "buildbudd
 
 # ── Go ────────────────────────────────────────────────────────────────────────────────────────────
 bazel_dep(name = "rules_go", version = "0.63.0")
-bazel_dep(name = "gazelle", version = "0.52.2")
+bazel_dep(name = "gazelle", version = "0.53.0")
 
 go_sdk = use_extension("@rules_go//go:extensions.bzl", "go_sdk")
 
@@ -42,17 +42,17 @@ go_sdk = use_extension("@rules_go//go:extensions.bzl", "go_sdk")
 go_sdk.download(
     goarch = "amd64",
     goos = "linux",
-    version = "1.26.6",
+    version = "1.27.0",
 )
 go_sdk.download(
     goarch = "arm64",
     goos = "linux",
-    version = "1.26.6",
+    version = "1.27.0",
 )
 go_sdk.download(
     goarch = "arm64",
     goos = "darwin",
-    version = "1.26.6",
+    version = "1.27.0",
 )
 
 # Discover external Go deps from the workspace's go.work + per-module go.mod files.
