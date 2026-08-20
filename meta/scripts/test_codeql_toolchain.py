@@ -25,9 +25,10 @@ import textwrap
 import unittest
 from pathlib import Path
 
-# Not .resolve(): the workflow is a cross-package data dep, so it lives in the runfiles tree beside
-# this file rather than at the source path a resolved symlink would lead back to.
-_WORKFLOW = Path(__file__).parent.parent.parent / ".github" / "workflows" / "security.yml"
+# Not .resolve(): every file read here is a cross-package data dep, so each lives in the runfiles
+# tree beside this one rather than at the source path a resolved symlink would lead back to.
+_ROOT = Path(__file__).parent.parent.parent
+_WORKFLOW = _ROOT / ".github" / "workflows" / "security.yml"
 
 _SETUP_GO = "actions/setup-go@"
 _CODEQL_INIT = "github/codeql-action/init@"
@@ -35,10 +36,7 @@ _CODEQL_INIT = "github/codeql-action/init@"
 # The context branch protection requires. It is a string in repo settings, which nothing here can
 # read, so the coupling this file can hold is between the job and the docs that quote it.
 _FAN_IN_NAME = "CodeQL Analysis (all languages)"
-_DOCS_NAMING_THE_FAN_IN = (
-    Path(__file__).parent.parent.parent / "README.md",
-    Path(__file__).parent.parent.parent / ".claude" / "CLAUDE.md",
-)
+_DOCS_NAMING_THE_FAN_IN = (_ROOT / "README.md", _ROOT / ".claude" / "CLAUDE.md")
 
 
 # Trailing comments introduce the *next* job rather than closing this one, and this file writes
@@ -169,7 +167,8 @@ class FanInTest(unittest.TestCase):
         )
 
     def test_fan_in_passes_when_every_row_succeeded(self):
-        self.assertEqual(run_fan_in("success").returncode, 0)
+        done = run_fan_in("success")
+        self.assertEqual(done.returncode, 0, f"{done.stdout}{done.stderr}".strip())
 
     def test_fan_in_fails_on_anything_else(self):
         """Ran against the real shell, so the `case` idiom next door would pass this too."""
