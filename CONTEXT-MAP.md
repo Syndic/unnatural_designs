@@ -13,10 +13,19 @@ it). Repo-wide decisions live in `docs/adr/`.
   _(`CONTEXT.md` not yet written)_
 
   A home network modelled in [NetBox](https://netboxlabs.com/products/netbox/) and controlled by
-  [UniFi Network](https://unifi.ui.com/), plus the tools that keep those two in agreement: an audit
-  of the NetBox model's internal consistency, drift detection between intended and live state, and
-  a NetBox → UniFi sync. This is the only context with a domain in the modelling sense —
-  devices, cables, IP addressing, VRFs, PoE budgets, DHCP reservations.
+  [UniFi Network](https://unifi.ui.com/). This is the only context with a domain in the modelling
+  sense — devices, cables, IP addressing, VRFs, PoE budgets, DHCP reservations.
+
+  **Built:** `cmd/netbox_audit`, which validates the NetBox model for internal consistency. It is
+  the context's only binary.
+
+  **Planned, not built:** drift detection between NetBox's intended state and the live UniFi
+  controller, and a NetBox → UniFi sync. The tool's README describes both with their command names
+  still elided, so neither has a name yet, let alone code.
+
+  The vocabulary above describes the modelled network, not the set of tools that exist against it.
+  Treat a request for anything under "planned" as unimplemented: a redundancy check that matched a
+  request against this domain language would otherwise close a real one as already-done.
 
 - **Repo meta** — `meta/`
   _(`CONTEXT.md` not yet written)_
