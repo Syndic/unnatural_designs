@@ -35,6 +35,13 @@ it). Repo-wide decisions live in `docs/adr/`.
 
 ## Not yet contexts
 
-`//apps/`, `//libs/`, `//services/`, `//platforms/`, and `//infra/` exist as scaffolding and carry
-only a `BUILD.bazel`. Add a `CONTEXT.md` under one when it gains code, and register it above in the
-same change.
+`//apps/`, `//libs/`, `//services/`, and `//infra/` are scaffolding: each carries a `BUILD.bazel`
+holding nothing but a one-line comment. Add a `CONTEXT.md` under one when it gains code, and
+register it above in the same change.
+
+## Not a context
+
+`//platforms/` does hold code — the three `platform()` definitions `.bazelrc` selects with
+`--config=linux_x86_64`, `--config=linux_arm64`, and `--config=darwin_arm64` — but it is build
+configuration rather than a domain. Three constraint tuples carry no vocabulary to model and no
+decisions to record, so it gets no `CONTEXT.md` and is not expected to grow one.
