@@ -83,6 +83,11 @@
       "pinDigests": false
     },
     {
+      "matchDatasources": [ "pypi" ],
+      "matchDepNames": [ "ruff" ],
+      "minimumReleaseAge": "1 hour"
+    },
+    {
       "matchManagers": [ "bazel-module" ],
       "matchDepTypes": [ "oci_pull" ],
       "matchUpdateTypes": [ "digest" ],

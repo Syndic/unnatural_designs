@@ -343,11 +343,21 @@ catch-all — the *grouping* rules match disjoint sets of updates, and the order
 not matter. (Renovate merges every matching rule in order and the last writer wins, so two rules
 setting `groupName` for the same update would be order-dependent. Don't introduce that overlap.)
 
-A fifth rule sets no `groupName` at all: `matchManagers: ["devcontainer"]` with
-`pinDigests: false`, which turns off digest pinning for devcontainer features (the reason is in
-[`.claude/CLAUDE.md`](.claude/CLAUDE.md), under "plumbing and feature pins"). It overlaps the
-grouping rules, which is harmless because it is the only rule that touches `pinDigests`; it sits
-last so that stays true if a later rule ever sets the same field.
+Two rules set no `groupName` at all. `matchManagers: ["devcontainer"]` with `pinDigests: false`
+turns off digest pinning for devcontainer features (the reason is in
+[`.claude/CLAUDE.md`](.claude/CLAUDE.md), under "plumbing and feature pins"). `ruff` carries
+`minimumReleaseAge: "1 hour"`, because the version Renovate reads and the binary CI installs come
+from two channels that publish minutes apart: Renovate tracks PyPI, while `astral-sh/ruff-action`
+resolves the binary through Astral's `versions` manifest, which trails PyPI by about two and a half
+minutes usually and by fifteen on the release that prompted this. A bump adopted inside that window
+pins a version the action cannot find, and the `ruff` job fails before it lints anything — as it
+did on the 0.16.4 bump, 35 seconds before the manifest caught up. An hour is a wide margin over the
+observed lag and still lands the bump the same day. Under the default `internalChecksFilter` of
+`strict`, a too-new ruff is left out of the group PR entirely rather than holding the rest of it
+back, and joins on the next run once it has aged in.
+
+Both rules overlap the grouping rules, which is harmless because each is the only rule that touches
+its field. Keep that true, or make the order deliberate.
 
 - **Language toolchain SDKs** — the Go and Python version pins, tracked across `MODULE.bazel`,
   `go.work`, per-module `go.mod`, the workflow `setup-python` steps, the devcontainer Dockerfile's
