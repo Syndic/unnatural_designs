@@ -94,6 +94,31 @@ concurrency:
 `renovate-derived-files.yml` is the deliberate exception; the reason is at that file's own
 `concurrency` note, since it is a property of that workflow rather than of the convention.
 
+## CodeQL runs as advanced setup
+
+The `codeql` job in `security.yml` replaced GitHub's **default setup** — the managed
+configuration that runs CodeQL with no workflow file in the repo. Load-bearing facts:
+
+- **Why the switch.** Default setup analyses Go with autobuild under the runner image's own Go
+  and `GOTOOLCHAIN=local`, and offers nowhere to put a step, so nothing could point it at
+  `go.work`. The first bump past the image's version therefore failed extraction outright:
+  Renovate's Go 1.27.0 PR (#233) died on `go.work requires go >= 1.27.0 (running go 1.26.6)`
+  while every other Go job passed, because those resolve the toolchain from `setup-go`'s
+  `go-version-file: go.work`. A workflow can run that step ahead of `codeql-action/init`; the
+  managed configuration cannot. `//meta/scripts:test_codeql_toolchain` keeps the step and its
+  position.
+- **The two setups are mutually exclusive, and default setup wins.** Re-enabling it (Settings →
+  Advanced Security → CodeQL analysis) does not merge with the workflow, it displaces it: the
+  job still runs, and its upload is rejected with "Upload was rejected because CodeQL default
+  setup is enabled". So the settings flip comes *before* the workflow lands, not after — in the
+  other order every PR run fails on the upload step.
+- **The job reproduces what default setup had configured**: languages `actions`, `go`, `python`;
+  the `default` query suite and `remote` threat model (both are codeql-action defaults, so
+  neither is spelled out); `ubuntu-latest`; categories `/language:<lang>`. The weekly cadence is
+  now `security.yml`'s own Monday cron rather than a separate schedule.
+- **`build-mode: none` is not available for Go** (nor Swift or Kotlin), so Go is the one language
+  whose analysis has to build, and so the one that needs a toolchain on PATH.
+
 ## Renovate auto-commit helper (`Renovate helper` app)
 
 `.github/workflows/renovate-derived-files.yml` regenerates the derived files Renovate can't

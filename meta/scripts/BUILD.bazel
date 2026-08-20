@@ -75,6 +75,16 @@ py_test(
     main = "test_precommit_docs.py",
 )
 
+# Same shape, and the same reason: the assertion is the whole gate. What it guards fails only
+# once go.work outruns the runner image's Go, which is too late to learn it from CI.
+py_test(
+    name = "test_codeql_toolchain",
+    size = "small",
+    srcs = ["test_codeql_toolchain.py"],
+    data = ["//:.github/workflows/security.yml"],
+    main = "test_codeql_toolchain.py",
+)
+
 py_library(
     name = "classify_changed_paths_lib",
     srcs = ["classify_changed_paths.py"],
