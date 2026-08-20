@@ -21,6 +21,14 @@ the paragraph that classifies each hook, still agree with `.pre-commit-config.ya
 between two checked-in files rather than a check over the tree, so the assertion is the whole gate
 and it rides `bazel test //...` instead of costing a CI job.
 
+`test_codeql_toolchain.py` has no script half either. It asserts that `security.yml`'s CodeQL job
+installs the toolchain `go.work` names before extraction starts — the `actions/setup-go` step ahead
+of `codeql-action/init`, plus the matrix entries that decide which languages need one at all. It
+also holds the `codeql-all` fan-in to its two load-bearing properties, since that job is the name
+branch protection requires. Same reason it rides `bazel test //...`: the couplings are between
+checked-in files, and nothing fails while they drift — not until `go.work` outruns the runner
+image's Go, or a green required check turns out to have been skipped.
+
 `smoke_py/` is a transient `py_test` that proves the end-to-end Python plumbing chain
 (`pyproject.toml` → `uv.lock` → `requirements_lock.txt` → `pip.parse` → `@unnatural_designs_pypi//...`) by importing
 `requests` and asserting it loads. Slated for deletion once gazelle_python is wired (see

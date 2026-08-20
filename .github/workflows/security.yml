@@ -37,8 +37,9 @@ jobs:
 
   # ── Static Application Security Testing (SAST) ───────────────────────────────
   # Analyses source code for security vulnerabilities — injection flaws, insecure API usage,
-  # hardcoded secrets — without running or building the code. Semgrep uses per-language rule packs,
-  # passed via SEMGREP_RULES; add one per adopted language. The deprecated semgrep/semgrep-action is
+  # hardcoded secrets — from the source rather than from a resolved dependency set. Two engines run
+  # here: Semgrep below, and CodeQL after it. Semgrep uses per-language rule packs, passed via
+  # SEMGREP_RULES; add one per adopted language. The deprecated semgrep/semgrep-action is
   # replaced by the upstream-recommended semgrep/semgrep container image running `semgrep ci`, so
   # the tool version is SHA-pinned like everything else (the action froze at v0.58.0 — see README's
   # "Dependency updates").
@@ -57,6 +58,79 @@ jobs:
       - run: semgrep ci
         env:
           SEMGREP_RULES: p/golang p/python p/secrets
+
+  # CodeQL, the second SAST engine and the one code scanning's own UI reads. Advanced setup on
+  # purpose — see .claude/CLAUDE.md "CodeQL runs as advanced setup" for what GitHub's managed
+  # default setup could not do, and for the repo setting that has to stay off for this to run.
+  codeql:
+    name: CodeQL Analysis (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Uploads the SARIF. The starter workflow's `actions: read` (private repos) and
+      # `packages: read` (private CodeQL packs) buy nothing here; this repo is public and
+      # queries come from the default suite.
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        # TEND(lang-expand): one entry per adopted language. `none` extracts without building and
+        # is what interpreted languages want; a compiled language has no such option and needs its
+        # toolchain installed below, the way Go does.
+        include:
+          - language: actions
+            build-mode: none
+          - language: go
+            build-mode: autobuild
+          - language: python
+            build-mode: none
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Ahead of init on purpose: the Go autobuilder runs under GOTOOLCHAIN=local, so whatever
+      # is on PATH when extraction starts is the only toolchain it can use.
+      # //meta/scripts:test_codeql_toolchain keeps this step, and its position, from being lost.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: matrix.language == 'go'
+        with:
+          go-version-file: go.work
+          # Globbed, not listed: this job has no module matrix to key off, and a hand-listed
+          # module would go stale the day a second one lands.
+          cache-dependency-path: |
+            go.work.sum
+            **/go.sum
+
+      - uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        with:
+          languages: ${{ matrix.language }}
+          # No separate autobuild step: that action documents itself as superseded by this input.
+          build-mode: ${{ matrix.build-mode }}
+
+      - uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        with:
+          # The string default setup uploaded under; it is what separates one language's
+          # results from another's within a tool.
+          category: "/language:${{ matrix.language }}"
+
+  # Fan-in for the ruleset; the pattern's reasoning is at devcontainer.yml's `base-image-all`.
+  # Strict on `skipped` unlike that one, since nothing gates this matrix. `if: always()` is
+  # load-bearing: without it a failed matrix skips this job, and a skipped check counts as
+  # passing. //meta/scripts:test_codeql_toolchain keeps both.
+  codeql-all:
+    name: CodeQL Analysis (all languages)
+    runs-on: ubuntu-latest
+    needs: [codeql]
+    if: always()
+    steps:
+      - name: Verify all codeql jobs passed
+        run: |
+          if [ "${{ needs.codeql.result }}" != "success" ]; then
+            echo "codeql result: ${{ needs.codeql.result }}"
+            exit 1
+          fi
+          echo "All codeql jobs passed"
 
   # ── Dependency CVE Scanning ───────────────────────────────────────────────────
   # Per-language scanners that flag known-vulnerable third-party dependencies. The signal model

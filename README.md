@@ -194,14 +194,16 @@ Three GitHub Actions workflows run on every push and pull request to `main`.
 
 **Security** - also runs on a weekly schedule (Mondays at 02:00 UTC):
 
-| Job                          | Purpose                                                                         |
-| ---------------------------- | ------------------------------------------------------------------------------- |
-| Module completeness check    | Gate for the per-module security jobs below                                     |
-| Semgrep                      | SAST - scans for injection flaws, insecure API usage, and hardcoded secrets     |
-| govulncheck                  | Dependency CVE scanning - checks reachable call paths against the Go vuln DB    |
-| govulncheck-all              | A single static target that github can require pass for branch protection rules |
-| pip-audit                    | Dependency CVE scanning for Python - manifest-based scan over the uv resolution |
-| Trivy                        | Supply chain and filesystem scanning - secrets, CVEs across all ecosystems      |
+| Job                               | Purpose                                                                         |
+| --------------------------------- | ------------------------------------------------------------------------------- |
+| Module completeness check         | Gate for the per-module security jobs below                                     |
+| Semgrep                           | SAST - scans for injection flaws, insecure API usage, and hardcoded secrets     |
+| `CodeQL Analysis (<language>)`    | SAST - one job per language: actions, Go, Python                                |
+| `CodeQL Analysis (all languages)` | Fan-in over the per-language jobs - the name to require in the ruleset          |
+| govulncheck                       | Dependency CVE scanning - checks reachable call paths against the Go vuln DB    |
+| govulncheck-all                   | A single static target that github can require pass for branch protection rules |
+| pip-audit                         | Dependency CVE scanning for Python - manifest-based scan over the uv resolution |
+| Trivy                             | Supply chain and filesystem scanning - secrets, CVEs across all ecosystems      |
 
 **Devcontainer** - builds the devcontainer image and smoke-tests the toolchain it ships
 (`bazel --version`, `go version`, `python3 --version`). The job is gated on a path diff against
