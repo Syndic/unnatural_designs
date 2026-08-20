@@ -8,9 +8,10 @@ runner image ships. That is the failure this job was written for: under GitHub's
 setup there was no step to add, and the first bump past the image's Go took Go analysis down with
 `go.work requires go >= 1.27.0 (running go 1.26.6)`.
 
-Scope is that coupling plus the matrix entry it hangs off. The language list is a policy choice
+Scope is that coupling plus the matrix entries it hangs off. The language list is a policy choice
 rather than a hand-copy of anything in the repo, so it is not asserted; the build modes are, since
-a language that cannot use `none` is a language that needs a toolchain installed for it.
+a language that cannot use `none` is a language that needs a toolchain installed for it — and an
+entry that names no mode at all is the same case wearing a default.
 """
 
 import re
@@ -45,23 +46,53 @@ def step_block(block: str, uses: str) -> str:
 
 _CODEQL = job_block(_WORKFLOW.read_text(encoding="utf-8"), "codeql")
 
-# Positional pairing, not a lookup per key: it is what lets the build-mode assertion below name the
-# language it is complaining about.
-_MATRIX_RE = re.compile(r"^\s+- language: (\S+)\n\s+build-mode: (\S+)$", re.M)
+# Split on the list marker and read each entry's keys separately, rather than matching a
+# `- language:`/`build-mode:` pair. A pattern that wants both keys adjacent silently drops the entry
+# that omits `build-mode` — and that is the dangerous one, since codeql-action then falls back to
+# the language's own default, which is autobuild for every language that cannot use `none`.
+_ENTRY_SPLIT_RE = re.compile(r"^ +- ", re.M)
+_KEY_RE = re.compile(r"^ *([\w-]+): (\S+)$", re.M)
+_LANGUAGE_KEY_RE = re.compile(r"^ *(?:- )?language:", re.M)
 
 
-def build_modes() -> dict[str, str]:
-    """The job's matrix, as {language: build-mode}."""
-    return dict(_MATRIX_RE.findall(_CODEQL))
+def matrix_include() -> str:
+    """The job's matrix `include:` block, comments above it excluded."""
+    return _CODEQL[_CODEQL.index("include:") : _CODEQL.index("    steps:")]
+
+
+def matrix_entries() -> list[dict[str, str]]:
+    """The `include:` entries, each as the keys it sets."""
+    return [dict(_KEY_RE.findall(chunk)) for chunk in _ENTRY_SPLIT_RE.split(matrix_include())[1:]]
 
 
 class MatrixTest(unittest.TestCase):
-    def test_matrix_is_read(self):
-        """Non-vacuity guard: an empty parse would make every assertion below pass silently."""
-        self.assertTrue(build_modes(), f"no `- language:`/`build-mode:` pairs in {_WORKFLOW.name}")
+    def setUp(self):
+        self.entries = matrix_entries()
+
+    def test_every_entry_is_read(self):
+        """Non-vacuity guard: an entry parsed away is an entry the assertions below never see."""
+        self.assertEqual(
+            len(self.entries),
+            len(_LANGUAGE_KEY_RE.findall(matrix_include())),
+            f"the `include:` entries in {_WORKFLOW.name} did not all parse",
+        )
+        self.assertTrue(self.entries, f"no `include:` entries in {_WORKFLOW.name}")
+
+    def test_every_entry_declares_a_build_mode(self):
+        """An omitted `build-mode:` is not a neutral default; it is autobuild where it matters."""
+        self.assertEqual(
+            [entry.get("language", entry) for entry in self.entries if "build-mode" not in entry],
+            [],
+            "codeql-action falls back to the language's own default build mode, which is "
+            "autobuild for exactly the languages that cannot use `none` — say the mode here",
+        )
 
     def test_go_is_the_only_language_that_builds(self):
-        built = {lang: mode for lang, mode in build_modes().items() if mode != "none"}
+        built = {
+            entry.get("language"): entry.get("build-mode")
+            for entry in self.entries
+            if entry.get("build-mode") != "none"
+        }
         self.assertEqual(
             built,
             {"go": "autobuild"},

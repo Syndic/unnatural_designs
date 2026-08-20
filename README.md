@@ -198,7 +198,7 @@ Three GitHub Actions workflows run on every push and pull request to `main`.
 | ---------------------------- | ------------------------------------------------------------------------------- |
 | Module completeness check    | Gate for the per-module security jobs below                                     |
 | Semgrep                      | SAST - scans for injection flaws, insecure API usage, and hardcoded secrets     |
-| CodeQL                       | SAST - dataflow analysis over actions, Go, and Python; feeds code scanning      |
+| Analyze (<language>)         | SAST - CodeQL, one job per language: actions, Go, Python                        |
 | govulncheck                  | Dependency CVE scanning - checks reachable call paths against the Go vuln DB    |
 | govulncheck-all              | A single static target that github can require pass for branch protection rules |
 | pip-audit                    | Dependency CVE scanning for Python - manifest-based scan over the uv resolution |
