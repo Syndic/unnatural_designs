@@ -33,8 +33,9 @@ Before declaring any task complete:
    dependency, or CI/workflow structure, grep for markdown files that reference the affected
    component and update them in the same commit.
 
-3. **Future considerations** — if a doc item in `docs/future-considerations.md` described something
-   that has now been done, update or remove that item.
+3. **Tracker items** — if an open issue described something that has now been done, close it with a
+   comment pointing at the change. If a `blocked` issue's **Trigger to revisit** has fired, say so
+   on the issue rather than silently acting on it.
 
 ## Comment style — keep it tight, trim what's oversized
 

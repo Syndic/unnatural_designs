@@ -5,8 +5,8 @@ Go dependency that compiles C, C++, cgo, SWIG, or ships pre-built .syso objects.
 
 The build infrastructure (.bazelrc sets `--@rules_go//go/config:pure`) assumes pure Go for
 hermeticity and build simplicity: no LLVM toolchain, no sysroots, no Apple SDK handling.
-Introducing cgo invalidates that assumption — see docs/future-considerations.md
-("Introducing cgo or Python C-Extensions") for what would need to change.
+Introducing cgo invalidates that assumption — see
+docs/adr/0001-go-builds-are-pure-python-is-not.md for what would need to change.
 
 When this check fails:
   - If the cgo is in our code: remove it. If you genuinely need it, get explicit team
@@ -138,9 +138,9 @@ def check(root: Path) -> int:
         print(f"OK — pure-Go policy satisfied across {scope}.")
     else:
         print(
-            "Pure-Go policy violation. See docs/future-considerations.md "
-            '("Introducing cgo or Python C-Extensions") for the implications '
-            "and required infrastructure changes."
+            "Pure-Go policy violation. See "
+            "docs/adr/0001-go-builds-are-pure-python-is-not.md "
+            "for the implications and required infrastructure changes."
         )
 
     return exit_code

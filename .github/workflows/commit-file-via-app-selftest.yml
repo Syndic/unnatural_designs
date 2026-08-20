@@ -39,7 +39,7 @@ jobs:
       # run_attempt guards against a leftover branch from a prior attempt whose cleanup failed.
       SCRATCH_BRANCH: action-selftest/${{ github.run_id }}-${{ github.run_attempt }}
       # Second path for the partial-diff case: tracked, and deliberately never modified.
-      UNCHANGED_PATH: docs/future-considerations.md
+      UNCHANGED_PATH: docs/reminder-tags.md
       # Written into README.md, then grepped back out of the committed blob to prove the commit
       # carries the content we staged; run_id + run_attempt keep them unique per run.
       COMMIT_MARKER: selftest commit ${{ github.run_id }}-${{ github.run_attempt }}

@@ -32,7 +32,7 @@ image's Go, or a green required check turns out to have been skipped.
 `smoke_py/` is a transient `py_test` that proves the end-to-end Python plumbing chain
 (`pyproject.toml` → `uv.lock` → `requirements_lock.txt` → `pip.parse` → `@unnatural_designs_pypi//...`) by importing
 `requests` and asserting it loads. Slated for deletion once gazelle_python is wired (see
-`docs/future-considerations.md` "Python BUILD Generation").
+[#239](https://github.com/Syndic/unnatural_designs/issues/239)).
 
 Failure format across the guards is `path:line: message` so VS Code task matchers can turn each
 finding into a Problems-panel entry with a squiggle at the offending line.

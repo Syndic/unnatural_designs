@@ -194,7 +194,7 @@ class TestCheck(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertIn("pkg/foo.go", out)
         self.assertIn("repo source files", out)
-        self.assertIn("future-considerations.md", out)
+        self.assertIn("0001-go-builds-are-pure-python-is-not.md", out)
 
     def test_dep_offender_fails(self):
         rc, out, _ = self._run(deps_by_module={"foo": ["github.com/foo/cgolib"]})

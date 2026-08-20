@@ -78,7 +78,7 @@ python.toolchain(
 #   pyproject.toml  →  uv.lock  →  requirements_lock.txt  →  pip.parse  →  @unnatural_designs_pypi//...
 # uv.lock is the source of truth; requirements_lock.txt is its `uv export`
 # projection (pip.parse still requires a requirements.txt-format input — see
-# `docs/future-considerations.md` "Drop requirements_lock.txt"). A pre-commit
+# https://github.com/Syndic/unnatural_designs/issues/240). A pre-commit
 # hook keeps the two in sync; see `uv-lock-fresh` in .pre-commit-config.yaml.
 # The export deliberately keeps `--hash` entries: pip.parse uses them to verify
 # the exact artifact uv resolved against. Without hashes it round-trips to
@@ -100,8 +100,8 @@ use_repo(pip, "unnatural_designs_pypi")
 # bazel-contrib/rules_python#3416; the migration to a pure-Go binding is in
 # the unmerged bazel-contrib/rules_python#3786). Until #3786 ships in a
 # release, Python BUILD files are hand-authored. See
-# `docs/future-considerations.md` (Python BUILD generation) for the trigger
-# that brings this back in.
+# https://github.com/Syndic/unnatural_designs/issues/239 for the trigger that
+# brings this back in.
 
 # ── Container images ──────────────────────────────────────────────────────────────────────────────
 # The shared devcontainer base image (//meta/devcontainer-base) is assembled here rather than by a

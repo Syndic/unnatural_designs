@@ -60,8 +60,12 @@ tags are what make the features Renovate-visible, and that bump is what triggers
 [Automation](#automation), which CI then verifies.
 
 **Known limitations**: the Docker and Kubernetes VS Code extensions install but aren't wired to a
-daemon or `kubectl` inside the container; BuildBuddy credentials still need host-side setup. See
-[`docs/future-considerations.md`](docs/future-considerations.md) for the open items.
+daemon or `kubectl` inside the container
+([#242](https://github.com/Syndic/unnatural_designs/issues/242)); BuildBuddy credentials still need
+host-side setup ([#238](https://github.com/Syndic/unnatural_designs/issues/238)). Deferred work
+lives on the issue tracker: the
+[`blocked` label](https://github.com/Syndic/unnatural_designs/labels/blocked) collects the items
+waiting on a condition.
 
 **Commit signing**: VS Code's Dev Containers extension copies your host `~/.gitconfig` into the
 container verbatim and does not rewrite filesystem paths inside it. If your host `user.signingkey`
