@@ -81,7 +81,13 @@ py_test(
     name = "test_codeql_toolchain",
     size = "small",
     srcs = ["test_codeql_toolchain.py"],
-    data = ["//:.github/workflows/security.yml"],
+    # The docs are here for one string: the required check name, which lives in repo settings and
+    # so can only be held against the copies that quote it.
+    data = [
+        "//:.claude/CLAUDE.md",
+        "//:.github/workflows/security.yml",
+        "//:README.md",
+    ],
     main = "test_codeql_toolchain.py",
 )
 

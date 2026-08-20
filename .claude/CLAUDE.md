@@ -118,12 +118,14 @@ configuration that runs CodeQL with no workflow file in the repo. Load-bearing f
   now `security.yml`'s own Monday cron rather than a separate schedule.
 - **`build-mode: none` is not available for Go** (nor Swift or Kotlin), so Go is the one language
   whose analysis has to build, and so the one that needs a toolchain on PATH.
-- **`CodeQL Analysis (all languages)` is the name the ruleset requires**, not the per-language
-  jobs. Those are matrix rows, so their check names move with the language list; the `codeql-all`
-  fan-in gives branch protection one stable name and makes every row required through it — an
-  added language needs no ruleset edit. Its `if: always()` is what makes that real: without it a
-  failed matrix *skips* the fan-in, and branch protection counts a skipped required check as
-  passed.
+- **`CodeQL Analysis (all languages)` is the name for the ruleset to require**, not the
+  per-language jobs — those are matrix rows, so their check names move with the language list. The
+  `codeql-all` fan-in gives branch protection one stable name and makes every row required through
+  it, so an added language needs no ruleset edit. Its `if: always()` is what makes that real:
+  without it a failed matrix *skips* the fan-in, and branch protection counts a skipped required
+  check as passed. The context itself is repo settings and unreadable from here, so
+  `//meta/scripts:test_codeql_toolchain` holds the workflow and the docs that quote it to the one
+  string.
 
 ## Renovate auto-commit helper (`Renovate helper` app)
 

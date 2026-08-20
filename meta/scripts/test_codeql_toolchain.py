@@ -20,6 +20,8 @@ protection reads as a pass: the gate is still listed, still green, and no longer
 """
 
 import re
+import subprocess
+import textwrap
 import unittest
 from pathlib import Path
 
@@ -30,15 +32,29 @@ _WORKFLOW = Path(__file__).parent.parent.parent / ".github" / "workflows" / "sec
 _SETUP_GO = "actions/setup-go@"
 _CODEQL_INIT = "github/codeql-action/init@"
 
+# The context branch protection requires. It is a string in repo settings, which nothing here can
+# read, so the coupling this file can hold is between the job and the docs that quote it.
+_FAN_IN_NAME = "CodeQL Analysis (all languages)"
+_DOCS_NAMING_THE_FAN_IN = (
+    Path(__file__).parent.parent.parent / "README.md",
+    Path(__file__).parent.parent.parent / ".claude" / "CLAUDE.md",
+)
+
+
+# Trailing comments introduce the *next* job rather than closing this one, and this file writes
+# comments that quote the very lines these assertions look for — so a block that keeps them can
+# satisfy an assertion out of prose written about a different job.
+_TRAILING_COMMENTS_RE = re.compile(r"(?:^[ \t]*(?:#.*)?\n)+\Z", re.M)
+
 
 def job_block(text: str, job: str) -> str:
-    """One job's lines: its key through the line before the next job key."""
+    """One job's lines: its key through its last line of YAML, comments for the next job dropped."""
     start = re.search(rf"^  {re.escape(job)}:$", text, re.M)
     if start is None:
         raise AssertionError(f"no `{job}:` job in {_WORKFLOW.name}")
     rest = text[start.end() :]
     end = re.search(r"^  [a-zA-Z_][\w-]*:$", rest, re.M)
-    return rest[: end.start()] if end else rest
+    return _TRAILING_COMMENTS_RE.sub("", rest[: end.start()] if end else rest)
 
 
 def step_block(block: str, uses: str) -> str:
@@ -47,6 +63,20 @@ def step_block(block: str, uses: str) -> str:
     rest = block[start:]
     end = re.search(r"^      - ", rest[1:], re.M)
     return rest[: end.start() + 1] if end else rest
+
+
+# The `run: |` body, dedented. Asserting on the shell's *spelling* would fail the `case` form
+# devcontainer.yml uses for the same job while it behaved identically, so the tests run it instead.
+_RUN_SCRIPT_RE = re.compile(r"^ +run: \|\n((?:^ {10}.*\n|^\n)+)", re.M)
+
+
+def run_fan_in(result: str) -> subprocess.CompletedProcess:
+    """Run the fan-in's shell with `result` standing in for the matrix job's outcome."""
+    script = _RUN_SCRIPT_RE.search(job_block(_WORKFLOW.read_text(encoding="utf-8"), "codeql-all"))
+    if script is None:
+        raise AssertionError("no `run: |` script in the codeql-all job")
+    body = textwrap.dedent(script.group(1)).replace("${{ needs.codeql.result }}", result)
+    return subprocess.run(["bash", "-c", body], capture_output=True, text=True)
 
 
 _CODEQL = job_block(_WORKFLOW.read_text(encoding="utf-8"), "codeql")
@@ -129,9 +159,29 @@ class FanInTest(unittest.TestCase):
             "counts a skipped required check as passed",
         )
 
-    def test_fan_in_accepts_only_success(self):
-        """`skipped` must not pass here, unlike devcontainer.yml's gated `base-image-all`."""
-        self.assertIn('!= "success"', self.fan_in)
+    def test_fan_in_is_named_what_branch_protection_names(self):
+        """The ruleset holds this string literally, and no test can read the ruleset."""
+        self.assertIn(
+            f"name: {_FAN_IN_NAME}",
+            self.fan_in,
+            "renaming this job silently decouples it from the required-status-check context, "
+            "which is repo settings — rename both, or neither",
+        )
+
+    def test_fan_in_passes_when_every_row_succeeded(self):
+        self.assertEqual(run_fan_in("success").returncode, 0)
+
+    def test_fan_in_fails_on_anything_else(self):
+        """Ran against the real shell, so the `case` idiom next door would pass this too."""
+        for result in ("failure", "cancelled", "skipped"):
+            with self.subTest(result=result):
+                self.assertNotEqual(
+                    run_fan_in(result).returncode,
+                    0,
+                    f"a matrix that reports `{result}` is a language that was not analysed; "
+                    "unlike devcontainer.yml's path-gated `base-image-all`, nothing gates this "
+                    "matrix, so there is no benign reason for a row to go missing",
+                )
 
 
 class ToolchainStepTest(unittest.TestCase):
@@ -151,6 +201,15 @@ class ToolchainStepTest(unittest.TestCase):
             "setup-go runs after codeql-action/init, so extraction still gets the runner "
             "image's Go",
         )
+
+
+class DocumentedNameTest(unittest.TestCase):
+    """Three files quote the required check by name; none of them is the ruleset."""
+
+    def test_docs_name_the_fan_in(self):
+        for doc in _DOCS_NAMING_THE_FAN_IN:
+            with self.subTest(doc=doc.name):
+                self.assertIn(_FAN_IN_NAME, doc.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
