@@ -9,7 +9,7 @@ load("@unnatural_designs_pypi//:requirements.bzl", "requirement")
 # input to validate against until project pyprojects land.
 #
 # TODO: when gazelle_python is wired (B4 of the Python tooling bootstrap; canonical
-# pointer in docs/future-considerations.md "Python BUILD Generation"), delete this
+# pointer at https://github.com/Syndic/unnatural_designs/issues/239), delete this
 # directory and the `requests` dep in pyproject.toml, then re-export the lockfiles.
 # The chain has its own coverage in the gazelle plugin by then.
 

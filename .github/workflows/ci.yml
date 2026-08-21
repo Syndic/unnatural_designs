@@ -275,8 +275,9 @@ jobs:
           buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
       # `--config=ci` brings in remote cache + BES; `--config=<platform>` pins the target
       # platform explicitly. Each row's runner matches its target arch — required for
-      # Python (`@pypi` wheel resolution is host-bound; see CLAUDE.md "Python Purity Is
-      # Not Enforced"). The matching runner also keeps test execution native: BB
+      # Python (`@pypi` wheel resolution is host-bound; see
+      # docs/adr/0001-go-builds-are-pure-python-is-not.md). The matching runner also keeps
+      # test execution native: BB
       # executors of the same arch are registered as candidates via `--config=<platform>`,
       # darwin executes on the runner itself since BB has no macOS executors.
       - run: bazel test --config=ci --config=${{ matrix.platform }} //...
