@@ -34,8 +34,8 @@ Before declaring any task complete:
    component and update them in the same commit.
 
 3. **Tracker items** — if an open issue described something that has now been done, close it with a
-   comment pointing at the change. If a `blocked` issue's **Trigger to revisit** has fired, say so
-   on the issue rather than silently acting on it.
+   comment pointing at the change. If the condition under a `blocked` issue's
+   `## Trigger to revisit` heading has fired, say so on the issue rather than silently acting on it.
 
 ## Comment style — keep it tight, trim what's oversized
 

@@ -47,5 +47,7 @@ The same property is much more expensive to maintain and the benefit is smaller:
   set.
 - Introducing cgo later is a deliberate decision with visible cost, not a quiet drift — which is the
   point of enforcing the policy rather than merely stating it.
-- Pure Go is why `rules_python_gazelle_plugin` cannot be adopted today: its gazelle binary depends on
-  `smacker/go-tree-sitter` via cgo. See #239.
+- The check's scope is `go.work` members, so Go tooling pulled in as a Bazel module sits outside it.
+  `rules_python_gazelle_plugin` is the live example: its gazelle binary does not compile under the
+  pinned Go SDK (see `MODULE.bazel` and #239). That is a toolchain problem rather than a policy
+  violation, and `check_no_cgo.py` would not flag it either way.

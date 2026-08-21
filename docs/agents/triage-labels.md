@@ -18,7 +18,7 @@ These are **not** triage roles. They sit orthogonal to the state role: an issue 
 
 | Label     | Meaning                                                                                                                       |
 | --------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `blocked` | Waiting on a condition before the work can start. The condition is written in the issue body under a `**Trigger to revisit:**` heading. |
+| `blocked` | Waiting on a condition before the work can start. The condition is written in the issue body under a `## Trigger to revisit` heading. |
 
 `blocked` covers both external gating (an upstream release, someone else's merge) and internal gating (wanting to see how a recent change behaves before choosing the next priority). The trigger line says which; the label deliberately does not, because one label with a precise sentence beats two labels with a fuzzy boundary between them.
 
