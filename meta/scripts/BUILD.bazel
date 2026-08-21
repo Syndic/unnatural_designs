@@ -39,6 +39,30 @@ py_test(
 )
 
 py_library(
+    name = "check_adr_numbers_lib",
+    srcs = ["check_adr_numbers.py"],
+    deps = [":_workspace_lib"],
+)
+
+py_binary(
+    name = "check_adr_numbers",
+    srcs = ["check_adr_numbers.py"],
+    main = "check_adr_numbers.py",
+    deps = [":_workspace_lib"],
+)
+
+py_test(
+    name = "test_check_adr_numbers",
+    size = "small",
+    srcs = ["test_check_adr_numbers.py"],
+    main = "test_check_adr_numbers.py",
+    deps = [
+        ":_workspace_lib",
+        ":check_adr_numbers_lib",
+    ],
+)
+
+py_library(
     name = "check_modules_lib",
     srcs = ["check_modules.py"],
     deps = [":_workspace_lib"],

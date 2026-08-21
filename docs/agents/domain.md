@@ -10,6 +10,16 @@ codebase.
 - **`docs/adr/`**: system-wide architectural decisions.
 - **`<context>/docs/adr/`**: decisions scoped to a single context.
 
+**ADR numbers are unique repo-wide, not per directory.** A new ADR takes the next number across
+*every* `docs/adr/` directory in the repo, whichever one it lands in — so `docs/adr/0001-…` and
+`meta/docs/adr/0002-…` is correct and a second `0001` anywhere is not. This deliberately diverges
+from the `/domain-modeling` skill's `ADR-FORMAT.md`, which scans a single directory; follow this
+file, and note that a per-directory scan will hand you a number that is already taken. The
+directory still says whose decision it is: repo-wide, or one context's.
+
+`meta/scripts/check_adr_numbers.py` enforces both the uniqueness and the `NNNN-kebab-slug.md`
+filename shape, as the `ADR number uniqueness check` CI job.
+
 If any of these files don't exist, **proceed silently**. Don't flag their absence; don't suggest
 creating them upfront. The `/domain-modeling` skill (reached via `/grill-with-docs` and
 `/improve-codebase-architecture`) creates them lazily when terms or decisions actually get resolved.

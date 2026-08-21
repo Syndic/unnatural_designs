@@ -63,6 +63,33 @@
       }
     },
     {
+      "label": "check: adr numbers",
+      "type": "shell",
+      "command": "python3",
+      "args": ["${workspaceFolder}/meta/scripts/check_adr_numbers.py"],
+      "presentation": {
+        "reveal": "silent",
+        "panel": "dedicated",
+        "showReuseMessage": false,
+        "clear": true,
+        "revealProblems": "onProblem"
+      },
+      "problemMatcher": {
+        "owner": "check-adr-numbers",
+        "source": "check_adr_numbers",
+        "fileLocation": ["relative", "${workspaceFolder}"],
+        "severity": "error",
+        "pattern": {
+          "regexp": "^(\\S+):(\\d+):(\\d+)-(\\d+):\\s+(.+)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "endColumn": 4,
+          "message": 5
+        }
+      }
+    },
+    {
       "label": "Bazel Build all",
       "detail": "bazel build //...",
       "type": "process",

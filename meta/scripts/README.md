@@ -10,9 +10,10 @@ without blocking).
 | `check_modules.py`      | Go module matrix/config and Python workspace/lock invariants are consistent                    | `ci.yml`, `security.yml`      | —                     | `check: modules`                  |
 | `check_go_work.py`      | Every Go module in the repo is registered in `go.work`                                         | `ci.yml`                      | —                     | `check: go work`                  |
 | `check_no_cgo.py`       | No `import "C"` in our Go source and no transitive deps that compile C/C++/cgo/SWIG            | `ci.yml`                      | —                     | —                                 |
+| `check_adr_numbers.py`  | ADR numbers are unique repo-wide and filenames are `NNNN-kebab-slug.md`         | `ci.yml`                      | —                     | `check: adr numbers`              |
 | `check_secrets_dir.py`  | `secrets/` contains no committed files other than `secrets.md`                                 | `ci.yml`                      | `check-secrets-dir`   | —                                 |
 
-`_workspace.py` is a private shared helper for the four guards above (Bazel workspace discovery,
+`_workspace.py` is a private shared helper for the five guards above (Bazel workspace discovery,
 module enumeration). The leading underscore signals it's not a public API; `test__workspace.py`
 covers it directly.
 

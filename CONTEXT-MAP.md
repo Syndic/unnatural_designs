@@ -5,7 +5,8 @@ directories in the [README](README.md), not a directory under `src/`. See
 [`docs/agents/domain.md`](docs/agents/domain.md) for how the engineering skills consume this file.
 
 Each context owns its own `CONTEXT.md` (its glossary) and its own `docs/adr/` (decisions scoped to
-it). Repo-wide decisions live in `docs/adr/`.
+it). Repo-wide decisions live in `docs/adr/`. ADR *numbers* are unique across all of those
+directories rather than per directory — see [`docs/agents/domain.md`](docs/agents/domain.md).
 
 ## Contexts
 
