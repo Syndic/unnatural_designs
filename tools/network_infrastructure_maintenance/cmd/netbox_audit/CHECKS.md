@@ -41,11 +41,11 @@ recorded.
 
 **Why it matters:** Without position data, rack diagrams and capacity planning are unreliable.
 
-**Configuration knobs:**
+**Configuration knobs**, under `rules.rack-placement` (see [CONFIG.md](CONFIG.md)):
 
-- `rack_placement.exempt_child_devices` — skip the check for devices that have a parent device
-  (default: `true`; child devices don't occupy their own rack unit)
-- `rack_placement.exempt_device_tags` — device tags that exempt a device from this check (default:
+- `exempt_child_devices` — skip the check for devices that have a parent device (default: `true`;
+  child devices don't occupy their own rack unit)
+- `exempt_device_tags` — device tags that exempt a device from this check (default:
   `["0u-rack-device"]`; use this for zero-U items like patch panels or PDUs)
 
 ---
@@ -97,14 +97,14 @@ subnets that no longer have a VLAN.
 **Why it matters:** Wireless clients that connect to a managed switch port need proper VLAN tagging
 for correct network placement. Missing MAC addresses prevent DHCP reservations from being created.
 
-**Configuration knobs:**
+**Configuration knobs**, under `rules.wireless-normalization` (see [CONFIG.md](CONFIG.md)):
 
-- `wireless.suppress_if_connected_wired_interface_is_complete` — skip the check for a device if it
-  already has a fully-configured wired interface (default: `true`; avoids noise for dual-homed
-  devices where the wired port is the primary)
-- `wireless.require_mode` — require 802.1Q mode (default: `true`)
-- `wireless.require_untagged_vlan` — require an untagged VLAN (default: `true`)
-- `wireless.require_primary_mac` — require a primary MAC (default: `true`)
+- `suppress_if_connected_wired_interface_is_complete` — skip the check for a device if it already
+  has a fully-configured wired interface (default: `true`; avoids noise for dual-homed devices
+  where the wired port is the primary)
+- `require_mode` — require 802.1Q mode (default: `true`)
+- `require_untagged_vlan` — require an untagged VLAN (default: `true`)
+- `require_primary_mac` — require a primary MAC (default: `true`)
 
 ---
 
@@ -124,12 +124,12 @@ PoE type hierarchy from least to most capable:
 **Why it matters:** Mis-matched PoE types can cause devices to fail to power on or to operate in
 degraded mode.
 
-**Configuration knobs:**
+**Configuration knobs**, under `rules.poe-power` (see [CONFIG.md](CONFIG.md)):
 
-- `poe.check_powered_device_supply` — enable or disable the entire check (default: `true`)
-- `poe.require_pse_mode_on_peer` — flag the finding if the connected peer is not marked as PSE
+- `check_powered_device_supply` — enable or disable the entire check (default: `true`)
+- `require_pse_mode_on_peer` — flag the finding if the connected peer is not marked as PSE
   (default: `true`)
-- `poe.unknown_type_policy` — how to handle a PD or PSE with an unset PoE type: `"fail"` (flag as a
+- `unknown_type_policy` — how to handle a PD or PSE with an unset PoE type: `"fail"` (flag as a
   finding) or `"ignore"` (skip silently) (default: `"fail"`)
 
 ---
@@ -142,10 +142,10 @@ assigned, except interfaces on WAN-side device roles.
 **Why it matters:** VRF assignment determines routing context. An interface without a VRF is
 ambiguously placed and can cause routing misconfigurations in tooling that reads from NetBox.
 
-**Configuration knobs:**
+**Configuration knobs**, under `rules.interface-vrf` (see [CONFIG.md](CONFIG.md)):
 
-- `vrf.require_on_interfaces` — enable or disable this check (default: `true`)
-- `wan.device_roles` — device roles considered WAN-side, which are exempt from VRF requirements
+- `require_on_interfaces` — enable or disable this check (default: `true`)
+- `wan_device_roles` — device roles considered WAN-side, which are exempt from VRF requirements
   (default: `["ISP Equipment"]`)
 
 ---
@@ -159,10 +159,10 @@ ambiguously placed and can cause routing misconfigurations in tooling that reads
 VRF is ambiguous. Tools that export routes or generate firewall rules from NetBox will produce
 incorrect results.
 
-**Configuration knobs:**
+**Configuration knobs**, under `rules.private-ip-vrf` (see [CONFIG.md](CONFIG.md)):
 
-- `vrf.require_on_private_ips` — enforce VRF on RFC1918 addresses (default: `true`)
-- `vrf.require_on_public_ips` — also enforce VRF on public IP addresses (default: `false`)
+- `require_on_private_ips` — enforce VRF on private addresses (default: `true`)
+- `require_on_public_ips` — also enforce VRF on public IP addresses (default: `false`)
 
 ---
 
