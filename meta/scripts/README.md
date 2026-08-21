@@ -13,6 +13,12 @@ without blocking).
 | `check_adr_numbers.py`  | ADR numbers are unique repo-wide and filenames are `NNNN-kebab-slug.md`         | `ci.yml`                      | —                     | `check: adr numbers`              |
 | `check_secrets_dir.py`  | `secrets/` contains no committed files other than `secrets.md`                                 | `ci.yml`                      | `check-secrets-dir`   | —                                 |
 
+`check_adr_numbers.py` also answers `--next`, which prints the next free ADR number and nothing
+else. That is the supported way to pick one — the alternative is a repo-wide search, since the
+numbering is global while the directories are per-context. It deliberately has no counter file to
+read: the numbers already live in the filenames, and a second copy would be a derived file needing
+its own freshness check, and a merge conflict on every concurrent ADR.
+
 `_workspace.py` is a private shared helper for the five guards above (Bazel workspace discovery,
 module enumeration). The leading underscore signals it's not a public API; `test__workspace.py`
 covers it directly.

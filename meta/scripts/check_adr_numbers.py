@@ -7,7 +7,8 @@ Verifies that ADR numbers are unique across every decision-record directory in t
 Numbering is repo-global, not per-directory: a context's ADR takes the next number across
 *all* of docs/adr/ and <context>/docs/adr/. See docs/agents/domain.md.
 
-Usage: ./meta/scripts/check_adr_numbers.py
+Usage: ./meta/scripts/check_adr_numbers.py            # check
+       ./meta/scripts/check_adr_numbers.py --next     # print the next free number
 """
 
 import re
@@ -39,35 +40,68 @@ def adr_files(root: Path) -> list[Path]:
     )
 
 
-def violations(files: list[Path]) -> list[tuple[Path, str]]:
-    """(path, message) for every malformed name and every reused number."""
-    found: list[tuple[Path, str]] = []
-    by_number: dict[str, list[Path]] = defaultdict(list)
+def next_number(files: list[Path]) -> str:
+    """The lowest number no ADR has taken yet: highest in use plus one, or 0001 if none are.
 
+    Deliberately max+1 rather than count+1, so a gap left by a deleted or renamed ADR is never
+    handed out again -- a reused number would break every reference to the original.
+    """
+    used = [int(n) for n in _numbers_by_path(files)]
+    return f"{(max(used) + 1) if used else 1:04d}"
+
+
+def _numbers_by_path(files: list[Path]) -> dict[str, list[Path]]:
+    """Number -> the ADR paths claiming it. Malformed and exempt names are absent."""
+    by_number: dict[str, list[Path]] = defaultdict(list)
     for path in files:
         if path.name in _EXEMPT:
             continue
         match = _ADR_NAME_RE.match(path.name)
-        if match is None:
+        if match is not None:
+            by_number[match.group(1)].append(path)
+    return by_number
+
+
+def violations(files: list[Path]) -> list[tuple[Path, str]]:
+    """(path, message) for every malformed name and every reused number."""
+    found: list[tuple[Path, str]] = []
+    by_number = _numbers_by_path(files)
+
+    for path in files:
+        if path.name not in _EXEMPT and _ADR_NAME_RE.match(path.name) is None:
             found.append(
                 (path, f"not a valid ADR filename: expected NNNN-kebab-slug.md, got {path.name}")
             )
-            continue
-        by_number[match.group(1)].append(path)
 
+    # Named in the message so a collision carries its own fix. "or later" because several
+    # duplicates all see the same free number and only the first can take it.
+    free = next_number(files)
     for number, paths in by_number.items():
         if len(paths) == 1:
             continue
         first, *rest = paths
         for path in rest:
-            found.append((path, f"duplicate ADR number {number}: already used by {first}"))
+            found.append(
+                (
+                    path,
+                    f"duplicate ADR number {number}: already used by {first}; "
+                    f"renumber to {free} or later",
+                )
+            )
 
     return sorted(found)
 
 
-def main() -> int:
-    root = workspace_root()
+def run(root: Path, next_only: bool) -> int:
     files = adr_files(root)
+
+    if next_only:
+        # A query, not a check: prints the number and nothing else, so it can be substituted
+        # into a filename. Reports a number even when the tree has violations -- `--next` is
+        # how you get out of a collision, so refusing to answer during one would be backwards.
+        print(next_number(files))
+        return 0
+
     found = violations(files)
 
     for path, message in found:
@@ -79,6 +113,10 @@ def main() -> int:
         print(f"ADR numbers are unique across {len(files)} decision record(s).")
 
     return len(found)
+
+
+def main() -> int:
+    return run(workspace_root(), "--next" in sys.argv[1:])
 
 
 if __name__ == "__main__":
