@@ -3,17 +3,23 @@ load("@gazelle//:def.bzl", "gazelle")
 # gazelle:prefix github.com/Syndic/unnatural_designs
 gazelle(name = "gazelle")
 
-# Workflows read as *test data*, not built: three tests assert couplings that hold across files —
+# Workflows read as *test data*, not built: four tests assert couplings that hold across files —
 # the classification rules these workflows pass to classify_changed_paths.py, the env var
-# devcontainer.yml sets for devcontainer.json's BASE_IMAGE override, and the Go toolchain step
-# security.yml's CodeQL job needs ahead of extraction. Each stays green while drifting, so the
+# devcontainer.yml sets for devcontainer.json's BASE_IMAGE override, the Go toolchain step
+# security.yml's CodeQL job needs ahead of extraction, and the shared action ci.yml and
+# security.yml both delegate their module check to. Each stays green while drifting, so the
 # tests read the real file.
 exports_files([
+    ".github/actions/check-modules/action.yml",
     ".github/workflows/ci.yml",
     ".github/workflows/devcontainer.yml",
     ".github/workflows/renovate-derived-files.yml",
     ".github/workflows/security.yml",
 ])
+
+# The custom-manager patterns are read as test data too: a marker the patterns stop claiming is
+# a pin that silently freezes — see //meta/scripts:test_check_modules_action.
+exports_files(["renovate.json"])
 
 # Same posture for prose that hand-copies something the tests can check it against: the hook table
 # against the config's ids (//meta/scripts:test_precommit_docs), and both docs against the required

@@ -36,6 +36,14 @@ branch protection requires. Same reason it rides `bazel test //...`: the couplin
 checked-in files, and nothing fails while they drift — not until `go.work` outruns the runner
 image's Go, or a green required check turns out to have been skipped.
 
+`test_check_modules_action.py` is the third of that shape. `ci.yml` and `security.yml` both run
+`check_modules.py` — jobs can't be depended on across workflows — and both reach it through
+`.github/actions/check-modules`, so the two callers share one definition of the setup rather than a
+copy each. It asserts that neither caller has re-inlined the steps, and that a `renovate.json`
+customManager still claims the Python pin now that the pin lives under `.github/actions/`. Both
+failures are silent: a re-inlined copy runs the same check under whatever it pins, and an unclaimed
+marker simply stops moving.
+
 `smoke_py/` is a transient `py_test` that proves the end-to-end Python plumbing chain
 (`pyproject.toml` → `uv.lock` → `requirements_lock.txt` → `pip.parse` → `@unnatural_designs_pypi//...`) by importing
 `requests` and asserting it loads. Slated for deletion once gazelle_python is wired (see

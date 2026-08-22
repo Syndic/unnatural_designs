@@ -185,7 +185,7 @@ Three GitHub Actions workflows run on every push and pull request to `main`.
 | ---------------------------- | -------------------------------------------------------------------------------------------------- |
 | Gazelle check                | Always - verifies BUILD files match source                                                         |
 | MODULE.bazel.lock freshness  | Always - verifies `bazel mod tidy` leaves MODULE.bazel and its lock unchanged                      |
-| Module completeness check    | Always - verifies Go module matrix/config and Python workspace/lock invariants                     |
+| Module completeness check    | Always - verifies Go module matrix/config and Python workspace/lock invariants (shared action)     |
 | go.work check                | Always - verifies all Go modules are registered in `go.work`                                       |
 | Secrets check                | Always - verifies the `secrets/` directory contains no committed files                             |
 | No-cgo policy check          | Always - rejects `import "C"` and transitive deps that compile C/C++/cgo/SWIG                      |
@@ -200,7 +200,7 @@ Three GitHub Actions workflows run on every push and pull request to `main`.
 
 | Job                               | Purpose                                                                         |
 | --------------------------------- | ------------------------------------------------------------------------------- |
-| Module completeness check         | Gate for the per-module security jobs below                                     |
+| Module completeness check         | Gate for the per-module security jobs below - same shared action as CI          |
 | Semgrep                           | SAST - scans for injection flaws, insecure API usage, and hardcoded secrets     |
 | `CodeQL Analysis (<language>)`    | SAST - one job per language: actions, Go, Python                                |
 | `CodeQL Analysis (all languages)` | Fan-in over the per-language jobs - the name to require in the ruleset          |
@@ -316,11 +316,12 @@ Versions that live in a plain string rather than a manifest Renovate understands
 `customManagers` regexes in [`renovate.json`](renovate.json). They come in two flavours, and the
 difference matters when adding one:
 
-- **Marker-driven** — a Dockerfile `ARG`, a shell assignment in `post-create.sh`, a workflow
-  `with:`/`env:` value. Each expects a `# renovate: datasource=<ds> depName=<name>` comment on the
-  line **immediately above** the value, and the value must be quoted in the workflow case
+- **Marker-driven** — a Dockerfile `ARG`, a shell assignment in `post-create.sh`, a workflow or
+  composite-action `with:`/`env:` value. Each expects a `# renovate: datasource=<ds> depName=<name>`
+  comment on the line **immediately above** the value, and the value must be quoted in the YAML case
   (`key: "1.2.3"`). The key name is not constrained, so both `version:` and `TY_VERSION:` are
-  tracked.
+  tracked. The YAML pattern claims `.github/workflows/*.yml` and `.github/actions/*/action.yml`
+  both, so a pin keeps its coverage when steps move into a shared action.
 - **Structural** — the two `MODULE.bazel` patterns, which carry `datasourceTemplate`/`depNameTemplate`
   in the config and match the pin site directly (`go_sdk.download(… version = "…")`, and any
   `python_version = "…"`). There is no marker comment to grep for, so these are easy to forget when

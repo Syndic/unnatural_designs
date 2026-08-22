@@ -1,0 +1,24 @@
+name: Module completeness check
+description: Installs uv and the pinned Python, then runs the polyglot module completeness check.
+
+# Shared by ci.yml and security.yml, which each need the check for different reasons: CI gates
+# golangci-lint's module matrix on it, security.yml gates govulncheck's and pip-audit's. Jobs
+# cannot be depended on across workflows, so both run it — this action shares the *definition*,
+# not the execution. That is the whole point of it: the two copies restated the Python pin and
+# two action SHAs, and nothing failed if they diverged, so the check could silently run under a
+# different interpreter in each workflow.
+#
+# Callers check out the repo themselves, matching setup-bazel-remote next door; the script reads
+# the worktree, so a caller without a checkout is the error case rather than a supported one.
+runs:
+  using: composite
+  steps:
+    - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+    # The `# renovate:` marker is claimed by a renovate.json customManager whose file pattern
+    # covers `.github/actions/*/action.yml` for this pin; see README's "Marker-driven".
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      with:
+        # renovate: datasource=python-version depName=python
+        python-version: "3.14"
+    - run: python3 meta/scripts/check_modules.py
+      shell: bash
