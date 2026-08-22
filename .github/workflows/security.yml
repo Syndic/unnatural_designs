@@ -21,19 +21,14 @@ jobs:
   # ── Monorepo Structure Maintenance ────────────────────────────────────────────
   # Checks that per-language tooling is fully wired up before per-module jobs run. Covers Go
   # (module matrix completeness, .golangci.yml presence) and Python (workspace tool config,
-  # member glob coverage, requirements_lock.txt freshness). uv is needed for the lock check;
-  # setup-uv brings it alongside the 3.14 Python interpreter the script targets.
+  # member glob coverage, requirements_lock.txt freshness). The steps are shared with ci.yml,
+  # which runs the same check as its own gate.
   modules-check:
     name: Module completeness check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          # renovate: datasource=python-version depName=python
-          python-version: "3.14"
-      - run: python3 meta/scripts/check_modules.py
+      - uses: ./.github/actions/check-modules
 
   # ── Static Application Security Testing (SAST) ───────────────────────────────
   # Analyses source code for security vulnerabilities — injection flaws, insecure API usage,

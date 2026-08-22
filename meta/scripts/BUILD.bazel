@@ -115,6 +115,21 @@ py_test(
     main = "test_codeql_toolchain.py",
 )
 
+# Same shape again: the assertion is the whole gate. Guards the action ci.yml and security.yml
+# share against a caller re-inlining it, and against the Renovate pattern that reaches its pin.
+py_test(
+    name = "test_check_modules_action",
+    size = "small",
+    srcs = ["test_check_modules_action.py"],
+    data = [
+        "//:.github/actions/check-modules/action.yml",
+        "//:.github/workflows/ci.yml",
+        "//:.github/workflows/security.yml",
+        "//:renovate.json",
+    ],
+    main = "test_check_modules_action.py",
+)
+
 py_library(
     name = "classify_changed_paths_lib",
     srcs = ["classify_changed_paths.py"],

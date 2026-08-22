@@ -51,6 +51,19 @@ jobs:
           fi
           echo "MODULE.bazel and MODULE.bazel.lock are what 'bazel mod tidy' produces."
 
+  # Polyglot module/project completeness check. Per language (Go, Python):
+  # config-file reachability + workflow matrix consistency. Python-only:
+  # root pyproject.toml has the required tool sections, every per-project
+  # pyproject is covered by [tool.uv.workspace].members, and
+  # requirements_lock.txt is fresh relative to uv.lock. The steps are shared
+  # with security.yml, which gates its own per-module jobs on the same check.
+  modules-check:
+    name: Module completeness check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/check-modules
+
   # The repo's `meta/scripts/*.py` target Python 3.14 (matches the rules_python
   # toolchain pin in MODULE.bazel and the `target-version` in pyproject.toml's
   # [tool.ruff]). Ubuntu-24.04 still ships 3.12 as `python3`, so the language-
@@ -58,24 +71,6 @@ jobs:
   # outside Bazel. The `# renovate:` comment above each `python-version` is
   # picked up by the regex matcher in renovate.json and grouped with the
   # MODULE.bazel python_version under "Language toolchain SDKs".
-
-  # Polyglot module/project completeness check. Per language (Go, Python):
-  # config-file reachability + workflow matrix consistency. Python-only:
-  # root pyproject.toml has the required tool sections, every per-project
-  # pyproject is covered by [tool.uv.workspace].members, and
-  # requirements_lock.txt is fresh relative to uv.lock. uv is needed for the
-  # last check — setup-uv brings both uv and a 3.14 Python interpreter.
-  modules-check:
-    name: Module completeness check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          # renovate: datasource=python-version depName=python
-          python-version: "3.14"
-      - run: python3 meta/scripts/check_modules.py
 
   go-work-check:
     name: go.work consistency/completeness check
