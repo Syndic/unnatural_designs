@@ -5,7 +5,8 @@ directories in the [README](README.md), not a directory under `src/`. See
 [`docs/agents/domain.md`](docs/agents/domain.md) for how the engineering skills consume this file.
 
 Each context owns its own `CONTEXT.md` (its glossary) and its own `docs/adr/` (decisions scoped to
-it). Repo-wide decisions live in `docs/adr/`.
+it). Repo-wide decisions live in `docs/adr/`. ADR *numbers* are unique across all of those
+directories rather than per directory — see [`docs/agents/domain.md`](docs/agents/domain.md).
 
 ## Contexts
 
@@ -27,8 +28,7 @@ it). Repo-wide decisions live in `docs/adr/`.
   Treat a request for anything under "planned" as unimplemented: a redundancy check that matched a
   request against this domain language would otherwise close a real one as already-done.
 
-- **Repo meta** — `meta/`
-  _(`CONTEXT.md` not yet written)_
+- **Repo meta** — `meta/` ([`CONTEXT.md`](meta/CONTEXT.md))
 
   The monorepo's own automation: `meta/scripts/` (pre-commit checks, changed-path classification,
   Renovate proposal ratification and manual-job triggering, base-image pin sync) and

@@ -52,6 +52,9 @@
     "check: go work": [
       "**/go.mod",
       "go.work"
+    ],
+    "check: adr numbers": [
+      "**/docs/adr/*.md"
     ]
   },
   "triggerTaskOnSave.showStatusBarToggle": true,
