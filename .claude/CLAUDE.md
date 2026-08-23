@@ -75,17 +75,16 @@ matter:
 
 - **A check that reads only the tree belongs in `ci.yml`.** Same commit, same answer, forever — so
   re-running it tells you nothing you did not already know.
-- **A check whose verdict moves with an external database belongs in `security.yml`.** govulncheck,
-  pip-audit, Semgrep and Trivy each fetch at run time — the Go vuln DB, PyPI advisories, the
-  registry rule packs, Trivy's own DB — so any of them can turn red on an untouched commit when an
-  advisory lands. That is what the Monday cron is for.
+- **A check whose verdict moves with an input we don't pin belongs in `security.yml`.** Four fetch
+  a database at run time — govulncheck the Go vuln DB, pip-audit PyPI advisories, Semgrep the
+  registry rule packs, Trivy its own DB — so an advisory landing turns them red on an untouched
+  commit. `codeql` qualifies by a different route: the SHA pin fixes the *action*, not the analysis
+  engine, which GitHub selects per run (see "CodeQL runs as advanced setup"). Either way the Monday
+  cron is what surfaces it.
 
-`codeql` is the exception, and worth knowing about before the rule gets applied to it. Its
-`codeql-action/init` is SHA-pinned with no `tools:` input, so the query bundle rides the action
-release: the verdict moves on a Renovate bump, which is a tree change, not on an advisory landing.
-By the criterion above it reads like a `ci.yml` job. It stays on the cron for a different reason —
-code scanning's UI is fed by periodic re-analysis, and the weekly cadence is inherited from the
-default setup this job replaced (see "CodeQL runs as advanced setup"). Moving it would drop that.
+Read the criterion as "does anything reach this check from outside the tree", not as "is there an
+advisory database" — the narrower reading misses CodeQL, and a pinned `uses:` is not evidence that
+a check is tree-only.
 
 That axis is why `golangci-lint` moved out of Security in #18, and why `modules-check` later
 followed it out — a completeness gate over hand-listed matrices is a pure function of the tree, so
@@ -150,6 +149,16 @@ configuration that runs CodeQL with no workflow file in the repo. Load-bearing f
   the `default` query suite and `remote` threat model (both are codeql-action defaults, so
   neither is spelled out); `ubuntu-latest`; categories `/language:<lang>`. The weekly cadence is
   now `security.yml`'s own Monday cron rather than a separate schedule.
+- **The SHA pin does not pin the analysis, and nothing here should.** With no `tools:` input,
+  `codeql-action/init` resolves the CLI — and the query packs in the bundle it carries — per run
+  from GitHub's `default_codeql_version_*_enabled` feature flags; `defaults.json` is the
+  *override*, reached only via `tools: linked` (the action's own `getCodeQLSource` comment says it
+  in those words). So a bundle GitHub rolls out server-side brings new default-suite queries to an
+  untouched commit, which is what earns this job its place on the cron. Leave `tools:` unset:
+  `tools: linked` is the one input that would pin the analysis to the action release and strand it
+  on older queries. The `uses:` pin itself is unrelated and stays — it is repo-wide policy
+  (README's "Dependency updates"), it guards the code running with `security-events: write` and
+  `autobuild` over our source, and Renovate keeps it current in the routine batch.
 - **`build-mode: none` is not available for Go** (nor Swift or Kotlin), so Go is the one language
   whose analysis has to build, and so the one that needs a toolchain on PATH.
 - **`CodeQL Analysis (all languages)` is the name for the ruleset to require**, not the
