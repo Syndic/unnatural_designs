@@ -68,6 +68,38 @@ a parenthetical) so a tag sweep doesn't trip on it.
 [its README](../.github/actions/commit-file-via-app/README.md) before changing its inputs or its
 no-op-when-no-diff behavior.
 
+## Which workflow a check belongs in
+
+`ci.yml` and `security.yml` are split on **what makes a check's result change**, not on subject
+matter:
+
+- **A check that reads only the tree belongs in `ci.yml`.** Same commit, same answer, forever — so
+  re-running it tells you nothing you did not already know.
+- **A check whose verdict moves with an input we don't pin belongs in `security.yml`.** Four fetch
+  a database at run time — govulncheck the Go vuln DB, pip-audit PyPI advisories, Semgrep the
+  registry rule packs, Trivy its own DB — so an advisory landing turns them red on an untouched
+  commit. `codeql` qualifies by a different route: the SHA pin fixes the *action*, not the analysis
+  engine, which GitHub selects per run (see "CodeQL runs as advanced setup"). Either way the Monday
+  cron is what surfaces it.
+
+Read the criterion as "does anything reach this check from outside the tree", not as "is there an
+advisory database" — the narrower reading misses CodeQL, and a pinned `uses:` is not evidence that
+a check is tree-only.
+
+That axis is why `golangci-lint` moved out of Security in #18, and why `modules-check` later
+followed it out — a completeness gate over hand-listed matrices is a pure function of the tree, so
+its one run in `ci.yml` is the whole of it. Note `check_modules.py` globs *every* file in
+`.github/workflows/`, so that single run validates `security.yml`'s own `govulncheck` matrix and
+names it by path.
+
+The temptation the split has to survive is a tree-only gate re-added to `security.yml` so that
+workflow's green is self-certifying. It buys nothing: on a PR both workflows run and `ci.yml` blocks
+the merge through `build-and-test-all`, and on the schedule the tree being scanned is one that
+already passed the gate at merge. What it costs is a job that re-derives a settled answer every
+Monday. The accepted consequence is that a stale matrix shows `ci.yml` red while `security.yml`
+reports green — the merge is still blocked, but security.yml's green answers a narrower question
+than it looks like it does.
+
 ## Superseding CI runs
 
 Every workflow except `renovate-derived-files.yml` carries the same block, and the shape of the
@@ -117,6 +149,16 @@ configuration that runs CodeQL with no workflow file in the repo. Load-bearing f
   the `default` query suite and `remote` threat model (both are codeql-action defaults, so
   neither is spelled out); `ubuntu-latest`; categories `/language:<lang>`. The weekly cadence is
   now `security.yml`'s own Monday cron rather than a separate schedule.
+- **The SHA pin does not pin the analysis, and nothing here should.** With no `tools:` input,
+  `codeql-action/init` resolves the CLI — and the query packs in the bundle it carries — per run
+  from GitHub's `default_codeql_version_*_enabled` feature flags; `defaults.json` is the
+  *override*, reached only via `tools: linked` (the action's own `getCodeQLSource` comment says it
+  in those words). So a bundle GitHub rolls out server-side brings new default-suite queries to an
+  untouched commit, which is what earns this job its place on the cron. Leave `tools:` unset:
+  `tools: linked` is the one input that would pin the analysis to the action release and strand it
+  on older queries. The `uses:` pin itself is unrelated and stays — it is repo-wide policy
+  (README's "Dependency updates"), it guards the code running with `security-events: write` and
+  `autobuild` over our source, and Renovate keeps it current in the routine batch.
 - **`build-mode: none` is not available for Go** (nor Swift or Kotlin), so Go is the one language
   whose analysis has to build, and so the one that needs a toolchain on PATH.
 - **`CodeQL Analysis (all languages)` is the name for the ruleset to require**, not the

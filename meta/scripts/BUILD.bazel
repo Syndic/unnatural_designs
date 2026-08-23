@@ -115,6 +115,16 @@ py_test(
     main = "test_codeql_toolchain.py",
 )
 
+# Same shape as the two above: the assertion is the whole gate. What it guards is invisible while
+# the uv workspace has no members — the export is correct by coincidence until the day one lands.
+py_test(
+    name = "test_pip_audit_coverage",
+    size = "small",
+    srcs = ["test_pip_audit_coverage.py"],
+    data = ["//:.github/workflows/security.yml"],
+    main = "test_pip_audit_coverage.py",
+)
+
 py_library(
     name = "classify_changed_paths_lib",
     srcs = ["classify_changed_paths.py"],
