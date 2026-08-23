@@ -76,8 +76,16 @@ matter:
 - **A check that reads only the tree belongs in `ci.yml`.** Same commit, same answer, forever — so
   re-running it tells you nothing you did not already know.
 - **A check whose verdict moves with an external database belongs in `security.yml`.** govulncheck,
-  pip-audit, Semgrep, CodeQL and Trivy can each turn red on an untouched commit when an advisory
-  lands, which is what the Monday cron is for.
+  pip-audit, Semgrep and Trivy each fetch at run time — the Go vuln DB, PyPI advisories, the
+  registry rule packs, Trivy's own DB — so any of them can turn red on an untouched commit when an
+  advisory lands. That is what the Monday cron is for.
+
+`codeql` is the exception, and worth knowing about before the rule gets applied to it. Its
+`codeql-action/init` is SHA-pinned with no `tools:` input, so the query bundle rides the action
+release: the verdict moves on a Renovate bump, which is a tree change, not on an advisory landing.
+By the criterion above it reads like a `ci.yml` job. It stays on the cron for a different reason —
+code scanning's UI is fed by periodic re-analysis, and the weekly cadence is inherited from the
+default setup this job replaced (see "CodeQL runs as advanced setup"). Moving it would drop that.
 
 That axis is why `golangci-lint` moved out of Security in #18, and why `modules-check` later
 followed it out — a completeness gate over hand-listed matrices is a pure function of the tree, so

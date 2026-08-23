@@ -120,8 +120,8 @@ jobs:
   # differs by language — govulncheck does call-graph reachability (only fires when our code
   # reaches the vulnerable symbol); pip-audit is manifest-based (fires on any flagged version in
   # the resolved set). Both run once per resolution unit: govulncheck per Go module, pip-audit
-  # once over the workspace-wide uv resolution (uv enforces single-version-per-package across
-  # workspace members, so one scan covers every member).
+  # once over the workspace-wide uv resolution — but only because its export asks for the whole
+  # workspace; see the flags on the export step, which are what make "every member" true.
   # TEND(lang-expand): add an equivalent per-language scanner as languages are adopted
   #   (e.g. cargo-audit for Rust, trivy fs --scanners vuln for languages without a dedicated
   #   reachability tool).
@@ -180,10 +180,11 @@ jobs:
   # file is currently in sync — pre-commit and the Renovate auto-commit workflow each
   # police that on their own paths.
   #
-  # Its coverage rests on one narrower clause than govulncheck's: a per-project pyproject.toml
-  # that matches no glob in `[tool.uv.workspace].members` is absent from uv.lock, so the export
-  # carries none of its dependencies and this job passes having scanned none of them. That is
-  # `check_python_workspace_members` in meta/scripts/check_modules.py, enforced by ci.yml.
+  # What this job actually covers is decided by the export flags below, not by any check in
+  # ci.yml — see the note on that step. The ci.yml-side clause
+  # (`check_python_workspace_members`) is the weaker, second condition: a per-project
+  # pyproject.toml matching no glob in `[tool.uv.workspace].members` never reaches uv.lock at
+  # all, so no export flag could recover it.
   pip-audit:
     name: pip-audit
     runs-on: ubuntu-latest
@@ -198,9 +199,19 @@ jobs:
         with:
           # renovate: datasource=python-version depName=python
           python-version: "3.14"
+      # `--all-packages` is load-bearing: without it `uv export` emits the *root* project's
+      # dependencies only, so a workspace member that is registered, locked, and passing every
+      # ci.yml check still has none of its dependencies scanned — a green job that looked at
+      # nothing. Latent while `members` is empty, which is exactly how it would ship unnoticed.
+      # `--no-emit-workspace` supersedes `--no-emit-project`: it drops every member rather than
+      # just the root, so first-party packages stay out of the audit as `--all-packages` pulls
+      # them in. //meta/scripts:test_pip_audit_coverage holds both flags here.
+      # These deliberately differ from the `requirements_lock.txt` trio (pre-commit hook, ratify
+      # script, freshness check), which must stay identical to *each other*; don't harmonise the
+      # two sets — see TestUvExport in meta/scripts/test_check_modules.py.
       - name: Export uv.lock to requirements.txt
         run: |
-          uv export --format requirements-txt --no-emit-project \
+          uv export --format requirements-txt --all-packages --no-emit-workspace \
             --output-file "${RUNNER_TEMP}/requirements.txt"
       - name: pip-audit
         env:
