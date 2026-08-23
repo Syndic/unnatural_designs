@@ -68,6 +68,31 @@ a parenthetical) so a tag sweep doesn't trip on it.
 [its README](../.github/actions/commit-file-via-app/README.md) before changing its inputs or its
 no-op-when-no-diff behavior.
 
+## Which workflow a check belongs in
+
+`ci.yml` and `security.yml` are split on **what makes a check's result change**, not on subject
+matter:
+
+- **A check that reads only the tree belongs in `ci.yml`.** Same commit, same answer, forever — so
+  re-running it tells you nothing you did not already know.
+- **A check whose verdict moves with an external database belongs in `security.yml`.** govulncheck,
+  pip-audit, Semgrep, CodeQL and Trivy can each turn red on an untouched commit when an advisory
+  lands, which is what the Monday cron is for.
+
+That axis is why `golangci-lint` moved out of Security in #18, and why `modules-check` later
+followed it out — a completeness gate over hand-listed matrices is a pure function of the tree, so
+its one run in `ci.yml` is the whole of it. Note `check_modules.py` globs *every* file in
+`.github/workflows/`, so that single run validates `security.yml`'s own `govulncheck` matrix and
+names it by path.
+
+The temptation the split has to survive is a tree-only gate re-added to `security.yml` so that
+workflow's green is self-certifying. It buys nothing: on a PR both workflows run and `ci.yml` blocks
+the merge through `build-and-test-all`, and on the schedule the tree being scanned is one that
+already passed the gate at merge. What it costs is a job that re-derives a settled answer every
+Monday. The accepted consequence is that a stale matrix shows `ci.yml` red while `security.yml`
+reports green — the merge is still blocked, but security.yml's green answers a narrower question
+than it looks like it does.
+
 ## Superseding CI runs
 
 Every workflow except `renovate-derived-files.yml` carries the same block, and the shape of the

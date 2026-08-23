@@ -7,7 +7,7 @@ without blocking).
 
 | Script                  | Enforces                                                                                       | CI job (`.github/workflows/`) | Pre-commit hook       | On-save (`.vscode/settings.json`) |
 | ----------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------- | --------------------- | --------------------------------- |
-| `check_modules.py`      | Go module matrix/config and Python workspace/lock invariants are consistent                    | `ci.yml`, `security.yml`      | —                     | `check: modules`                  |
+| `check_modules.py`      | Go module matrix/config and Python workspace/lock invariants are consistent                    | `ci.yml`                      | —                     | `check: modules`                  |
 | `check_go_work.py`      | Every Go module in the repo is registered in `go.work`                                         | `ci.yml`                      | —                     | `check: go work`                  |
 | `check_no_cgo.py`       | No `import "C"` in our Go source and no transitive deps that compile C/C++/cgo/SWIG            | `ci.yml`                      | —                     | —                                 |
 | `check_adr_numbers.py`  | ADR numbers are unique repo-wide and filenames are `NNNN-kebab-slug.md`         | `ci.yml`                      | —                     | `check: adr numbers`              |

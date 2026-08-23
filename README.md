@@ -200,7 +200,6 @@ Three GitHub Actions workflows run on every push and pull request to `main`.
 
 | Job                               | Purpose                                                                         |
 | --------------------------------- | ------------------------------------------------------------------------------- |
-| Module completeness check         | Gate for the per-module security jobs below                                     |
 | Semgrep                           | SAST - scans for injection flaws, insecure API usage, and hardcoded secrets     |
 | `CodeQL Analysis (<language>)`    | SAST - one job per language: actions, Go, Python                                |
 | `CodeQL Analysis (all languages)` | Fan-in over the per-language jobs - the name to require in the ruleset          |
