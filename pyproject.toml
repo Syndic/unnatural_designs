@@ -5,8 +5,9 @@
 #      the repo resolve against a single shared lock graph.
 #   2. Hold repo-wide tool config (ruff, ty) — one canonical home, mirrored by
 #      per-project overrides only when needed.
-#   3. Carry deps used by repo-level scripts (currently `packaging`, consumed by
-#      meta/scripts/ratify_renovate_proposals.py) and the temporary smoke target.
+#   3. Carry deps used by repo-level scripts (`packaging` for
+#      meta/scripts/ratify_renovate_proposals.py, `pyyaml` for meta/scripts/_workflows.py)
+#      and the temporary smoke target.
 #
 # `members = []` is intentional. The existing `tools/` subdirs are Go modules,
 # so a `tools/*` glob would error at lock time; members are added explicitly as
@@ -23,6 +24,10 @@ dependencies = [
     # resolved vs. proposed versions reliably needs proper pep440 semantics rather
     # than lexical string compare.
     "packaging>=24.0",
+    # YAML parsing for meta/scripts/_workflows.py, which reads CI matrices out of
+    # .github/workflows/. Regex over YAML both missed flow style and fired on ordinary
+    # keys outside a matrix, so the check parses instead of matching.
+    "pyyaml>=6.0",
     # TODO: delete this dep along with the meta/scripts/smoke_py smoke target once the
     # pip.parse chain has been verified end-to-end.
     "requests>=2.32",

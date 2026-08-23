@@ -10,9 +10,16 @@
   "tasks": [
     {
       "label": "check: modules",
+      "// Why uv run": "The only check that imports a third-party package (PyYAML, to parse workflow matrices). Its siblings stay on bare python3. `--frozen` uses the committed lock as-is.",
       "type": "shell",
-      "command": "python3",
-      "args": ["${workspaceFolder}/meta/scripts/check_modules.py"],
+      "command": "uv",
+      "args": [
+        "run",
+        "--frozen",
+        "python3",
+        "${workspaceFolder}/meta/scripts/check_modules.py"
+      ],
+      "options": { "cwd": "${workspaceFolder}" },
       "presentation": {
         "reveal": "silent",
         "panel": "dedicated",

@@ -8,10 +8,11 @@ Verifies cross-language module/project invariants:
     2. Every matrix.<language-key> list in .github/workflows/*.yml contains exactly the
        discovered set (no missing, no stale). The matrix key is per-language and explicit
        (`matrix.go_module:` for Go) so a workflow can carry multiple languages' matrices
-       without the parser conflating them. Two spellings are accepted — a block list under
-       the key, and an `include:` block whose items carry it — and a matrix in any other
-       shape is reported rather than skipped, since a shape that parses to nothing would
-       otherwise read as a workflow with no matrix at all.
+       without the parser conflating them. The workflow is parsed as YAML, so how a matrix is
+       written — block or flow style, `include:` items, quoting, comments — does not affect
+       what is found. What cannot be evaluated statically (a `fromJSON` matrix, an axis that
+       is not a list of paths) is reported rather than skipped, since a matrix nobody can read
+       is otherwise indistinguishable from a workflow that has none.
 
   Python-only:
     3. Root pyproject.toml has [tool.uv.workspace], [tool.ruff], and [tool.ty] sections —
@@ -50,12 +51,11 @@ from pathlib import Path
 # where rules_python already makes the import resolvable.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from meta.scripts._workflows import unrecognised_matrix_keys, workflow_matrix_lists
 from meta.scripts._workspace import (
     col_range,
     find_go_modules,
     find_python_projects,
-    unrecognised_matrix_keys,
-    workflow_matrix_lists,
     workspace_root,
 )
 
@@ -149,9 +149,10 @@ def check_workflow_matrices(root: Path, modules: set[Path], matrix_key: str) -> 
     (LanguageSpec.matrix_key) so Go's `go_module` matrices and any future Python
     `python_project` matrices in the same workflow file don't conflate.
 
-    Also reports matrices written in a shape the parser cannot read. Those yield no block, so
-    without this they would be indistinguishable from a workflow that has no matrix at all —
-    the guard would go quiet with nothing to say so.
+    Also reports matrices this check cannot evaluate — a computed matrix, or an axis whose
+    value is not a list of paths. Those yield no block, so without this they would be
+    indistinguishable from a workflow that has no matrix at all, and the guard would go quiet
+    with nothing to say so.
     """
     workflows_dir = root / ".github" / "workflows"
     if not workflows_dir.is_dir():
@@ -174,13 +175,9 @@ def check_workflow_matrices(root: Path, modules: set[Path], matrix_key: str) -> 
                 )
                 errors += 1
 
-        for line, text in sorted(unrecognised_matrix_keys(wf_file, matrix_key).items()):
+        for line, problem in sorted(unrecognised_matrix_keys(wf_file, matrix_key).items()):
             start, end = col_range(wf_file, line, matrix_key)
-            print(
-                f"{rel}:{line}:{start}-{end}: "
-                f"`{matrix_key}` is not in a checkable form ({text!r}) — use `{matrix_key}:` "
-                f"with `- path` items, or an `include:` block with `- {matrix_key}: path` entries"
-            )
+            print(f"{rel}:{line}:{start}-{end}: {problem}")
             errors += 1
 
     return errors

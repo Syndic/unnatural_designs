@@ -13,14 +13,22 @@ without blocking).
 | `check_adr_numbers.py`  | ADR numbers are unique repo-wide and filenames are `NNNN-kebab-slug.md`         | `ci.yml`                      | —                     | `check: adr numbers`              |
 | `check_secrets_dir.py`  | `secrets/` contains no committed files other than `secrets.md`                                 | `ci.yml`                      | `check-secrets-dir`   | —                                 |
 
-`check_modules.py`'s matrix check reads two spellings: a block list under the key, and an
-`include:` block whose items carry it (the form `security.yml`'s `codeql` job already uses, so
-adopting it for a per-module matrix must not turn the check off). Any other spelling — a flow
-sequence like `go_module: []`, a quoted key, a `fromJSON` expression — is reported as
-un-checkable rather than skipped. The distinction matters because the parser's failure mode is
-silence: a shape it cannot read yields no block, which is indistinguishable from a workflow that
-has no matrix, so the guard would go quiet with nothing to say so. `unrecognised_matrix_keys` in
-`_workspace.py` is what holds it to that.
+`check_modules.py`'s matrix check parses the workflow as YAML (`_workflows.py`, the one module
+here with a third-party dependency), so how a matrix is *written* — block or flow style,
+`include:` items, quoting, comments, nesting — is not something the check has an opinion about.
+`exclude:` entries are recognised and deliberately not collected: excluding a combination does
+not remove the module from the axis it was drawn from.
+
+What is left is what no static check can resolve: a computed matrix (`matrix: ${{ fromJSON(…) }}`)
+or an axis that is not a list of paths. Those are *reported*, via `unrecognised_matrix_keys`,
+rather than skipped — a matrix nobody can read is otherwise indistinguishable from a workflow
+that has none, and the second reading is the one that passes.
+
+This replaced a line-oriented scanner. It is worth knowing why, because the intermediate step is
+the tempting one: the scanner missed flow style entirely, and widening its patterns to cover more
+spellings produced a scan with no notion of matrix context, which flagged `workflow_call` inputs,
+step `with:` values, job `env:` entries and lines inside `run: |` blocks. Structure is what tells
+those apart, so the parser supplies structure. See #268 for the same change owed elsewhere.
 
 `check_adr_numbers.py` also answers `--next`, which prints the next free ADR number and nothing
 else. That is the supported way to pick one — the alternative is a repo-wide search, since the
