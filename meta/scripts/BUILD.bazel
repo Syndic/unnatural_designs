@@ -79,6 +79,9 @@ py_test(
     name = "test_check_modules",
     size = "small",
     srcs = ["test_check_modules.py"],
+    # Real workflow files: the shape guard's regex has to be held against them, since a false
+    # positive there fails CI for everyone and no synthetic fixture would show it.
+    data = ["//:workflows"],
     main = "test_check_modules.py",
     deps = [
         ":_workspace_lib",

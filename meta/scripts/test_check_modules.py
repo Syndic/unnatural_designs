@@ -16,6 +16,7 @@ from meta.scripts import check_modules
 from meta.scripts._workspace import (
     find_go_modules,
     find_python_projects,
+    unrecognised_matrix_keys,
     workflow_matrix_lists,
 )
 from meta.scripts.check_modules import (
@@ -1025,6 +1026,119 @@ class TestMain(unittest.TestCase):
             check_modules.main()
         # Exactly one call — the Go-branch in the LANGUAGES loop, no Python double-run.
         self.assertEqual(len(matrix_calls), 1)
+
+
+# ── TestMatrixShapes ──────────────────────────────────────────────────────────
+# One case per YAML spelling of a matrix, because the parser's failure mode is silence: a shape
+# it cannot read yields no block, and a caller iterating blocks has nothing to report. Every
+# shape below must land in exactly one of two buckets — parsed, or flagged. None may be both
+# absent and quiet, which is what `go_module: []` was.
+
+
+def _workflow(matrix_body: str) -> str:
+    return textwrap.dedent("""\
+        name: T
+        on: [push]
+        jobs:
+          govulncheck:
+            runs-on: ubuntu-latest
+            strategy:
+              matrix:
+        {body}
+            steps:
+              - run: echo hi
+        """).replace("{body}", matrix_body)
+
+
+class TestMatrixShapes(unittest.TestCase):
+    def _both(self, matrix_body: str, matrix_key: str = "go_module"):
+        """Return (parsed entry paths, flagged line numbers) for one matrix spelling."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "workflow.yml"
+            path.write_text(_workflow(matrix_body))
+            blocks = workflow_matrix_lists(path, matrix_key)
+            flagged = unrecognised_matrix_keys(path, matrix_key)
+        entries = {entry for _, _, mods in blocks for entry in mods}
+        return entries, set(flagged)
+
+    # ── Recognised shapes ─────────────────────────────────────────────────────
+
+    def test_include_form_is_read(self):
+        """The form the repo already uses for codeql; adopting it must not disable the check."""
+        entries, flagged = self._both("        include:\n          - go_module: tools/foo")
+        self.assertEqual(entries, {Path("tools/foo")})
+        self.assertEqual(flagged, set())
+
+    def test_include_form_with_a_second_axis(self):
+        """The reason a matrix converts to include: in the first place."""
+        entries, flagged = self._both(
+            "        include:\n"
+            '          - go_module: tools/foo\n            go_version: "1.27"\n'
+            '          - go_module: tools/bar\n            go_version: "1.26"'
+        )
+        self.assertEqual(entries, {Path("tools/foo"), Path("tools/bar")})
+        self.assertEqual(flagged, set())
+
+    def test_include_form_when_the_key_is_not_first_in_the_item(self):
+        entries, _ = self._both(
+            '        include:\n          - go_version: "1.27"\n            go_module: tools/foo'
+        )
+        self.assertEqual(entries, {Path("tools/foo")})
+
+    def test_both_forms_in_one_matrix_are_unioned(self):
+        """GitHub unions them; two blocks would report each one's entries missing from the other."""
+        entries, flagged = self._both(
+            "        go_module:\n          - tools/foo\n"
+            "        include:\n          - go_module: tools/bar"
+        )
+        self.assertEqual(entries, {Path("tools/foo"), Path("tools/bar")})
+        self.assertEqual(flagged, set())
+
+    # ── Shapes that must fail loudly rather than parse to nothing ─────────────
+
+    def test_unreadable_shapes_are_flagged(self):
+        shapes = {
+            "inline empty": "        go_module: []",
+            "inline populated": "        go_module: [tools/foo]",
+            "trailing comment on the key": "        go_module: # modules\n          - tools/foo",
+            "quoted key": '        "go_module":\n          - tools/foo',
+            "fromJSON expression": "        go_module: ${{ fromJSON(needs.x.outputs.m) }}",
+        }
+        for name, body in shapes.items():
+            with self.subTest(shape=name):
+                entries, flagged = self._both(body)
+                self.assertEqual(entries, set(), "this shape is not actually parsed")
+                self.assertTrue(
+                    flagged,
+                    "unreadable and unflagged is the silent pass this guard exists to stop",
+                )
+
+    # ── Non-vacuity: the guard must not fire on what it is meant to allow ─────
+
+    def test_readable_shapes_are_not_flagged(self):
+        for name, body in {
+            "block list": "        go_module:\n          - tools/foo",
+            "declared but empty": "        go_module:",
+            "include": "        include:\n          - go_module: tools/foo",
+        }.items():
+            with self.subTest(shape=name):
+                self.assertEqual(self._both(body)[1], set())
+
+    def test_another_key_in_flow_style_is_not_flagged(self):
+        """`os: [ubuntu-latest, macos-latest]` is ordinary and none of this check's business."""
+        _, flagged = self._both("        os: [ubuntu-latest, macos-latest]")
+        self.assertEqual(flagged, set())
+
+    def test_the_repos_own_workflows_are_clean(self):
+        """Guards the occurrence regex against false positives on real files."""
+        workflows = Path(__file__).parent.parent.parent / ".github" / "workflows"
+        found = sorted(workflows.glob("*.yml"))
+        # Without the //:workflows data dep this directory is absent from the runfiles tree and
+        # the loop below runs zero times — passing while checking nothing.
+        self.assertTrue(found, "no workflow files in the runfiles tree; this test is vacuous")
+        for wf in found:
+            with self.subTest(workflow=wf.name):
+                self.assertEqual(unrecognised_matrix_keys(wf, "go_module"), {})
 
 
 if __name__ == "__main__":

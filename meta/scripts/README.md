@@ -7,11 +7,20 @@ without blocking).
 
 | Script                  | Enforces                                                                                       | CI job (`.github/workflows/`) | Pre-commit hook       | On-save (`.vscode/settings.json`) |
 | ----------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------- | --------------------- | --------------------------------- |
-| `check_modules.py`      | Go module matrix/config and Python workspace/lock invariants are consistent                    | `ci.yml`                      | —                     | `check: modules`                  |
+| `check_modules.py`      | Go module matrix/config and Python workspace/lock invariants are consistent (see below)        | `ci.yml`                      | —                     | `check: modules`                  |
 | `check_go_work.py`      | Every Go module in the repo is registered in `go.work`                                         | `ci.yml`                      | —                     | `check: go work`                  |
 | `check_no_cgo.py`       | No `import "C"` in our Go source and no transitive deps that compile C/C++/cgo/SWIG            | `ci.yml`                      | —                     | —                                 |
 | `check_adr_numbers.py`  | ADR numbers are unique repo-wide and filenames are `NNNN-kebab-slug.md`         | `ci.yml`                      | —                     | `check: adr numbers`              |
 | `check_secrets_dir.py`  | `secrets/` contains no committed files other than `secrets.md`                                 | `ci.yml`                      | `check-secrets-dir`   | —                                 |
+
+`check_modules.py`'s matrix check reads two spellings: a block list under the key, and an
+`include:` block whose items carry it (the form `security.yml`'s `codeql` job already uses, so
+adopting it for a per-module matrix must not turn the check off). Any other spelling — a flow
+sequence like `go_module: []`, a quoted key, a `fromJSON` expression — is reported as
+un-checkable rather than skipped. The distinction matters because the parser's failure mode is
+silence: a shape it cannot read yields no block, which is indistinguishable from a workflow that
+has no matrix, so the guard would go quiet with nothing to say so. `unrecognised_matrix_keys` in
+`_workspace.py` is what holds it to that.
 
 `check_adr_numbers.py` also answers `--next`, which prints the next free ADR number and nothing
 else. That is the supported way to pick one — the alternative is a repo-wide search, since the

@@ -15,6 +15,15 @@ exports_files([
     ".github/workflows/security.yml",
 ])
 
+# Every workflow, as one dep: //meta/scripts:test_check_modules asserts the matrix-shape guard
+# finds nothing to flag in any of them, and a glob keeps a newly added workflow in that sweep
+# without a BUILD edit — which is when a new matrix is most likely to arrive.
+filegroup(
+    name = "workflows",
+    srcs = glob([".github/workflows/*.yml"]),
+    visibility = ["//visibility:public"],
+)
+
 # Same posture for prose that hand-copies something the tests can check it against: the hook table
 # against the config's ids (//meta/scripts:test_precommit_docs), and both docs against the required
 # check name security.yml's fan-in carries (//meta/scripts:test_codeql_toolchain).
