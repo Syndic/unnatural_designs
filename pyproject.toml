@@ -17,6 +17,10 @@
 name = "unnatural-designs-workspace"
 version = "0.0.0"
 description = "Workspace root for the unnatural_designs monorepo. Not a published package."
+# Load-bearing beyond packaging: ruff and ty both derive their target Python from this
+# floor when not told otherwise, so it is the single home for the language level.
+# Do NOT let a workflow read it as a version file — setup-python resolves it as a
+# semver *range* and would install the newest match. See README, "Dependency updates".
 requires-python = ">=3.14"
 dependencies = [
     # pep440 version comparison for meta/scripts/ratify_renovate_proposals.py.
@@ -49,7 +53,6 @@ members = []
 # --check .` and `ruff check .`; pre-commit runs the fixing variants.
 [tool.ruff]
 line-length = 100
-target-version = "py314"
 # Where first-party code lives. Load-bearing: ruff's `I` (isort) rules classify
 # top-level dirs listed here as first-party and group their imports separately
 # from third-party. A missed entry surfaces as `I001` ("imports out of order")
@@ -90,9 +93,6 @@ select = ["E", "F", "I", "B", "UP", "SIM", "RUF", "S"]
 # the editor extension (`astral-sh.ty` in devcontainer.json) reads the same
 # section. Rule severities are left at ty's defaults (see comment below).
 [tool.ty]
-
-[tool.ty.environment]
-python-version = "3.14"
 
 [tool.ty.src]
 # Mirror ruff's `src` so ty scans the same first-party trees. Excludes cover

@@ -239,6 +239,30 @@ py_test(
 )
 
 py_library(
+    name = "check_python_version_lib",
+    srcs = ["check_python_version.py"],
+    deps = [":_workspace_lib"],
+)
+
+py_binary(
+    name = "check_python_version",
+    srcs = ["check_python_version.py"],
+    main = "check_python_version.py",
+    deps = [":_workspace_lib"],
+)
+
+py_test(
+    name = "test_check_python_version",
+    size = "small",
+    srcs = ["test_check_python_version.py"],
+    main = "test_check_python_version.py",
+    deps = [
+        ":_workspace_lib",
+        ":check_python_version_lib",
+    ],
+)
+
+py_library(
     name = "sync_base_image_pin_lib",
     srcs = ["sync_base_image_pin.py"],
     visibility = ["//visibility:public"],

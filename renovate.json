@@ -57,7 +57,7 @@
   ],
   "packageRules": [
     {
-      "matchManagers": [ "custom.regex", "devcontainer" ],
+      "matchManagers": [ "custom.regex", "devcontainer", "pyenv" ],
       "matchDepNames": [ "go", "python" ],
       "matchUpdateTypes": [ "major" ],
       "groupName": "Language toolchain SDKs"

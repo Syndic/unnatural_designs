@@ -340,6 +340,39 @@ every site edited together — but only while the sites agree. Divergent current
 separate updates and drift apart independently, so **keep duplicate pins of a tool byte-identical**
 (`ruff` and `ty` are each pinned in both the devcontainer Dockerfile and the CI workflow).
 
+### The Python language level
+
+[`.python-version`](.python-version) is the canonical pin. Two files derive from it by being
+*read*, and two more carry a copy because they cannot read it:
+
+| Site | Relationship | Consumers |
+| --- | --- | --- |
+| `.python-version` | canonical | `setup-python` (every workflow), `uv` |
+| `pyproject.toml` `requires-python` | copy, as a `>=` floor | `ruff`, `ty` — both infer their target from it |
+| `MODULE.bazel` `python_version` ×2 | copy | `rules_python` |
+| `.devcontainer/Dockerfile` `ARG` | copy | the image build, which never `COPY`s the workspace |
+
+`ruff` and `ty` are pinned **nowhere else**: neither `[tool.ruff] target-version` nor
+`[tool.ty.environment] python-version` is set, because each tool falls back to `requires-python`.
+Re-adding either reintroduces a site that Renovate cannot maintain — `target-version` takes a
+`py314`-shaped value no datasource emits and no Handlebars template can render.
+
+Two traps make this worth a guard rather than a convention:
+
+- **A floor is not a pin.** `setup-python` accepts `python-version-file: pyproject.toml`, but it
+  runs the value through `semver.validRange` and installs the newest match — so `>=3.14` would
+  silently jump to 3.15 on release day, on an untouched commit. `ruff` and `ty` read the same
+  string as its *minimum*. Point workflows at `.python-version`, never at `pyproject.toml`.
+- **Full semver is a scheduled break.** `rules_python` ships exactly one patch per minor in
+  `TOOL_VERSIONS` (2.3.2 maps `3.14` → `3.14.4`) while the version datasources offer newer ones,
+  so a three-segment pin plus Renovate would propose a patch Bazel cannot resolve. The pin stays
+  `<major>.<minor>`, and the three resolvers land on different patches of the same minor by
+  design — `uv` on the newest available, `rules_python` and `setup-python` on their own tables'.
+
+Every copy above fails **silently** when it drifts, since a stale level is still a valid one.
+[`meta/scripts/check_python_version.py`](meta/scripts/check_python_version.py) is what turns that
+into a red check; it discovers workflows by glob, so a new one is covered without an edit.
+
 Three grouping exceptions in [`renovate.json`](renovate.json)'s `packageRules` keep *major* bumps
 atomic. Each is scoped with `matchUpdateTypes: ["major"]` so it cannot overlap the minor/patch
 catch-all — the *grouping* rules match disjoint sets of updates, and the order they appear in does
@@ -363,11 +396,14 @@ Both rules overlap the grouping rules, which is harmless because each is the onl
 its field. Keep that true, or make the order deliberate.
 
 - **Language toolchain SDKs** — the Go and Python version pins, tracked across `MODULE.bazel`,
-  `go.work`, per-module `go.mod`, the workflow `setup-python` steps, the devcontainer Dockerfile's
-  `PYTHON_VERSION` arg, and the Go toolchain `version` *option* on the `go` feature in
+  `go.work`, per-module `go.mod`, [`.python-version`](.python-version), the devcontainer
+  Dockerfile's `PYTHON_VERSION` arg, and the Go toolchain `version` *option* on the `go` feature in
   `devcontainer.json`. Note the option is a different dependency from the feature reference that
   carries it: `matchDepNames: ["go", "python"]` matches the toolchain option, not
   `ghcr.io/devcontainers/features/go`, so a feature-package major lands ungrouped on its own PR.
+  `.python-version` is reached by Renovate's stock **`pyenv`** manager rather than a custom regex,
+  which is why that manager is named in the rule's `matchManagers` — without it the file would
+  land in the minor/patch catch-all and a major would split into two PRs that drift apart.
 - **`ruff`** — pinned in both the devcontainer Dockerfile and the CI workflow. (`pyproject.toml`
   holds ruff's *config*, not its version.)
 - **Bazel toolchains and rulesets** — `bazel_dep` majors. Rulesets that must advance in lockstep
