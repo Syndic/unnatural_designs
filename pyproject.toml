@@ -17,11 +17,13 @@
 name = "unnatural-designs-workspace"
 version = "0.0.0"
 description = "Workspace root for the unnatural_designs monorepo. Not a published package."
-# Load-bearing beyond packaging: ruff and ty both derive their target Python from this
-# floor when not told otherwise, so it is the single home for the language level.
-# Do NOT let a workflow read it as a version file — setup-python resolves it as a
-# semver *range* and would install the newest match. See README, "Dependency updates".
-requires-python = ">=3.14"
+# Load-bearing beyond packaging: ruff and ty both derive their target Python from this,
+# so it is the single home for the language level. Exact-minor rather than a `>=` floor
+# for two reasons: an open floor admits a future 3.15 silently, and Renovate's `replace`
+# strategy only rewrites a range the new version falls *outside* — so `>=` would never be
+# bumped at all. This root is `package = false`; a published member must NOT copy the
+# shape. See README, "The Python language level".
+requires-python = "==3.14.*"
 dependencies = [
     # pep440 version comparison for meta/scripts/ratify_renovate_proposals.py.
     # The script ratifies Renovate's Python dep-bump proposals via uv; comparing

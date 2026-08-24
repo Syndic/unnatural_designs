@@ -6,7 +6,7 @@ Verifies that every Python language-level declaration in the repo agrees with //
 this guard is what keeps those copies honest, because each one fails *silently* when it drifts --
 a stale value is still a valid value, so every tool stays green while targeting the wrong level.
 
-  - pyproject.toml `requires-python`  -- the floor ruff and ty both derive their target from.
+  - pyproject.toml `requires-python`  -- the range ruff and ty both derive their target from.
     Neither is pinned separately: deleting `[tool.ruff] target-version` and
     `[tool.ty.environment] python-version` is what makes this the single home for the two.
   - MODULE.bazel `python_version`     -- rules_python's toolchain, once per call site.
@@ -89,14 +89,22 @@ def read_pin(root: Path) -> tuple[str | None, list[str]]:
 
 
 def check_pyproject(root: Path, version: str) -> list[str]:
-    """`requires-python` must be the floor matching the pin -- ruff and ty read it as the target."""
+    """`requires-python` must pin the pin's minor -- ruff and ty read it as their target.
+
+    Exact-minor (`==3.14.*`), not a `>=` floor. A floor admits the next minor silently, and
+    Renovate's `replace` strategy only rewrites a range the new version falls *outside*, so a
+    floor is never bumped at all. This applies to the workspace root, which is `package = false`.
+    A published member must declare its real support range instead: capping `requires-python`
+    is contagious, and resolvers react to an unsatisfiable cap by silently installing an older
+    release rather than erroring.
+    """
     rel = Path("pyproject.toml")
     path = root / rel
     if not path.is_file():
         return []
 
     data = tomllib.loads(path.read_text())
-    expected = f">={version}"
+    expected = f"=={version}.*"
     actual = data.get("project", {}).get("requires-python")
     if actual == expected:
         return []
@@ -108,7 +116,8 @@ def check_pyproject(root: Path, version: str) -> list[str]:
             lineno,
             cols,
             f"requires-python is {actual!r}, expected {expected!r} to match {PIN_FILE} "
-            f"({version}); ruff and ty derive their target Python from this floor",
+            f"({version}); ruff and ty derive their target Python from it, and only an "
+            f"exact-minor range is one Renovate will bump",
         )
     ]
 

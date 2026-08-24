@@ -50,22 +50,29 @@ class TestReadPin(unittest.TestCase):
 
 
 class TestPyproject(unittest.TestCase):
-    def test_matching_floor_passes(self):
+    def test_matching_exact_minor_passes(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            write(root, "pyproject.toml", '[project]\nrequires-python = ">=3.14"\n')
+            write(root, "pyproject.toml", '[project]\nrequires-python = "==3.14.*"\n')
             self.assertEqual(cpv.check_pyproject(root, "3.14"), [])
 
-    def test_stale_floor_is_caught(self):
+    def test_stale_minor_is_caught(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            write(root, "pyproject.toml", '[project]\nrequires-python = ">=3.13"\n')
+            write(root, "pyproject.toml", '[project]\nrequires-python = "==3.13.*"\n')
             problems = cpv.check_pyproject(root, "3.14")
             self.assertEqual(len(problems), 1)
             self.assertIn("pyproject.toml:2:", problems[0])
 
-    def test_exact_pin_is_not_a_floor(self):
-        """`==3.14` would stop ruff and ty inferring the level the rest of the repo uses."""
+    def test_open_floor_is_caught(self):
+        """`>=3.14` admits 3.15, and Renovate's `replace` never rewrites a range that fits."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write(root, "pyproject.toml", '[project]\nrequires-python = ">=3.14"\n')
+            self.assertEqual(len(cpv.check_pyproject(root, "3.14")), 1)
+
+    def test_patchless_equality_is_caught(self):
+        """`==3.14` matches only 3.14.0 -- it would reject the interpreters actually in use."""
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             write(root, "pyproject.toml", '[project]\nrequires-python = "==3.14"\n')

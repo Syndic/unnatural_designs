@@ -348,7 +348,7 @@ separate updates and drift apart independently, so **keep duplicate pins of a to
 | Site | Relationship | Consumers |
 | --- | --- | --- |
 | `.python-version` | canonical | `setup-python` (every workflow), `uv` |
-| `pyproject.toml` `requires-python` | copy, as a `>=` floor | `ruff`, `ty` — both infer their target from it |
+| `pyproject.toml` `requires-python` | copy, as `==<minor>.*` | `ruff`, `ty` — both infer their target from it |
 | `MODULE.bazel` `python_version` ×2 | copy | `rules_python` |
 | `.devcontainer/Dockerfile` `ARG` | copy | the image build, which never `COPY`s the workspace |
 
@@ -357,17 +357,45 @@ separate updates and drift apart independently, so **keep duplicate pins of a to
 Re-adding either reintroduces a site that Renovate cannot maintain — `target-version` takes a
 `py314`-shaped value no datasource emits and no Handlebars template can render.
 
-Two traps make this worth a guard rather than a convention:
+Three traps make this worth a guard rather than a convention:
 
-- **A floor is not a pin.** `setup-python` accepts `python-version-file: pyproject.toml`, but it
-  runs the value through `semver.validRange` and installs the newest match — so `>=3.14` would
-  silently jump to 3.15 on release day, on an untouched commit. `ruff` and `ty` read the same
-  string as its *minimum*. Point workflows at `.python-version`, never at `pyproject.toml`.
+- **A floor is never bumped, and admits the next minor meanwhile.** Renovate's `replace` strategy
+  "[replaces] the range with a newer one if the new version falls outside it, and updates nothing
+  otherwise" — 3.15 falls *inside* `>=3.14`, so that form would never move. It also lets any 3.15
+  interpreter satisfy the project. `==3.14.*` fixes both: 3.15 falls outside it, and pep440's
+  range handler preserves the wildcard (`// keep the .* suffix`) to write `==3.15.*`.
+- **`==3.14` without the wildcard is not the same thing.** It matches **only** 3.14.0, so it would
+  reject both the devcontainer's interpreter and Bazel's. `uv sync` fails outright on it.
 - **Full semver is a scheduled break.** `rules_python` ships exactly one patch per minor in
   `TOOL_VERSIONS` (2.3.2 maps `3.14` → `3.14.4`) while the version datasources offer newer ones,
   so a three-segment pin plus Renovate would propose a patch Bazel cannot resolve. The pin stays
   `<major>.<minor>`, and the three resolvers land on different patches of the same minor by
   design — `uv` on the newest available, `rules_python` and `setup-python` on their own tables'.
+
+Also note `setup-python` accepts `python-version-file: pyproject.toml` but resolves the value as a
+semver range and takes the newest match. Workflows read `.python-version`, never `pyproject.toml`;
+the guard enforces it independently of which range form the root happens to carry.
+
+#### A published member must not copy the root's shape
+
+`==<minor>.*` is right *here* because the root is `package = false` and has no consumers. On a
+published library it would be actively harmful: `Requires-Python` ships in the wheel metadata, and
+a resolver facing an unsatisfiable cap does not error — it **silently installs an older release**
+that does match. The user gets stale code and no warning.
+
+The two concerns are separable, and uv already keeps them apart. A member declares its real
+support range while the workspace still develops and locks on the pin:
+
+```
+root   requires-python = "==3.14.*"   ->  uv.lock resolves at ==3.14.*   (dev + CI)
+member requires-python = ">=3.12"     ->  wheel carries Requires-Python: >=3.12   (consumers)
+```
+
+Both coexist in one `uv lock` — verified, not assumed. The member's published metadata is its own.
+
+The catch is that the lock proves nothing about the floor: dependencies are resolved for 3.14
+only, so a `>=3.12` claim is unverified until something actually exercises 3.12. A support range
+you never test is a guess — give such a member a test matrix over the range, or narrow the claim.
 
 Every copy above fails **silently** when it drifts, since a stale level is still a valid one.
 [`meta/scripts/check_python_version.py`](meta/scripts/check_python_version.py) is what turns that
