@@ -21,10 +21,15 @@ excluded for cause has been handled appropriately, which is the question this ch
 `exclude:` can only ever shrink GitHub's cross product, so it can never be the thing that puts a
 module into the run set.
 
-What is left is what no static check can resolve: a computed matrix (`matrix: ${{ fromJSON(…) }}`)
-or an axis that is not a list of paths. Those are *reported*, via `unrecognised_matrix_keys`,
-rather than skipped — a matrix nobody can read is otherwise indistinguishable from a workflow
-that has none, and the second reading is the one that passes.
+What is left is an axis that is present under the key and cannot be read — a `fromJSON`
+expression, say. That is *reported*, via `unrecognised_matrix_keys`, rather than skipped: a
+matrix nobody can read is otherwise indistinguishable from a workflow that has none, and the
+second reading is the one that passes.
+
+A wholly computed `matrix:` is deliberately not reported. The key's presence is itself unknown
+there, it is usually an unrelated axis, and failing CI on workflows that never mention the
+language would reintroduce the false-positive class this replaced. The cost — a per-module
+matrix converted to `fromJSON` stops being verified quietly — is tracked in #271.
 
 This replaced a line-oriented scanner. It is worth knowing why, because the intermediate step is
 the tempting one: the scanner missed flow style entirely, and widening its patterns to cover more

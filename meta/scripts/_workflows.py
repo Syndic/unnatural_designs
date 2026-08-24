@@ -19,6 +19,10 @@ quoting and nesting depth stop mattering for the same reason.
 `yaml.compose` rather than `yaml.safe_load`: it returns the node graph with source positions, so
 diagnostics keep the `file:line:` anchors `.vscode/tasks.json`'s problem matcher consumes. It
 also sidesteps YAML 1.1's boolean coercion of `on:` — node values are the literal key strings.
+
+What is still reported is what a parse cannot settle: an axis present under the key whose value
+is not a list of paths. What is not reported is a wholly computed `matrix:`, where the key's
+presence is itself unknown.
 """
 
 from pathlib import Path
@@ -91,11 +95,15 @@ def _scan(workflow_file: Path, matrix_key: str) -> tuple[list[MatrixBlock], dict
 
         job_name = job_key.value
         if not isinstance(matrix[1], yaml.MappingNode):
-            # `matrix: ${{ fromJSON(...) }}` — a real feature, and one no static check can
-            # resolve. Naming it is the honest outcome; skipping it silently is not.
-            problems[_line(matrix[1])] = (
-                f"[{job_name}] `matrix` is computed, so its `{matrix_key}` axis cannot be checked"
-            )
+            # `matrix: ${{ fromJSON(...) }}`. Deliberately silent, and the line the whole
+            # reporting policy sits on: report where the key is *present* and unreadable, stay
+            # quiet where we cannot tell whether the key is there at all. A wholly computed
+            # matrix is the second case — it is usually an unrelated axis (an OS list, a shard
+            # count), and reporting it would fail CI on workflows that never mention Go. That is
+            # the false-positive class this module exists to have removed, and there would be no
+            # escape hatch for an author who legitimately wants a dynamic matrix. The cost is
+            # that a per-module matrix converted to `fromJSON` stops being verified without
+            # saying so; tracked separately rather than paid for by everyone else's workflows.
             continue
 
         entries: dict[Path, int] = {}
@@ -157,10 +165,14 @@ def workflow_matrix_lists(workflow_file: Path, matrix_key: str) -> list[MatrixBl
 def unrecognised_matrix_keys(workflow_file: Path, matrix_key: str) -> dict[int, str]:
     """Uses of ``matrix_key`` this check cannot evaluate, as {line: what was found}.
 
-    Two cases reach here, and neither is a spelling the parser failed to recognise — that whole
-    category is gone now that the YAML is parsed rather than matched. What remains is genuinely
-    un-checkable: a matrix computed at run time (`fromJSON`), and an axis whose value is not a
-    list of paths. Both need a person; reporting them is what keeps a guard that cannot see
-    something from reading as a guard that saw nothing wrong.
+    Not a spelling the parser failed to recognise — that whole category is gone now that the YAML
+    is parsed rather than matched. What reaches here is an axis that is *present* under this key
+    and is not a list of paths, most likely a `fromJSON` expression. It needs a person, and
+    reporting it is what keeps a guard that cannot read something from reading as a guard that
+    saw nothing wrong.
+
+    A wholly computed `matrix:` is deliberately not reported — see the note at that branch in
+    `_scan`. The key may not be involved at all, and guessing that it is fails CI on workflows
+    with no relationship to this language.
     """
     return _scan(workflow_file, matrix_key)[1]

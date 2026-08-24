@@ -10,9 +10,10 @@ Verifies cross-language module/project invariants:
        (`matrix.go_module:` for Go) so a workflow can carry multiple languages' matrices
        without the parser conflating them. The workflow is parsed as YAML, so how a matrix is
        written — block or flow style, `include:` items, quoting, comments — does not affect
-       what is found. What cannot be evaluated statically (a `fromJSON` matrix, an axis that
-       is not a list of paths) is reported rather than skipped, since a matrix nobody can read
-       is otherwise indistinguishable from a workflow that has none.
+       what is found. An axis present under the key whose value cannot be read (a `fromJSON`
+       expression) is reported rather than skipped, since a matrix nobody can read is otherwise
+       indistinguishable from a workflow that has none. A wholly computed `matrix:` is not
+       reported — the key may not be involved at all.
 
   Python-only:
     3. Root pyproject.toml has [tool.uv.workspace], [tool.ruff], and [tool.ty] sections —
@@ -149,10 +150,9 @@ def check_workflow_matrices(root: Path, modules: set[Path], matrix_key: str) -> 
     (LanguageSpec.matrix_key) so Go's `go_module` matrices and any future Python
     `python_project` matrices in the same workflow file don't conflate.
 
-    Also reports matrices this check cannot evaluate — a computed matrix, or an axis whose
-    value is not a list of paths. Those yield no block, so without this they would be
-    indistinguishable from a workflow that has no matrix at all, and the guard would go quiet
-    with nothing to say so.
+    Also reports an axis present under the key whose value is not a list of paths. It yields no
+    block, so without this it would be indistinguishable from a workflow that has no matrix at
+    all, and the guard would go quiet with nothing to say so.
     """
     workflows_dir = root / ".github" / "workflows"
     if not workflows_dir.is_dir():

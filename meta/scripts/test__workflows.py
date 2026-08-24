@@ -501,13 +501,21 @@ class TestMatrixShapes(unittest.TestCase):
 
     # ── What genuinely cannot be checked is reported ──────────────────────────
 
-    def test_a_computed_matrix_is_reported(self):
-        """`fromJSON` is a real feature and no static check can resolve it — say so."""
+    def test_a_computed_axis_under_the_key_is_reported(self):
+        """The key is present and its value cannot be read — unambiguous, so say so."""
         entries, problems = self._both("        go_module: ${{ fromJSON(needs.x.outputs.m) }}")
         self.assertEqual(entries, set())
         self.assertTrue(problems, "an unresolvable axis must not pass as an absent one")
 
-    def test_a_whole_computed_matrix_is_reported(self):
+    def test_a_wholly_computed_matrix_is_not_reported(self):
+        """The other side of the line: reported where the key is present and unreadable, silent
+        where we cannot tell whether the key is there.
+
+        A job whose whole matrix is computed usually has an unrelated axis — an OS list, a shard
+        count — and nothing in the file names this key. Reporting it would fail CI on workflows
+        with no relationship to the language, which is the class of false positive this module
+        was written to remove, and no escape hatch exists for a legitimate dynamic matrix.
+        """
         entries, problems = self._whole("""
             name: T
             on: [push]
@@ -515,12 +523,12 @@ class TestMatrixShapes(unittest.TestCase):
               a:
                 runs-on: ubuntu-latest
                 strategy:
-                  matrix: ${{ fromJSON(needs.x.outputs.m) }}
+                  matrix: ${{ fromJSON(needs.detect.outputs.os) }}
                 steps:
                   - run: echo hi
             """)
         self.assertEqual(entries, set())
-        self.assertTrue(problems)
+        self.assertEqual(problems, {}, "nothing here mentions the key; CI must not fail on it")
 
     def test_unparseable_yaml_is_reported(self):
         """A workflow that is not YAML must fail loudly rather than read as having no matrix."""
