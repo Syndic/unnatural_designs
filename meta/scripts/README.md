@@ -16,8 +16,10 @@ without blocking).
 `check_modules.py`'s matrix check parses the workflow as YAML (`_workflows.py`, the one module
 here with a third-party dependency), so how a matrix is *written* — block or flow style,
 `include:` items, quoting, comments, nesting — is not something the check has an opinion about.
-`exclude:` entries are recognised and deliberately not collected: excluding a combination does
-not remove the module from the axis it was drawn from.
+Coverage is the base axis plus `include:`. `exclude:` is ignored in both directions — a module
+excluded for cause has been handled appropriately, which is the question this check asks, and
+`exclude:` can only ever shrink GitHub's cross product, so it can never be the thing that puts a
+module into the run set.
 
 What is left is what no static check can resolve: a computed matrix (`matrix: ${{ fromJSON(…) }}`)
 or an axis that is not a list of paths. Those are *reported*, via `unrecognised_matrix_keys`,

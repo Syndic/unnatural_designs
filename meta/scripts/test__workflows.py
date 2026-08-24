@@ -390,16 +390,47 @@ class TestMatrixShapes(unittest.TestCase):
                 self.assertEqual(len(blocks), 1)
                 self.assertEqual(blocks[0][2], {})
 
-    # ── exclude: is recognised, and is not an entry ───────────────────────────
+    # ── exclude: is recognised, and contributes nothing either way ────────────
+    # Decided policy, not a fact about YAML: coverage is the base axis plus `include:`, and
+    # `exclude:` is ignored in both directions. A module excluded for cause has been handled
+    # appropriately, which is what the check is asking about — so an exclusion neither grants
+    # coverage nor withdraws it. Recorded here because the alternatives are each plausible
+    # enough to be re-proposed: collecting excludes reads "someone thought about it", and
+    # subtracting them reads "GitHub will not run it".
 
-    def test_exclude_entries_are_not_collected(self):
-        """Excluding a combination does not remove the module from the axis it came from."""
+    def test_excluding_a_module_leaves_it_covered(self):
+        """Exclusion is a way of handling a module, so it does not withdraw coverage."""
+        for name, body in {
+            "partial exclude": (
+                "        go_module:\n          - tools/foo\n        os: [linux, mac]\n"
+                "        exclude:\n          - go_module: tools/foo\n            os: mac"
+            ),
+            "total exclude": (
+                "        go_module:\n          - tools/foo\n"
+                "        exclude:\n          - go_module: tools/foo"
+            ),
+        }.items():
+            with self.subTest(shape=name):
+                entries, problems = self._both(body)
+                self.assertEqual(entries, {Path("tools/foo")})
+                self.assertEqual(
+                    problems, {}, "a valid exclude: must not be reported as un-checkable"
+                )
+
+    def test_excluding_a_module_does_not_grant_it_coverage(self):
+        """The half with teeth: `exclude:` cannot put a module into the run set, so naming one
+        there and nowhere else leaves it uncovered, and the caller reports it missing.
+
+        GitHub applies `exclude:` as a filter over the axes, so an entry naming a value that is
+        in no axis matches nothing. Such a workflow is malformed rather than clever.
+        """
         entries, problems = self._both(
             "        go_module:\n          - tools/foo\n"
-            "        exclude:\n          - go_module: tools/foo\n            os: mac"
+            "        exclude:\n          - go_module: tools/bar"
         )
         self.assertEqual(entries, {Path("tools/foo")})
-        self.assertEqual(problems, {}, "a valid exclude: must not be reported as un-checkable")
+        self.assertNotIn(Path("tools/bar"), entries)
+        self.assertEqual(problems, {})
 
     # ── Scoping: the key only counts where a matrix actually is ───────────────
 

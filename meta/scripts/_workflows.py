@@ -28,9 +28,12 @@ import yaml
 # (job_name, key_line, {entry_path: line_number}) — the shape callers destructure.
 MatrixBlock = tuple[str, int, dict[Path, int]]
 
-# `include:` adds combinations, so its entries are part of the matrix. `exclude:` removes them:
-# an excluded combination still names a module that must appear in the base axis, so its values
-# are recognised (they are a legitimate use of the key) but never collected as entries.
+# Coverage is the base axis plus `include:`; `exclude:` is ignored in both directions. That is a
+# policy call, not a property of YAML — a module excluded for cause has been handled, which is the
+# question this check asks. GitHub only ever lets `exclude:` shrink the cross product, so its
+# values are recognised as a legitimate use of the key but never collected: naming a module there
+# and nowhere else leaves it genuinely unscanned, and the caller reports it missing.
+# See //meta/scripts:test__workflows for both halves.
 _INCLUDE = "include"
 _EXCLUDE = "exclude"
 
