@@ -46,10 +46,11 @@ from dataclasses import dataclass
 from fnmatch import fnmatch
 from pathlib import Path
 
-# When invoked as `python3 meta/scripts/check_modules.py` (the form used in CI and by
-# pre-commit), the workspace root is not on sys.path, so `from meta.scripts.X` would fail.
-# Adding the workspace root explicitly fixes that and is harmless under bazel py_binary,
-# where rules_python already makes the import resolvable.
+# Run as a script rather than through `bazel run`, the workspace root is not on sys.path, so
+# `from meta.scripts.X` would fail. Adding it explicitly fixes that and is harmless under bazel
+# py_binary, where rules_python already makes the import resolvable. Which callers run it which
+# way is meta/scripts/README.md's table, not this comment — enumerating them here is what went
+# stale.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from meta.scripts._workflows import unrecognised_matrix_keys, workflow_matrix_lists

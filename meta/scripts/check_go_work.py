@@ -10,8 +10,8 @@ Usage: ./meta/scripts/check_go_work.py
 import sys
 from pathlib import Path
 
-# When invoked as `python3 meta/scripts/check_go_work.py` (the form used in CI and by
-# pre-commit), the workspace root is not on sys.path, so `from meta.scripts.X` would fail.
+# Run as a script rather than through `bazel run`, the workspace root is not on sys.path, so
+# `from meta.scripts.X` would fail. See check_modules.py for why this names no callers.
 # Adding the workspace root explicitly fixes that and is harmless under bazel py_binary,
 # where rules_python already makes the import resolvable.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
