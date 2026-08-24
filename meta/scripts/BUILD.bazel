@@ -14,6 +14,26 @@ py_test(
     deps = [":_workspace_lib"],
 )
 
+# The one library here that needs a third-party dep. Kept separate from _workspace_lib so the
+# four check scripts that never read a workflow — go_work, adr_numbers, secrets_dir, no_cgo —
+# stay dependency-free, along with the CI job each of them runs in.
+py_library(
+    name = "_workflows_lib",
+    srcs = ["_workflows.py"],
+    deps = [requirement("pyyaml")],
+)
+
+py_test(
+    name = "test__workflows",
+    size = "small",
+    srcs = ["test__workflows.py"],
+    # Real workflow files: the parser has to be held against them, since a false positive
+    # there fails CI for everyone and no synthetic fixture would show it.
+    data = ["//:workflows"],
+    main = "test__workflows.py",
+    deps = [":_workflows_lib"],
+)
+
 py_library(
     name = "check_go_work_lib",
     srcs = ["check_go_work.py"],
@@ -65,14 +85,20 @@ py_test(
 py_library(
     name = "check_modules_lib",
     srcs = ["check_modules.py"],
-    deps = [":_workspace_lib"],
+    deps = [
+        ":_workflows_lib",
+        ":_workspace_lib",
+    ],
 )
 
 py_binary(
     name = "check_modules",
     srcs = ["check_modules.py"],
     main = "check_modules.py",
-    deps = [":_workspace_lib"],
+    deps = [
+        ":_workflows_lib",
+        ":_workspace_lib",
+    ],
 )
 
 py_test(
@@ -81,6 +107,7 @@ py_test(
     srcs = ["test_check_modules.py"],
     main = "test_check_modules.py",
     deps = [
+        ":_workflows_lib",
         ":_workspace_lib",
         ":check_modules_lib",
     ],

@@ -75,7 +75,11 @@ jobs:
         with:
           # renovate: datasource=python-version depName=python
           python-version: "3.14"
-      - run: python3 meta/scripts/check_modules.py
+      # `uv run`, unlike the other check jobs' bare `python3`: this is the one script that
+      # imports a third-party package (PyYAML, to parse workflow matrices rather than
+      # pattern-match them). `--frozen` uses the committed lock as-is — the script's own
+      # `uv lock --check` is what polices its freshness.
+      - run: uv run --frozen python3 meta/scripts/check_modules.py
 
   go-work-check:
     name: go.work consistency/completeness check

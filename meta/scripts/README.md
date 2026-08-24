@@ -7,11 +7,35 @@ without blocking).
 
 | Script                  | Enforces                                                                                       | CI job (`.github/workflows/`) | Pre-commit hook       | On-save (`.vscode/settings.json`) |
 | ----------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------- | --------------------- | --------------------------------- |
-| `check_modules.py`      | Go module matrix/config and Python workspace/lock invariants are consistent                    | `ci.yml`                      | —                     | `check: modules`                  |
+| `check_modules.py`      | Go module matrix/config and Python workspace/lock invariants are consistent (see below)        | `ci.yml`                      | —                     | `check: modules`                  |
 | `check_go_work.py`      | Every Go module in the repo is registered in `go.work`                                         | `ci.yml`                      | —                     | `check: go work`                  |
 | `check_no_cgo.py`       | No `import "C"` in our Go source and no transitive deps that compile C/C++/cgo/SWIG            | `ci.yml`                      | —                     | —                                 |
 | `check_adr_numbers.py`  | ADR numbers are unique repo-wide and filenames are `NNNN-kebab-slug.md`         | `ci.yml`                      | —                     | `check: adr numbers`              |
 | `check_secrets_dir.py`  | `secrets/` contains no committed files other than `secrets.md`                                 | `ci.yml`                      | `check-secrets-dir`   | —                                 |
+
+`check_modules.py`'s matrix check parses the workflow as YAML (`_workflows.py`, the one module
+here with a third-party dependency), so how a matrix is *written* — block or flow style,
+`include:` items, quoting, comments, nesting — is not something the check has an opinion about.
+Coverage is the base axis plus `include:`. `exclude:` is ignored in both directions — a module
+excluded for cause has been handled appropriately, which is the question this check asks, and
+`exclude:` can only ever shrink GitHub's cross product, so it can never be the thing that puts a
+module into the run set.
+
+What is left is an axis that is present under the key and cannot be read — a `fromJSON`
+expression, say. That is *reported*, via `unrecognised_matrix_keys`, rather than skipped: a
+matrix nobody can read is otherwise indistinguishable from a workflow that has none, and the
+second reading is the one that passes.
+
+A wholly computed `matrix:` is deliberately not reported. The key's presence is itself unknown
+there, it is usually an unrelated axis, and failing CI on workflows that never mention the
+language would reintroduce the false-positive class this replaced. The cost — a per-module
+matrix converted to `fromJSON` stops being verified quietly — is tracked in #271.
+
+This replaced a line-oriented scanner. It is worth knowing why, because the intermediate step is
+the tempting one: the scanner missed flow style entirely, and widening its patterns to cover more
+spellings produced a scan with no notion of matrix context, which flagged `workflow_call` inputs,
+step `with:` values, job `env:` entries and lines inside `run: |` blocks. Structure is what tells
+those apart, so the parser supplies structure. See #268 for the same change owed elsewhere.
 
 `check_adr_numbers.py` also answers `--next`, which prints the next free ADR number and nothing
 else. That is the supported way to pick one — the alternative is a repo-wide search, since the

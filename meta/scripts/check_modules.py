@@ -8,7 +8,12 @@ Verifies cross-language module/project invariants:
     2. Every matrix.<language-key> list in .github/workflows/*.yml contains exactly the
        discovered set (no missing, no stale). The matrix key is per-language and explicit
        (`matrix.go_module:` for Go) so a workflow can carry multiple languages' matrices
-       without the parser conflating them.
+       without the parser conflating them. The workflow is parsed as YAML, so how a matrix is
+       written — block or flow style, `include:` items, quoting, comments — does not affect
+       what is found. An axis present under the key whose value cannot be read (a `fromJSON`
+       expression) is reported rather than skipped, since a matrix nobody can read is otherwise
+       indistinguishable from a workflow that has none. A wholly computed `matrix:` is not
+       reported — the key may not be involved at all.
 
   Python-only:
     3. Root pyproject.toml has [tool.uv.workspace], [tool.ruff], and [tool.ty] sections —
@@ -41,17 +46,18 @@ from dataclasses import dataclass
 from fnmatch import fnmatch
 from pathlib import Path
 
-# When invoked as `python3 meta/scripts/check_modules.py` (the form used in CI and by
-# pre-commit), the workspace root is not on sys.path, so `from meta.scripts.X` would fail.
-# Adding the workspace root explicitly fixes that and is harmless under bazel py_binary,
-# where rules_python already makes the import resolvable.
+# Run as a script rather than through `bazel run`, the workspace root is not on sys.path, so
+# `from meta.scripts.X` would fail. Adding it explicitly fixes that and is harmless under bazel
+# py_binary, where rules_python already makes the import resolvable. Which callers run it which
+# way is meta/scripts/README.md's table, not this comment — enumerating them here is what went
+# stale.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from meta.scripts._workflows import unrecognised_matrix_keys, workflow_matrix_lists
 from meta.scripts._workspace import (
     col_range,
     find_go_modules,
     find_python_projects,
-    workflow_matrix_lists,
     workspace_root,
 )
 
@@ -144,6 +150,10 @@ def check_workflow_matrices(root: Path, modules: set[Path], matrix_key: str) -> 
     the list matches the discovered module set. The matrix_key is supplied per-language
     (LanguageSpec.matrix_key) so Go's `go_module` matrices and any future Python
     `python_project` matrices in the same workflow file don't conflate.
+
+    Also reports an axis present under the key whose value is not a list of paths. It yields no
+    block, so without this it would be indistinguishable from a workflow that has no matrix at
+    all, and the guard would go quiet with nothing to say so.
     """
     workflows_dir = root / ".github" / "workflows"
     if not workflows_dir.is_dir():
@@ -165,6 +175,11 @@ def check_workflow_matrices(root: Path, modules: set[Path], matrix_key: str) -> 
                     f"[{job_name}] stale matrix entry ./{mod} (no module manifest)"
                 )
                 errors += 1
+
+        for line, problem in sorted(unrecognised_matrix_keys(wf_file, matrix_key).items()):
+            start, end = col_range(wf_file, line, matrix_key)
+            print(f"{rel}:{line}:{start}-{end}: {problem}")
+            errors += 1
 
     return errors
 
