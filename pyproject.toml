@@ -30,9 +30,10 @@ dependencies = [
     # resolved vs. proposed versions reliably needs proper pep440 semantics rather
     # than lexical string compare.
     "packaging>=24.0",
-    # YAML parsing for meta/scripts/_workflows.py, which reads CI matrices out of
-    # .github/workflows/. Regex over YAML both missed flow style and fired on ordinary
-    # keys outside a matrix, so the check parses instead of matching.
+    # YAML parsing for meta/scripts/_workflows.py, which reads CI matrices and step inputs out
+    # of .github/workflows/ and .github/actions/. Regex over YAML both missed flow style and
+    # fired on ordinary keys outside the construct it meant, so the checks parse instead of
+    # matching. Consumed by check_modules.py (matrices) and check_python_version.py (steps).
     "pyyaml>=6.0",
     # TODO: delete this dep along with the meta/scripts/smoke_py smoke target once the
     # pip.parse chain has been verified end-to-end.

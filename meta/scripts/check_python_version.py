@@ -204,7 +204,14 @@ def check_workflows(root: Path) -> list[str]:
 
     A `${{ }}` expression is deliberately allowed: a job that drives `setup-python` from a matrix
     axis is parameterised rather than hardcoded, and that is the shape #272 needs for testing a
-    member across its supported range.
+    member across its supported range. Note this moves the level into the matrix list, which
+    nothing here checks -- a known gap, not a claim of safety.
+
+    A step carrying *both* inputs is rejected outright rather than resolved. setup-python prefers
+    `python-version` and ignores the file (warning only, in the run log), so the file reads as the
+    pin source while doing nothing; and `getMultilineInput` treats an empty expression as absent,
+    so the same YAML silently switches back to the file if the axis is ever renamed away. Refusing
+    the ambiguity is also what keeps this function from having to mirror the action's precedence.
     """
     problems = []
     for path in action_yaml_files(root):
@@ -221,7 +228,19 @@ def check_workflows(root: Path) -> list[str]:
             version_file = inputs.get("python-version-file")
             literal = inputs.get("python-version")
 
-            if version_file is not None:
+            if version_file is not None and literal is not None:
+                _, lineno = literal
+                problems.append(
+                    _problem(
+                        rel,
+                        lineno,
+                        col_range(path, lineno, "python-version"),
+                        "both python-version and python-version-file are set; setup-python "
+                        f"uses python-version and ignores the file, so `{PIN_FILE}` is not "
+                        "actually read here -- drop one",
+                    )
+                )
+            elif version_file is not None:
                 value, lineno = version_file
                 if value != PIN_FILE:
                     problems.append(
@@ -237,12 +256,19 @@ def check_workflows(root: Path) -> list[str]:
             elif literal is not None:
                 value, lineno = literal
                 if value is None or not _EXPRESSION_RE.search(value):
+                    # A non-scalar value (a list, a nested mapping) has no useful text form, so
+                    # describe the shape instead of rendering the None the parser reports.
+                    shown = (
+                        f": {value}"
+                        if value is not None
+                        else " (a list or mapping, not a version string)"
+                    )
                     problems.append(
                         _problem(
                             rel,
                             lineno,
                             col_range(path, lineno, "python-version"),
-                            f"hardcoded python-version: {value}; use "
+                            f"hardcoded python-version{shown}; use "
                             f"`python-version-file: {PIN_FILE}` so the level has one home",
                         )
                     )

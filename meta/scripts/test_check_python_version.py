@@ -180,6 +180,59 @@ class TestWorkflows(unittest.TestCase):
             self.assertEqual(len(problems), 1)
             self.assertIn("hardcoded python-version", problems[0])
 
+    def test_both_inputs_is_caught(self):
+        """setup-python prefers python-version, so the file is dead config that reads as live.
+
+        Regression: the line-oriented predecessor flagged every literal line regardless of what
+        sat beside it, so this shape was caught before the structural rewrite lost it.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write(
+                root,
+                ".github/workflows/ci.yml",
+                "jobs:\n  a:\n    steps:\n"
+                "      - uses: actions/setup-python@abc\n"
+                "        with:\n"
+                "          python-version-file: .python-version\n"
+                '          python-version: "3.11"\n',
+            )
+            problems = cpv.check_workflows(root)
+            self.assertEqual(len(problems), 1)
+            self.assertIn("both python-version and python-version-file", problems[0])
+
+    def test_both_inputs_is_caught_even_when_the_literal_is_an_expression(self):
+        """`${{ }}` earns a pass on its own, but not alongside a file the action will ignore."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write(
+                root,
+                ".github/workflows/ci.yml",
+                "jobs:\n  a:\n    steps:\n"
+                "      - uses: actions/setup-python@abc\n"
+                "        with:\n"
+                "          python-version-file: .python-version\n"
+                "          python-version: ${{ matrix.python-version }}\n",
+            )
+            problems = cpv.check_workflows(root)
+            self.assertEqual(len(problems), 1)
+            self.assertIn("both python-version and python-version-file", problems[0])
+
+    def test_non_scalar_literal_is_described_not_rendered_as_none(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write(
+                root,
+                ".github/workflows/ci.yml",
+                "jobs:\n  a:\n    steps:\n"
+                "      - uses: actions/setup-python@abc\n"
+                "        with:\n          python-version: [3.12, 3.13]\n",
+            )
+            problems = cpv.check_workflows(root)
+            self.assertEqual(len(problems), 1)
+            self.assertNotIn("None", problems[0])
+            self.assertIn("a list or mapping", problems[0])
+
     def test_hardcoded_literal_is_caught(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
