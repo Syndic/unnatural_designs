@@ -17,16 +17,23 @@
 name = "unnatural-designs-workspace"
 version = "0.0.0"
 description = "Workspace root for the unnatural_designs monorepo. Not a published package."
-requires-python = ">=3.14"
+# Load-bearing beyond packaging: ruff and ty both derive their target Python from this,
+# so it is the single home for the language level. Exact-minor rather than a `>=` floor
+# for two reasons: an open floor admits a future 3.15 silently, and Renovate's `replace`
+# strategy only rewrites a range the new version falls *outside* — so `>=` would never be
+# bumped at all. This root is `package = false`; a published member must NOT copy the
+# shape. See README, "The Python language level".
+requires-python = "==3.14.*"
 dependencies = [
     # pep440 version comparison for meta/scripts/ratify_renovate_proposals.py.
     # The script ratifies Renovate's Python dep-bump proposals via uv; comparing
     # resolved vs. proposed versions reliably needs proper pep440 semantics rather
     # than lexical string compare.
     "packaging>=24.0",
-    # YAML parsing for meta/scripts/_workflows.py, which reads CI matrices out of
-    # .github/workflows/. Regex over YAML both missed flow style and fired on ordinary
-    # keys outside a matrix, so the check parses instead of matching.
+    # YAML parsing for meta/scripts/_workflows.py, which reads CI matrices and step inputs out
+    # of .github/workflows/ and .github/actions/. Regex over YAML both missed flow style and
+    # fired on ordinary keys outside the construct it meant, so the checks parse instead of
+    # matching. Consumed by check_modules.py (matrices) and check_python_version.py (steps).
     "pyyaml>=6.0",
     # TODO: delete this dep along with the meta/scripts/smoke_py smoke target once the
     # pip.parse chain has been verified end-to-end.
@@ -49,7 +56,6 @@ members = []
 # --check .` and `ruff check .`; pre-commit runs the fixing variants.
 [tool.ruff]
 line-length = 100
-target-version = "py314"
 # Where first-party code lives. Load-bearing: ruff's `I` (isort) rules classify
 # top-level dirs listed here as first-party and group their imports separately
 # from third-party. A missed entry surfaces as `I001` ("imports out of order")
@@ -90,9 +96,6 @@ select = ["E", "F", "I", "B", "UP", "SIM", "RUF", "S"]
 # the editor extension (`astral-sh.ty` in devcontainer.json) reads the same
 # section. Rule severities are left at ty's defaults (see comment below).
 [tool.ty]
-
-[tool.ty.environment]
-python-version = "3.14"
 
 [tool.ty.src]
 # Mirror ruff's `src` so ty scans the same first-party trees. Excludes cover

@@ -340,6 +340,67 @@ every site edited together — but only while the sites agree. Divergent current
 separate updates and drift apart independently, so **keep duplicate pins of a tool byte-identical**
 (`ruff` and `ty` are each pinned in both the devcontainer Dockerfile and the CI workflow).
 
+### The Python language level
+
+[`.python-version`](.python-version) is the canonical pin. Two files derive from it by being
+*read*, and two more carry a copy because they cannot read it:
+
+| Site | Relationship | Consumers |
+| --- | --- | --- |
+| `.python-version` | canonical | `setup-python` (every workflow), `uv` |
+| `pyproject.toml` `requires-python` | copy, as `==<minor>.*` | `ruff`, `ty` — both infer their target from it |
+| `MODULE.bazel` `python_version` ×2 | copy | `rules_python` |
+| `.devcontainer/Dockerfile` `ARG` | copy | the image build, which never `COPY`s the workspace |
+
+`ruff` and `ty` are pinned **nowhere else**: neither `[tool.ruff] target-version` nor
+`[tool.ty.environment] python-version` is set, because each tool falls back to `requires-python`.
+Re-adding either reintroduces a site that Renovate cannot maintain — `target-version` takes a
+`py314`-shaped value no datasource emits and no Handlebars template can render.
+
+Three traps make this worth a guard rather than a convention:
+
+- **A floor is never bumped, and admits the next minor meanwhile.** Renovate's `replace` strategy
+  "[replaces] the range with a newer one if the new version falls outside it, and updates nothing
+  otherwise" — 3.15 falls *inside* `>=3.14`, so that form would never move. It also lets any 3.15
+  interpreter satisfy the project. `==3.14.*` fixes both: 3.15 falls outside it, and pep440's
+  range handler preserves the wildcard (`// keep the .* suffix`) to write `==3.15.*`.
+- **`==3.14` without the wildcard is not the same thing.** It matches **only** 3.14.0, so it would
+  reject both the devcontainer's interpreter and Bazel's. `uv sync` fails outright on it.
+- **Full semver is a scheduled break.** `rules_python` ships exactly one patch per minor in
+  `TOOL_VERSIONS` (2.3.2 maps `3.14` → `3.14.4`) while the version datasources offer newer ones,
+  so a three-segment pin plus Renovate would propose a patch Bazel cannot resolve. The pin stays
+  `<major>.<minor>`, and the three resolvers land on different patches of the same minor by
+  design — `uv` on the newest available, `rules_python` and `setup-python` on their own tables'.
+
+Also note `setup-python` accepts `python-version-file: pyproject.toml` but resolves the value as a
+semver range and takes the newest match. Workflows read `.python-version`, never `pyproject.toml`;
+the guard enforces it independently of which range form the root happens to carry.
+
+#### A published member must not copy the root's shape
+
+`==<minor>.*` is right *here* because the root is `package = false` and has no consumers. On a
+published library it would be actively harmful: `Requires-Python` ships in the wheel metadata, and
+a resolver facing an unsatisfiable cap does not error — it **silently installs an older release**
+that does match. The user gets stale code and no warning.
+
+The two concerns are separable, and uv already keeps them apart. A member declares its real
+support range while the workspace still develops and locks on the pin:
+
+```
+root   requires-python = "==3.14.*"   ->  uv.lock resolves at ==3.14.*   (dev + CI)
+member requires-python = ">=3.12"     ->  wheel carries Requires-Python: >=3.12   (consumers)
+```
+
+Both coexist in one `uv lock` — verified, not assumed. The member's published metadata is its own.
+
+The catch is that the lock proves nothing about the floor: dependencies are resolved for 3.14
+only, so a `>=3.12` claim is unverified until something actually exercises 3.12. A support range
+you never test is a guess — give such a member a test matrix over the range, or narrow the claim.
+
+Every copy above fails **silently** when it drifts, since a stale level is still a valid one.
+[`meta/scripts/check_python_version.py`](meta/scripts/check_python_version.py) is what turns that
+into a red check; it discovers workflows by glob, so a new one is covered without an edit.
+
 Three grouping exceptions in [`renovate.json`](renovate.json)'s `packageRules` keep *major* bumps
 atomic. Each is scoped with `matchUpdateTypes: ["major"]` so it cannot overlap the minor/patch
 catch-all — the *grouping* rules match disjoint sets of updates, and the order they appear in does
@@ -363,11 +424,17 @@ Both rules overlap the grouping rules, which is harmless because each is the onl
 its field. Keep that true, or make the order deliberate.
 
 - **Language toolchain SDKs** — the Go and Python version pins, tracked across `MODULE.bazel`,
-  `go.work`, per-module `go.mod`, the workflow `setup-python` steps, the devcontainer Dockerfile's
-  `PYTHON_VERSION` arg, and the Go toolchain `version` *option* on the `go` feature in
+  `go.work`, per-module `go.mod`, [`.python-version`](.python-version), the devcontainer
+  Dockerfile's `PYTHON_VERSION` arg, and the Go toolchain `version` *option* on the `go` feature in
   `devcontainer.json`. Note the option is a different dependency from the feature reference that
   carries it: `matchDepNames: ["go", "python"]` matches the toolchain option, not
   `ghcr.io/devcontainers/features/go`, so a feature-package major lands ungrouped on its own PR.
+  Two Python sites are reached by *stock* managers rather than custom regexes, and both are named
+  in the rule's `matchManagers` for that reason: **`pyenv`** reads `.python-version`, and
+  **`pep621`** reads `pyproject.toml`'s `requires-python`. Omitting either splits a Python major
+  into two PRs — and because `check_python_version.py` compares those sites against each other, it
+  then fails *both*: the group PR on the site left behind, the solo PR on the sites that moved
+  without it. Neither merges without a hand edit.
 - **`ruff`** — pinned in both the devcontainer Dockerfile and the CI workflow. (`pyproject.toml`
   holds ruff's *config*, not its version.)
 - **Bazel toolchains and rulesets** — `bazel_dep` majors. Rulesets that must advance in lockstep

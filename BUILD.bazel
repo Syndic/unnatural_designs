@@ -13,6 +13,9 @@ exports_files([
     ".github/workflows/devcontainer.yml",
     ".github/workflows/renovate-derived-files.yml",
     ".github/workflows/security.yml",
+    # The canonical Python language level, read by //meta/scripts:test_check_python_version so
+    # its sweep over the repo's real YAML compares against the same value CI does.
+    ".python-version",
 ])
 
 # Every workflow, as one dep: //meta/scripts:test_check_modules asserts the matrix-shape guard
@@ -20,7 +23,37 @@ exports_files([
 # without a BUILD edit — which is when a new matrix is most likely to arrive.
 filegroup(
     name = "workflows",
-    srcs = glob([".github/workflows/*.yml"]),
+    # `.yaml` too, for the same reason :composite_actions takes it: the guards glob `*.y*ml`, so
+    # a workflow spelled that way would be read in CI and absent from every sandboxed test.
+    # `allow_empty` because the repo happens to use only `.yml` today — that is a fact about the
+    # tree, not a constraint, and the whole point is that this list need not be curated.
+    srcs = glob(
+        [
+            ".github/workflows/*.yaml",
+            ".github/workflows/*.yml",
+        ],
+        allow_empty = True,
+    ),
+    visibility = ["//visibility:public"],
+)
+
+# Composite actions, kept separate from :workflows because they are a different file shape —
+# steps under `runs:` rather than under `jobs.*` — and only the guards that read steps want them.
+# //meta/scripts:test_check_python_version does: a `setup-python` step pins the language level
+# wherever it lives, so a guard that read only `.github/workflows/` would have a blind spot here.
+filegroup(
+    name = "composite_actions",
+    # Must stay as wide as `action_yaml_files()` in //meta/scripts:check_python_version, which
+    # takes any depth and either extension. A narrower glob here hides files from the sandboxed
+    # test while CI still reads them — green locally, red on the PR, and the non-vacuity guard
+    # keeps passing because some other action.yml is present.
+    srcs = glob(
+        [
+            ".github/actions/**/action.yaml",
+            ".github/actions/**/action.yml",
+        ],
+        allow_empty = True,
+    ),
     visibility = ["//visibility:public"],
 )
 

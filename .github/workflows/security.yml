@@ -197,8 +197,7 @@ jobs:
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          # renovate: datasource=python-version depName=python
-          python-version: "3.14"
+          python-version-file: .python-version
       # `--all-packages` is load-bearing: without it `uv export` emits the *root* project's
       # dependencies only, so a workspace member that is registered, locked, and passing every
       # ci.yml check still has none of its dependencies scanned — a green job that looked at

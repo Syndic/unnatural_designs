@@ -15,7 +15,11 @@ import textwrap
 import unittest
 from pathlib import Path
 
-from meta.scripts._workflows import unrecognised_matrix_keys, workflow_matrix_lists
+from meta.scripts._workflows import (
+    action_steps,
+    unrecognised_matrix_keys,
+    workflow_matrix_lists,
+)
 
 # ── TestWorkflowModuleLists ────────────────────────────────────────────────────
 # Carried over from test_check_go_modules.py with only the import path changed.
@@ -547,6 +551,143 @@ class TestMatrixShapes(unittest.TestCase):
         for wf in found:
             with self.subTest(workflow=wf.name):
                 self.assertEqual(unrecognised_matrix_keys(wf, "go_module"), {})
+
+
+# ── TestActionSteps ───────────────────────────────────────────────────────────
+# The step reader, covered here rather than only through its caller. Both axis bugs this suite
+# now pins were invisible from `test_check_python_version.py`: `exclude:` handling and
+# base-vs-`include:` precedence are questions about the parser, and a caller's fixtures cannot
+# ask them — they only observe the answer already folded into a verdict.
+
+
+class TestActionSteps(unittest.TestCase):
+    def _steps(self, content: str):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "workflow.yml"
+            path.write_text(textwrap.dedent(content))
+            return action_steps(path)
+
+    def _axes(self, matrix_body: str) -> dict[str, list[str]]:
+        body = textwrap.indent(textwrap.dedent(matrix_body), " " * 8)
+        steps, problems = self._steps(
+            "jobs:\n  a:\n    strategy:\n      matrix:\n"
+            + body
+            + "    steps:\n      - uses: actions/setup-python@abc\n"
+        )
+        self.assertEqual(problems, {})
+        self.assertEqual(len(steps), 1)
+        return steps[0].matrix
+
+    # ── step shape ────────────────────────────────────────────────────────────
+
+    def test_uses_and_with_are_read(self):
+        steps, _ = self._steps("""\
+            jobs:
+              a:
+                steps:
+                  - uses: actions/setup-python@abc
+                    with:
+                      python-version-file: .python-version
+            """)
+        self.assertEqual(len(steps), 1)
+        self.assertEqual(steps[0].uses, "actions/setup-python@abc")
+        self.assertEqual(steps[0].inputs["python-version-file"][0], ".python-version")
+
+    def test_flow_style_is_the_same_nodes(self):
+        steps, _ = self._steps("""\
+            jobs:
+              a:
+                steps:
+                  - {uses: actions/setup-python@x, with: {python-version: "3.13"}}
+            """)
+        self.assertEqual(steps[0].uses, "actions/setup-python@x")
+        self.assertEqual(steps[0].inputs["python-version"][0], "3.13")
+
+    def test_a_run_step_has_no_uses(self):
+        steps, _ = self._steps("jobs:\n  a:\n    steps:\n      - run: echo hi\n")
+        self.assertIsNone(steps[0].uses)
+
+    def test_a_non_scalar_input_is_none_not_dropped(self):
+        """None must mean "present but not a plain string", never "absent"."""
+        steps, _ = self._steps("""\
+            jobs:
+              a:
+                steps:
+                  - uses: actions/setup-python@abc
+                    with:
+                      python-version: [3.12, 3.13]
+            """)
+        self.assertIn("python-version", steps[0].inputs)
+        self.assertIsNone(steps[0].inputs["python-version"][0])
+
+    def test_composite_action_steps_are_read(self):
+        steps, _ = self._steps("""\
+            runs:
+              using: composite
+              steps:
+                - uses: actions/setup-python@abc
+            """)
+        self.assertEqual(len(steps), 1)
+        self.assertEqual(steps[0].matrix, {}, "a composite action has no strategy")
+
+    def test_unparseable_yaml_is_reported(self):
+        steps, problems = self._steps("jobs:\n  a:\n   - [unbalanced\n")
+        self.assertEqual(steps, [])
+        self.assertTrue(problems)
+
+    # ── matrix axes ───────────────────────────────────────────────────────────
+
+    def test_base_axis(self):
+        self.assertEqual(self._axes('py: ["3.13", "3.14"]\n'), {"py": ["3.13", "3.14"]})
+
+    def test_include_extends_a_readable_axis(self):
+        self.assertEqual(
+            self._axes('py: ["3.13"]\ninclude:\n  - py: "3.14"\n')["py"], ["3.13", "3.14"]
+        )
+
+    def test_single_key_exclude_subtracts(self):
+        """Containment is the inverse question from completeness, so `exclude:` must be read."""
+        self.assertEqual(
+            self._axes('py: ["3.13", "3.14"]\nexclude:\n  - py: "3.14"\n')["py"], ["3.13"]
+        )
+
+    def test_multi_key_exclude_does_not_subtract(self):
+        """It removes only combinations matching every key, so the value stays on the axis."""
+        axes = self._axes(
+            'py: ["3.13", "3.14"]\nos: [linux, mac]\nexclude:\n  - py: "3.14"\n    os: mac\n'
+        )
+        self.assertEqual(axes["py"], ["3.13", "3.14"])
+
+    def test_include_is_applied_after_exclude(self):
+        """GitHub's own order: `include:` adds back a combination `exclude:` removed.
+
+        So the value returns to the axis rather than staying subtracted, which is why the order
+        is base, minus `exclude:`, plus `include:` and not any arrangement that reads simpler.
+        """
+        axes = self._axes(
+            'py: ["3.13", "3.14"]\nexclude:\n  - py: "3.14"\ninclude:\n  - py: "3.14"\n'
+        )
+        self.assertEqual(axes["py"], ["3.13", "3.14"])
+
+    def test_a_computed_axis_is_absent(self):
+        self.assertEqual(self._axes("py: ${{ fromJSON(inputs.v) }}\n"), {})
+
+    def test_include_cannot_resurrect_an_unreadable_axis(self):
+        """Otherwise a computed axis plus one include reads as a known one-element list."""
+        self.assertNotIn(
+            "py", self._axes('py: ${{ fromJSON(inputs.v) }}\ninclude:\n  - py: "3.14"\n')
+        )
+
+    def test_a_wholly_computed_matrix_yields_no_axes(self):
+        steps, _ = self._steps("""\
+            jobs:
+              a:
+                strategy:
+                  matrix: ${{ fromJSON(needs.x.outputs.m) }}
+                steps:
+                  - uses: actions/setup-python@abc
+            """)
+        self.assertEqual(steps[0].matrix, {})
 
 
 if __name__ == "__main__":

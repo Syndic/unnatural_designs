@@ -1,8 +1,9 @@
-"""Reads per-language module matrices out of GitHub Actions workflows.
+"""Reads GitHub Actions YAML structurally: per-language module matrices, and step inputs.
 
-Split out of `_workspace.py` so the YAML dependency lands on the one script that needs it:
-`check_modules.py` reads matrices, while `check_go_work.py`, `check_adr_numbers.py`,
-`check_secrets_dir.py` and `check_no_cgo.py` do not, and each of those is its own CI job.
+Split out of `_workspace.py` so the YAML dependency lands on the scripts that need it:
+`check_modules.py` reads matrices and `check_python_version.py` reads step inputs, while
+`check_go_work.py`, `check_adr_numbers.py`, `check_secrets_dir.py` and `check_no_cgo.py` do
+not, and each of those is its own CI job.
 
 This is a real parse, not a scan. The line-oriented predecessor recognised a matrix only when
 its key stood alone on a line, which meant flow style (`go_module: [a]`, `- { go_module: a }`)
@@ -26,6 +27,7 @@ presence is itself unknown.
 """
 
 from pathlib import Path
+from typing import NamedTuple
 
 import yaml
 
@@ -176,3 +178,158 @@ def unrecognised_matrix_keys(workflow_file: Path, matrix_key: str) -> dict[int, 
     with no relationship to this language.
     """
     return _scan(workflow_file, matrix_key)[1]
+
+
+class Step(NamedTuple):
+    """One step, with the enclosing job's matrix axes attached.
+
+    `matrix` travels with the step because a `${{ matrix.x }}` input is only checkable against
+    the axis it names, and that axis lives two levels up. Empty for a composite action, which
+    has no `strategy:` — and where a `matrix.` reference would not resolve at run time either.
+    """
+
+    uses: str | None
+    line: int
+    inputs: dict[str, tuple[str | None, int]]
+    matrix: dict[str, list[str]]
+
+
+def _matrix_axes(job: yaml.Node | None) -> dict[str, list[str]]:
+    """`{axis: [values]}` a job's `strategy.matrix` actually runs, in GitHub's own order.
+
+    Base list, minus `exclude:`, plus `include:` — GitHub processes `include:` after `exclude:`
+    precisely so an excluded combination can be added back, and a set computed in any other order
+    would not be the one the job runs.
+
+    Note this reads `exclude:` where `_scan` deliberately ignores it, because the two callers ask
+    opposite questions. For matrix *completeness*, ignoring `exclude:` errs safe: a module named
+    only there is genuinely unscanned, and the caller reports it missing. For *containment*,
+    shrinking the run set is the whole risk, so ignoring `exclude:` would err the wrong way — an
+    axis could list the pin while excluding every combination that uses it.
+
+    Only a single-key `exclude:` entry subtracts. A multi-key entry removes some combinations and
+    leaves others, so the value survives on the axis and must not be subtracted from it.
+
+    An axis whose value is not a list of scalars is *unreadable*, and stays that way: `include:`
+    may extend an axis that was readable or absent, never conjure one over a value this could not
+    parse. Otherwise a computed axis plus one `include:` entry would read as a known one-element
+    list, which is exactly the "unreadable is indistinguishable from correct" case the callers
+    refuse.
+    """
+    strategy = _lookup(job, "strategy")
+    if strategy is None:
+        return {}
+    matrix = _lookup(strategy[1], "matrix")
+    if matrix is None or not isinstance(matrix[1], yaml.MappingNode):
+        return {}
+
+    axes: dict[str, list[str]] = {}
+    unreadable: set[str] = set()
+    for key_node, value_node in _pairs(matrix[1]):
+        name = key_node.value
+        if name in (_INCLUDE, _EXCLUDE):
+            continue
+        if not isinstance(value_node, yaml.SequenceNode):
+            unreadable.add(name)
+            continue
+        values = [i.value for i in value_node.value if isinstance(i, yaml.ScalarNode)]
+        if len(values) == len(value_node.value):
+            axes[name] = values
+        else:
+            unreadable.add(name)
+
+    for name, value in _single_key_entries(_lookup(matrix[1], _EXCLUDE)):
+        if name in axes:
+            axes[name] = [v for v in axes[name] if v != value]
+
+    for name, value in _single_key_entries(_lookup(matrix[1], _INCLUDE), single_only=False):
+        if name not in unreadable:
+            axes.setdefault(name, []).append(value)
+    return axes
+
+
+def _single_key_entries(
+    block: tuple[yaml.ScalarNode, yaml.Node] | None, single_only: bool = True
+) -> list[tuple[str, str]]:
+    """`(key, value)` scalar pairs from an `include:`/`exclude:` list.
+
+    `single_only` keeps `exclude:` honest: an entry naming two axes removes only the combinations
+    matching both, so neither value leaves its axis. `include:` has no such constraint — every
+    scalar it names is a value that combination actually runs with.
+    """
+    found: list[tuple[str, str]] = []
+    if block is None or not isinstance(block[1], yaml.SequenceNode):
+        return found
+    for item in block[1].value:
+        pairs = _pairs(item)
+        if single_only and len(pairs) != 1:
+            continue
+        found.extend((k.value, v.value) for k, v in pairs if isinstance(v, yaml.ScalarNode))
+    return found
+
+
+def _step_nodes(root: yaml.Node | None) -> list[tuple[yaml.Node, dict[str, list[str]]]]:
+    """Step nodes, paired with their job's matrix axes.
+
+    Workflow `jobs.*.steps` and composite-action `runs.steps` in one walk, because the two file
+    kinds are the same question asked twice: a step is a step whether a job or a composite action
+    holds it, and a guard that reads only one of them has a blind spot exactly where nobody looks.
+    """
+    found: list[tuple[yaml.Node, dict[str, list[str]]]] = []
+    containers: list[tuple[yaml.Node, dict[str, list[str]]]] = []
+
+    jobs = _lookup(root, "jobs")
+    if jobs is not None:
+        containers.extend((job, _matrix_axes(job)) for _, job in _pairs(jobs[1]))
+
+    runs = _lookup(root, "runs")
+    if runs is not None:
+        containers.append((runs[1], {}))
+
+    for container, axes in containers:
+        block = _lookup(container, "steps")
+        if block is not None and isinstance(block[1], yaml.SequenceNode):
+            found.extend((node, axes) for node in block[1].value)
+    return found
+
+
+def action_steps(yaml_file: Path) -> tuple[list[Step], dict[int, str]]:
+    """Every step in a workflow or composite action, as (uses, line, {input: (value, line)}).
+
+    Structural for the same reason the matrix reader is: a step's `with:` values are only
+    distinguishable from identically-named keys elsewhere — a `strategy.matrix` axis, a job
+    `env:` entry, a line inside a `run: |` heredoc — by where they sit. Flow style
+    (`- {uses: x, with: {k: v}}`) composes to the same nodes as block style, so it needs no
+    second spelling to recognise.
+
+    `uses` is None for a `run:` step. A non-scalar input value (a `${{ }}` block, a nested
+    mapping) is reported as None rather than dropped, so a caller can tell "absent" from
+    "present but not a plain string".
+    """
+    problems: dict[int, str] = {}
+    try:
+        root = yaml.compose(yaml_file.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        mark = getattr(exc, "problem_mark", None)
+        problems[mark.line + 1 if mark else 1] = f"could not be parsed as YAML ({exc.args[0]})"
+        return [], problems
+
+    collected: list[Step] = []
+    for node, axes in _step_nodes(root):
+        if not isinstance(node, yaml.MappingNode):
+            continue
+
+        uses_pair = _lookup(node, "uses")
+        uses = None
+        if uses_pair is not None and isinstance(uses_pair[1], yaml.ScalarNode):
+            uses = uses_pair[1].value
+
+        inputs: dict[str, tuple[str | None, int]] = {}
+        with_pair = _lookup(node, "with")
+        if with_pair is not None:
+            for key_node, value_node in _pairs(with_pair[1]):
+                value = value_node.value if isinstance(value_node, yaml.ScalarNode) else None
+                inputs[key_node.value] = (value, _line(key_node))
+
+        collected.append(Step(uses, _line(node), inputs, axes))
+    return collected, problems
