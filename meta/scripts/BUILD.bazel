@@ -241,22 +241,35 @@ py_test(
 py_library(
     name = "check_python_version_lib",
     srcs = ["check_python_version.py"],
-    deps = [":_workspace_lib"],
+    deps = [
+        ":_workflows_lib",
+        ":_workspace_lib",
+    ],
 )
 
 py_binary(
     name = "check_python_version",
     srcs = ["check_python_version.py"],
     main = "check_python_version.py",
-    deps = [":_workspace_lib"],
+    deps = [
+        ":_workflows_lib",
+        ":_workspace_lib",
+    ],
 )
 
 py_test(
     name = "test_check_python_version",
     size = "small",
     srcs = ["test_check_python_version.py"],
+    # Real workflow and action files, for the same reason test__workflows uses them: a false
+    # positive over the repo's own YAML fails CI for everyone and no synthetic fixture shows it.
+    data = [
+        "//:composite_actions",
+        "//:workflows",
+    ],
     main = "test_check_python_version.py",
     deps = [
+        ":_workflows_lib",
         ":_workspace_lib",
         ":check_python_version_lib",
     ],

@@ -24,6 +24,16 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
+# Composite actions, kept separate from :workflows because they are a different file shape —
+# steps under `runs:` rather than under `jobs.*` — and only the guards that read steps want them.
+# //meta/scripts:test_check_python_version does: a `setup-python` step pins the language level
+# wherever it lives, so a guard that read only `.github/workflows/` would have a blind spot here.
+filegroup(
+    name = "composite_actions",
+    srcs = glob([".github/actions/*/action.yml"]),
+    visibility = ["//visibility:public"],
+)
+
 # Same posture for prose that hand-copies something the tests can check it against: the hook table
 # against the config's ids (//meta/scripts:test_precommit_docs), and both docs against the required
 # check name security.yml's fan-in carries (//meta/scripts:test_codeql_toolchain).

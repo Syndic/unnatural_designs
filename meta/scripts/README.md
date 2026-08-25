@@ -12,6 +12,7 @@ without blocking).
 | `check_no_cgo.py`       | No `import "C"` in our Go source and no transitive deps that compile C/C++/cgo/SWIG            | `ci.yml`                      | —                     | —                                 |
 | `check_adr_numbers.py`  | ADR numbers are unique repo-wide and filenames are `NNNN-kebab-slug.md`         | `ci.yml`                      | —                     | `check: adr numbers`              |
 | `check_secrets_dir.py`  | `secrets/` contains no committed files other than `secrets.md`                                 | `ci.yml`                      | `check-secrets-dir`   | —                                 |
+| `check_python_version.py` | Every Python language-level declaration agrees with `//:.python-version` (see below)          | `ci.yml`                      | —                     | `check: python version`           |
 
 `check_modules.py`'s matrix check parses the workflow as YAML (`_workflows.py`, the one module
 here with a third-party dependency), so how a matrix is *written* — block or flow style,
@@ -43,9 +44,26 @@ numbering is global while the directories are per-context. It deliberately has n
 read: the numbers already live in the filenames, and a second copy would be a derived file needing
 its own freshness check, and a merge conflict on every concurrent ADR.
 
-`_workspace.py` is a private shared helper for the five guards above (Bazel workspace discovery,
+`check_python_version.py` holds the four copies of the language level that cannot read
+`//:.python-version` — `pyproject.toml`'s `requires-python`, `MODULE.bazel`'s two
+`python_version` call sites, and the devcontainer `ARG` — to the value in that file, and refuses
+a `setup-python` step that carries a literal instead of reading it. Each of those copies fails
+*silently* on drift, because a stale language level is still a valid one, so every tool stays
+green while targeting the wrong version. ruff and ty are deliberately absent from the list: both
+derive their target from `requires-python`, which is why neither `[tool.ruff] target-version` nor
+`[tool.ty.environment] python-version` is set.
+
+It reads steps through `_workflows.py` for the same reason `check_modules.py` reads matrices that
+way, and it covers `.github/actions/*/action.yml` alongside `.github/workflows/*.yml` — a step
+pins the level wherever it lives. A `${{ }}` value is allowed through: driving `setup-python`
+from a matrix axis is parameterised rather than hardcoded.
+
+`_workspace.py` is a private shared helper for the six guards above (Bazel workspace discovery,
 module enumeration). The leading underscore signals it's not a public API; `test__workspace.py`
-covers it directly.
+covers it directly. `_workflows.py` is the same idea for GitHub Actions YAML, and is the only
+module here with a third-party dependency — `check_modules.py` and `check_python_version.py` are
+its two consumers, which is why both run under `uv run --frozen` in CI while the others use a
+bare `python3`.
 
 `test_precommit_docs.py` has no script half. It asserts that README's pre-commit hook table, and
 the paragraph that classifies each hook, still agree with `.pre-commit-config.yaml` — a coupling

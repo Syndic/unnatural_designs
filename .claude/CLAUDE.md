@@ -352,7 +352,8 @@ just the one field — which is why the regeneration is a full `devcontainer upg
 Python is deliberately **not** a devcontainer feature: that feature compiles CPython from source
 (~2 min per build). The Dockerfile installs a prebuilt uv-managed interpreter instead — `ARG
 PYTHON_VERSION` (Renovate-tracked via the Dockerfile custom manager, `depName=python`, so it stays
-in the "Language toolchain SDKs" group alongside the `MODULE.bazel` and `setup-python` pins) — and
+in the "Language toolchain SDKs" group alongside `//:.python-version`, `MODULE.bazel`, and
+`pyproject.toml`'s `requires-python`) — and
 symlinks `python3`/`python` onto PATH. The CI `Devcontainer` job caches the built image in GHCR
 (`imageName`/`cacheFrom`, `push: filter` seeds it on pushes to main), so the feature layers are
 reused across runs rather than rebuilt cold; this needs the workflow's `packages: write`.

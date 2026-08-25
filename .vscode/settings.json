@@ -55,6 +55,14 @@
     ],
     "check: adr numbers": [
       "**/docs/adr/*.md"
+    ],
+    "check: python version": [
+      ".python-version",
+      "**/pyproject.toml",
+      "MODULE.bazel",
+      ".devcontainer/Dockerfile",
+      ".github/workflows/*.yml",
+      ".github/actions/*/action.yml"
     ]
   },
   "triggerTaskOnSave.showStatusBarToggle": true,

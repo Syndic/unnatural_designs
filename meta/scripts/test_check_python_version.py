@@ -124,6 +124,33 @@ jobs:
           python-version-file: .python-version
 """
 
+# Every shape a line-oriented scan got wrong, in one file. The first three were false positives
+# and the fourth was invisible to it; see the module docstring of check_python_version and #268.
+WORKFLOW_LOOKALIKES = """\
+jobs:
+  a:
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/setup-python@abc
+        with:
+          python-version: ${{ matrix.python-version }}
+  b:
+    steps:
+      - run: |
+          cat <<EOF > cfg.yml
+          python-version: 3.13
+          EOF
+  c:
+    env:
+      python-version: "3.11"
+    steps:
+      - uses: actions/setup-python@abc
+        with:
+          python-version-file: .python-version
+"""
+
 
 class TestWorkflows(unittest.TestCase):
     def test_version_file_reference_passes(self):
@@ -131,6 +158,27 @@ class TestWorkflows(unittest.TestCase):
             root = Path(tmp)
             write(root, ".github/workflows/ci.yml", WORKFLOW_OK)
             self.assertEqual(cpv.check_workflows(root), [])
+
+    def test_lookalikes_outside_a_setup_python_step_are_ignored(self):
+        """A matrix axis, a `${{ }}` pass-through, a `run:` heredoc, a job `env:` -- not pins."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write(root, ".github/workflows/ci.yml", WORKFLOW_LOOKALIKES)
+            self.assertEqual(cpv.check_workflows(root), [])
+
+    def test_flow_style_literal_is_caught(self):
+        """The inverse failure: a scan missed this shape entirely, so a literal passed the guard."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write(
+                root,
+                ".github/workflows/ci.yml",
+                "jobs:\n  a:\n    steps:\n"
+                '      - {uses: actions/setup-python@x, with: {python-version: "3.13"}}\n',
+            )
+            problems = cpv.check_workflows(root)
+            self.assertEqual(len(problems), 1)
+            self.assertIn("hardcoded python-version", problems[0])
 
     def test_hardcoded_literal_is_caught(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -170,7 +218,7 @@ class TestWorkflows(unittest.TestCase):
             )
             problems = cpv.check_workflows(root)
             self.assertEqual(len(problems), 1)
-            self.assertIn("must pin the level explicitly", problems[0])
+            self.assertIn("pins nothing", problems[0])
 
     def test_yaml_extension_is_also_scanned(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -182,11 +230,61 @@ class TestWorkflows(unittest.TestCase):
             )
             self.assertEqual(len(cpv.check_workflows(root)), 1)
 
+    def test_composite_action_is_scanned(self):
+        """`.github/actions/*/action.yml` holds steps too, under `runs:` rather than `jobs:`."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write(
+                root,
+                ".github/actions/thing/action.yml",
+                "runs:\n  using: composite\n  steps:\n"
+                "      - uses: actions/setup-python@abc\n"
+                '        with:\n          python-version: "3.14"\n',
+            )
+            problems = cpv.check_workflows(root)
+            self.assertEqual(len(problems), 1)
+            self.assertIn("hardcoded python-version", problems[0])
+
+    def test_unparseable_yaml_is_reported_not_skipped(self):
+        """A file nobody can read must not be indistinguishable from one with nothing to flag."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write(root, ".github/workflows/ci.yml", "jobs:\n  a:\n   - [unclosed\n")
+            problems = cpv.check_workflows(root)
+            self.assertEqual(len(problems), 1)
+            self.assertIn("could not be parsed as YAML", problems[0])
+
     def test_workflow_without_setup_python_is_ignored(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             write(root, ".github/workflows/ci.yml", "jobs:\n  a:\n    steps:\n      - run: true\n")
             self.assertEqual(cpv.check_workflows(root), [])
+
+
+class TestAgainstThisRepo(unittest.TestCase):
+    """Held against the repo's real YAML, where a false positive fails CI for everyone.
+
+    The root comes from `__file__` rather than `workspace_root()`: under Bazel the test runs in a
+    sandbox with no git repo, so shelling out to `git rev-parse` fails outright.
+    """
+
+    root = Path(__file__).parent.parent.parent
+
+    def test_both_trees_are_discovered(self):
+        files = cpv.action_yaml_files(self.root)
+        # Without the //:workflows and //:composite_actions data deps these directories are absent
+        # from the runfiles tree, and every assertion below would pass while checking nothing.
+        self.assertTrue(
+            any(p.parent.name == "workflows" for p in files),
+            f"no workflows in the runfiles tree; this test is vacuous: {files}",
+        )
+        self.assertTrue(
+            any(p.name == "action.yml" for p in files),
+            f"no composite actions in the runfiles tree; this test is vacuous: {files}",
+        )
+
+    def test_repo_is_clean(self):
+        self.assertEqual(cpv.check_workflows(self.root), [])
 
 
 if __name__ == "__main__":

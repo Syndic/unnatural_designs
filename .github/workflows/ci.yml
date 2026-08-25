@@ -99,17 +99,20 @@ jobs:
       - run: python3 meta/scripts/check_adr_numbers.py
 
   # Holds the four copies of the language level that cannot read //:.python-version to it, and
-  # refuses a workflow that reintroduces a literal. Every one of them fails silently on drift —
-  # a stale value is still a valid value — so nothing else in CI would notice.
+  # refuses a setup-python step that reintroduces a literal. Every one of them fails silently on
+  # drift — a stale value is still a valid value — so nothing else in CI would notice.
   python-version-check:
     name: Python version consistency check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version-file: .python-version
-      - run: python3 meta/scripts/check_python_version.py
+      # `uv run`, for the same reason modules-check above uses it: this guard reads steps out of
+      # workflow YAML via `_workflows.py` (PyYAML) rather than pattern-matching lines.
+      - run: uv run --frozen python3 meta/scripts/check_python_version.py
 
   secrets-check:
     name: Secrets check

@@ -429,9 +429,12 @@ its field. Keep that true, or make the order deliberate.
   `devcontainer.json`. Note the option is a different dependency from the feature reference that
   carries it: `matchDepNames: ["go", "python"]` matches the toolchain option, not
   `ghcr.io/devcontainers/features/go`, so a feature-package major lands ungrouped on its own PR.
-  `.python-version` is reached by Renovate's stock **`pyenv`** manager rather than a custom regex,
-  which is why that manager is named in the rule's `matchManagers` — without it the file would
-  land in the minor/patch catch-all and a major would split into two PRs that drift apart.
+  Two Python sites are reached by *stock* managers rather than custom regexes, and both are named
+  in the rule's `matchManagers` for that reason: **`pyenv`** reads `.python-version`, and
+  **`pep621`** reads `pyproject.toml`'s `requires-python`. Omitting either splits a Python major
+  into two PRs — and because `check_python_version.py` compares those sites against each other, it
+  then fails *both*: the group PR on the site left behind, the solo PR on the sites that moved
+  without it. Neither merges without a hand edit.
 - **`ruff`** — pinned in both the devcontainer Dockerfile and the CI workflow. (`pyproject.toml`
   holds ruff's *config*, not its version.)
 - **Bazel toolchains and rulesets** — `bazel_dep` majors. Rulesets that must advance in lockstep

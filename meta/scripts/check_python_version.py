@@ -12,7 +12,8 @@ a stale value is still a valid value, so every tool stays green while targeting 
   - MODULE.bazel `python_version`     -- rules_python's toolchain, once per call site.
   - .devcontainer/Dockerfile ARG      -- the image build never COPYs the workspace, so it
                                          cannot read the pin file at build time.
-  - .github/workflows/*.yml           -- must read the file, never carry a literal.
+  - setup-python steps                -- in .github/workflows/ *and* .github/actions/; must
+                                         read the file, never carry a literal.
 
 The pin is deliberately `<major>.<minor>` with no patch. rules_python ships exactly one patch
 per minor in its TOOL_VERSIONS table (2.3.2: 3.14 -> 3.14.4) while the version datasources
@@ -31,6 +32,7 @@ from pathlib import Path
 # pre-commit), the workspace root is not on sys.path, so `from meta.scripts.X` would fail.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from meta.scripts._workflows import action_steps
 from meta.scripts._workspace import col_range, workspace_root
 
 PIN_FILE = ".python-version"
@@ -38,11 +40,16 @@ PIN_FILE = ".python-version"
 # No patch segment: see the module docstring for why a three-segment pin cannot work here.
 _PIN_RE = re.compile(r"^\d+\.\d+$")
 
+# Starlark and Dockerfile are not YAML; a line-anchored pattern is the right tool for both, and
+# neither has the nesting that makes a scan wrong for workflows.
 _MODULE_BAZEL_RE = re.compile(r'python_version\s*=\s*"([^"]+)"')
 _DOCKERFILE_ARG_RE = re.compile(r"^ARG\s+PYTHON_VERSION=(\S+)")
-_WORKFLOW_LITERAL_RE = re.compile(r"^\s*python-version:\s*(\S+)")
-_WORKFLOW_FILE_RE = re.compile(r"^\s*python-version-file:\s*(\S+)")
-_SETUP_PYTHON_RE = re.compile(r"^\s*-?\s*uses:\s*actions/setup-python@")
+
+_SETUP_PYTHON = "actions/setup-python"
+
+# `${{ … }}` anywhere in the value: a matrix pass-through or other expression is parameterised,
+# not hardcoded, so it is not this guard's business.
+_EXPRESSION_RE = re.compile(r"\$\{\{.*\}\}")
 
 
 def _problem(rel: Path | str, lineno: int, cols: tuple[int, int], message: str) -> str:
@@ -168,65 +175,87 @@ def check_dockerfile(root: Path, version: str) -> list[str]:
     return problems
 
 
-def check_workflows(root: Path) -> list[str]:
-    """Workflows must read the pin file and never carry a literal or point at pyproject.toml.
+def action_yaml_files(root: Path) -> list[Path]:
+    """Every workflow and composite action in the repo.
 
-    Discovered by glob rather than hand-listed: a list would reproduce exactly the gap this
-    guard exists to close, since a new workflow is precisely what nobody remembers to add.
+    Both trees, because a step is a step wherever it lives: a `setup-python` added to a composite
+    action under `.github/actions/` pins the level exactly as a workflow step does, and omitting
+    that directory would be a hand-maintained blind spot in a guard whose whole claim is that it
+    has none. Latent today — no composite action uses setup-python — which is when it is cheap.
     """
-    workflow_dir = root / ".github/workflows"
-    if not workflow_dir.is_dir():
-        return []
+    found = []
+    for directory, pattern in (
+        (root / ".github/workflows", "*.y*ml"),
+        (root / ".github/actions", "**/action.y*ml"),
+    ):
+        if directory.is_dir():
+            found.extend(p for p in directory.glob(pattern) if p.suffix in (".yml", ".yaml"))
+    return sorted(found)
 
+
+def check_workflows(root: Path) -> list[str]:
+    """Every `setup-python` step must pin the level, and only via the pin file.
+
+    Parsed, not matched. A line-oriented scan has no notion of step context, so it flags a
+    `strategy.matrix` axis named `python-version`, a `${{ matrix.python-version }}` pass-through,
+    and a `python-version:` line inside a `run: |` heredoc -- while missing a flow-style step
+    (`- {uses: …, with: {python-version: "3.13"}}`) entirely, which is a literal that passes the
+    guard. Structure is what tells those apart; see `_workflows.py` and #268.
+
+    A `${{ }}` expression is deliberately allowed: a job that drives `setup-python` from a matrix
+    axis is parameterised rather than hardcoded, and that is the shape #272 needs for testing a
+    member across its supported range.
+    """
     problems = []
-    for path in sorted(workflow_dir.glob("*.yml")) + sorted(workflow_dir.glob("*.yaml")):
+    for path in action_yaml_files(root):
         rel = path.relative_to(root)
-        lines = path.read_text().splitlines()
-        setup_steps = 0
-        version_files = 0
+        steps, parse_problems = action_steps(path)
 
-        for lineno, line in enumerate(lines, start=1):
-            if _SETUP_PYTHON_RE.match(line):
-                setup_steps += 1
+        for lineno, message in sorted(parse_problems.items()):
+            problems.append(_problem(rel, lineno, (1, 2), message))
 
-            literal = _WORKFLOW_LITERAL_RE.match(line)
-            if literal:
-                problems.append(
-                    _problem(
-                        rel,
-                        lineno,
-                        col_range(path, lineno, "python-version:"),
-                        f"hardcoded python-version: {literal.group(1)}; use "
-                        f"`python-version-file: {PIN_FILE}` so the level has one home",
-                    )
-                )
+        for uses, step_line, inputs in steps:
+            if uses is None or not uses.startswith(f"{_SETUP_PYTHON}@"):
+                continue
 
-            version_file = _WORKFLOW_FILE_RE.match(line)
-            if version_file:
-                version_files += 1
-                if version_file.group(1) != PIN_FILE:
+            version_file = inputs.get("python-version-file")
+            literal = inputs.get("python-version")
+
+            if version_file is not None:
+                value, lineno = version_file
+                if value != PIN_FILE:
                     problems.append(
                         _problem(
                             rel,
                             lineno,
-                            col_range(path, lineno, version_file.group(1)),
-                            f"reads {version_file.group(1)}, expected {PIN_FILE}; "
-                            f"setup-python resolves pyproject.toml's requires-python as a "
-                            f"semver *range* and installs the newest match",
+                            col_range(path, lineno, "python-version-file"),
+                            f"reads {value}, expected {PIN_FILE}; setup-python resolves "
+                            f"pyproject.toml's requires-python as a semver *range* and "
+                            f"installs the newest match",
                         )
                     )
-
-        # A setup-python step with neither input silently takes the runner's default Python.
-        if setup_steps > version_files:
-            problems.append(
-                _problem(
-                    rel,
-                    1,
-                    (1, 2),
-                    f"{setup_steps} setup-python step(s) but {version_files} "
-                    f"`python-version-file:` -- every step must pin the level explicitly",
+            elif literal is not None:
+                value, lineno = literal
+                if value is None or not _EXPRESSION_RE.search(value):
+                    problems.append(
+                        _problem(
+                            rel,
+                            lineno,
+                            col_range(path, lineno, "python-version"),
+                            f"hardcoded python-version: {value}; use "
+                            f"`python-version-file: {PIN_FILE}` so the level has one home",
+                        )
+                    )
+            else:
+                # Neither input: the step silently takes the runner image's default Python.
+                problems.append(
+                    _problem(
+                        rel,
+                        step_line,
+                        (1, 2),
+                        f"setup-python step pins nothing; add `python-version-file: {PIN_FILE}`",
+                    )
                 )
-            )
 
     return problems
 

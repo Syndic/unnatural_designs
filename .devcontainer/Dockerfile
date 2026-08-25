@@ -64,7 +64,9 @@ RUN uv tool install --no-cache "ruff==${RUFF_VERSION}" \
 # it into UV_PYTHON_INSTALL_DIR (world-readable, above); the symlinks put `python3`/
 # `python` on PATH for the smoke test, the ms-python extension, and interactive use.
 # `--no-project` ignores any workspace .venv; `--managed-python` resolves the uv copy.
-# Kept level with the setup-python/MODULE.bazel pins by Renovate (Language toolchain SDKs).
+# A copy of //:.python-version, not a second source: the build context never COPYs the workspace,
+# so this ARG cannot read that file. Renovate keeps the two level (Language toolchain SDKs) and
+# //meta/scripts:check_python_version fails the build if they ever disagree.
 # renovate: datasource=python-version depName=python
 ARG PYTHON_VERSION=3.14
 RUN uv python install "${PYTHON_VERSION}" \
