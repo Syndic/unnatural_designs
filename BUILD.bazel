@@ -23,7 +23,17 @@ exports_files([
 # without a BUILD edit — which is when a new matrix is most likely to arrive.
 filegroup(
     name = "workflows",
-    srcs = glob([".github/workflows/*.yml"]),
+    # `.yaml` too, for the same reason :composite_actions takes it: the guards glob `*.y*ml`, so
+    # a workflow spelled that way would be read in CI and absent from every sandboxed test.
+    # `allow_empty` because the repo happens to use only `.yml` today — that is a fact about the
+    # tree, not a constraint, and the whole point is that this list need not be curated.
+    srcs = glob(
+        [
+            ".github/workflows/*.yaml",
+            ".github/workflows/*.yml",
+        ],
+        allow_empty = True,
+    ),
     visibility = ["//visibility:public"],
 )
 
@@ -33,7 +43,17 @@ filegroup(
 # wherever it lives, so a guard that read only `.github/workflows/` would have a blind spot here.
 filegroup(
     name = "composite_actions",
-    srcs = glob([".github/actions/*/action.yml"]),
+    # Must stay as wide as `action_yaml_files()` in //meta/scripts:check_python_version, which
+    # takes any depth and either extension. A narrower glob here hides files from the sandboxed
+    # test while CI still reads them — green locally, red on the PR, and the non-vacuity guard
+    # keeps passing because some other action.yml is present.
+    srcs = glob(
+        [
+            ".github/actions/**/action.yaml",
+            ".github/actions/**/action.yml",
+        ],
+        allow_empty = True,
+    ),
     visibility = ["//visibility:public"],
 )
 

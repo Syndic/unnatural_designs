@@ -62,7 +62,9 @@
       "MODULE.bazel",
       ".devcontainer/Dockerfile",
       ".github/workflows/*.yml",
-      ".github/actions/*/action.yml"
+      ".github/workflows/*.yaml",
+      ".github/actions/**/action.yml",
+      ".github/actions/**/action.yaml"
     ]
   },
   "triggerTaskOnSave.showStatusBarToggle": true,

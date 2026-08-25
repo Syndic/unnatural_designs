@@ -313,13 +313,20 @@ def check_workflows(root: Path, version: str | None = None) -> list[str]:
                 if message is not None:
                     problems.append(_problem(rel, lineno, cols, message))
             else:
-                # Neither input: the step silently takes the runner image's default Python.
+                # Neither input. v7 does not fall back to the runner's Python: it looks for
+                # `.python-version` in the *working directory* (`resolveVersionInputFromDefault
+                # File`), so this usually resolves to the right level by accident. The lookup is
+                # cwd-relative though, so a `working-directory:` or a checkout into a
+                # subdirectory silently finds nothing and the step takes the runner default
+                # instead. Naming the file is what makes that dependency visible at the step.
                 problems.append(
                     _problem(
                         rel,
                         step_line,
                         (1, 2),
-                        f"setup-python step pins nothing; add `python-version-file: {PIN_FILE}`",
+                        f"setup-python step names no version input; it would find {PIN_FILE} "
+                        f"only by cwd lookup, which a `working-directory:` or a nested "
+                        f"checkout breaks silently -- set `python-version-file: {PIN_FILE}`",
                     )
                 )
 

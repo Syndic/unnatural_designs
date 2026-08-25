@@ -271,7 +271,10 @@ class TestWorkflows(unittest.TestCase):
             )
             problems = cpv.check_workflows(root)
             self.assertEqual(len(problems), 1)
-            self.assertIn("pins nothing", problems[0])
+            # The action does find `.python-version` by cwd lookup; what is wrong is that the
+            # dependency is implicit and breaks under `working-directory:`, not that it is absent.
+            self.assertIn("names no version input", problems[0])
+            self.assertIn("cwd lookup", problems[0])
 
     def test_yaml_extension_is_also_scanned(self):
         with tempfile.TemporaryDirectory() as tmp:

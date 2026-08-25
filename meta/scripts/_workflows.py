@@ -195,11 +195,26 @@ class Step(NamedTuple):
 
 
 def _matrix_axes(job: yaml.Node | None) -> dict[str, list[str]]:
-    """`{axis: [values]}` for a job's `strategy.matrix`, scalars only, with `include:` unioned in.
+    """`{axis: [values]}` a job's `strategy.matrix` actually runs, in GitHub's own order.
 
-    An axis whose value is not a list of scalars is omitted rather than reported as empty, so a
-    caller can tell "no such axis" from "an axis I could not read" only by its own lookup failing
-    — the same reporting line `_scan` draws, for the same reason.
+    Base list, minus `exclude:`, plus `include:` — GitHub processes `include:` after `exclude:`
+    precisely so an excluded combination can be added back, and a set computed in any other order
+    would not be the one the job runs.
+
+    Note this reads `exclude:` where `_scan` deliberately ignores it, because the two callers ask
+    opposite questions. For matrix *completeness*, ignoring `exclude:` errs safe: a module named
+    only there is genuinely unscanned, and the caller reports it missing. For *containment*,
+    shrinking the run set is the whole risk, so ignoring `exclude:` would err the wrong way — an
+    axis could list the pin while excluding every combination that uses it.
+
+    Only a single-key `exclude:` entry subtracts. A multi-key entry removes some combinations and
+    leaves others, so the value survives on the axis and must not be subtracted from it.
+
+    An axis whose value is not a list of scalars is *unreadable*, and stays that way: `include:`
+    may extend an axis that was readable or absent, never conjure one over a value this could not
+    parse. Otherwise a computed axis plus one `include:` entry would read as a known one-element
+    list, which is exactly the "unreadable is indistinguishable from correct" case the callers
+    refuse.
     """
     strategy = _lookup(job, "strategy")
     if strategy is None:
@@ -209,22 +224,48 @@ def _matrix_axes(job: yaml.Node | None) -> dict[str, list[str]]:
         return {}
 
     axes: dict[str, list[str]] = {}
+    unreadable: set[str] = set()
     for key_node, value_node in _pairs(matrix[1]):
-        if key_node.value in (_INCLUDE, _EXCLUDE):
+        name = key_node.value
+        if name in (_INCLUDE, _EXCLUDE):
             continue
-        if isinstance(value_node, yaml.SequenceNode):
-            values = [i.value for i in value_node.value if isinstance(i, yaml.ScalarNode)]
-            if len(values) == len(value_node.value):
-                axes[key_node.value] = values
+        if not isinstance(value_node, yaml.SequenceNode):
+            unreadable.add(name)
+            continue
+        values = [i.value for i in value_node.value if isinstance(i, yaml.ScalarNode)]
+        if len(values) == len(value_node.value):
+            axes[name] = values
+        else:
+            unreadable.add(name)
 
-    # `include:` can introduce a value for an axis that the base list never names.
-    block = _lookup(matrix[1], _INCLUDE)
-    if block is not None and isinstance(block[1], yaml.SequenceNode):
-        for item in block[1].value:
-            for key_node, value_node in _pairs(item):
-                if isinstance(value_node, yaml.ScalarNode):
-                    axes.setdefault(key_node.value, []).append(value_node.value)
+    for name, value in _single_key_entries(_lookup(matrix[1], _EXCLUDE)):
+        if name in axes:
+            axes[name] = [v for v in axes[name] if v != value]
+
+    for name, value in _single_key_entries(_lookup(matrix[1], _INCLUDE), single_only=False):
+        if name not in unreadable:
+            axes.setdefault(name, []).append(value)
     return axes
+
+
+def _single_key_entries(
+    block: tuple[yaml.ScalarNode, yaml.Node] | None, single_only: bool = True
+) -> list[tuple[str, str]]:
+    """`(key, value)` scalar pairs from an `include:`/`exclude:` list.
+
+    `single_only` keeps `exclude:` honest: an entry naming two axes removes only the combinations
+    matching both, so neither value leaves its axis. `include:` has no such constraint — every
+    scalar it names is a value that combination actually runs with.
+    """
+    found: list[tuple[str, str]] = []
+    if block is None or not isinstance(block[1], yaml.SequenceNode):
+        return found
+    for item in block[1].value:
+        pairs = _pairs(item)
+        if single_only and len(pairs) != 1:
+            continue
+        found.extend((k.value, v.value) for k, v in pairs if isinstance(v, yaml.ScalarNode))
+    return found
 
 
 def _step_nodes(root: yaml.Node | None) -> list[tuple[yaml.Node, dict[str, list[str]]]]:
