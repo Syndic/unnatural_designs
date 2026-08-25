@@ -55,8 +55,20 @@ derive their target from `requires-python`, which is why neither `[tool.ruff] ta
 
 It reads steps through `_workflows.py` for the same reason `check_modules.py` reads matrices that
 way, and it covers `.github/actions/*/action.yml` alongside `.github/workflows/*.yml` — a step
-pins the level wherever it lives. A `${{ }}` value is allowed through: driving `setup-python`
-from a matrix axis is parameterised rather than hardcoded.
+pins the level wherever it lives.
+
+Two step shapes are rejected outright rather than interpreted. **Both inputs on one step**, because
+`setup-python` prefers `python-version` and merely warns about the file, so `.python-version` reads
+as the source while doing nothing — and an expression that resolves empty flips the action back to
+the file, making the same YAML install different interpreters. **An expression it cannot resolve**,
+because an unreadable pin is otherwise indistinguishable from a correct one, and the second reading
+is the one that passes.
+
+The single expression form accepted is a whole-value `${{ matrix.<axis> }}` reference whose axis
+the job defines as a plain list — and that list must contain the pin. A job may test *more*
+versions than the pin (testing a member across its supported range, #272) but never fewer.
+Otherwise the level just moves into a list nothing verifies, and the job silently stops exercising
+the version the rest of the repo targets as soon as the pin advances.
 
 `_workspace.py` is a private shared helper for the six guards above (Bazel workspace discovery,
 module enumeration). The leading underscore signals it's not a public API; `test__workspace.py`

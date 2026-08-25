@@ -164,7 +164,7 @@ class TestWorkflows(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             write(root, ".github/workflows/ci.yml", WORKFLOW_LOOKALIKES)
-            self.assertEqual(cpv.check_workflows(root), [])
+            self.assertEqual(cpv.check_workflows(root, "3.14"), [])
 
     def test_flow_style_literal_is_caught(self):
         """The inverse failure: a scan missed this shape entirely, so a literal passed the guard."""
@@ -314,6 +314,71 @@ class TestWorkflows(unittest.TestCase):
             self.assertEqual(cpv.check_workflows(root), [])
 
 
+def matrix_workflow(axis_values: str, expression: str = "${{ matrix.python-version }}") -> str:
+    return (
+        "jobs:\n  a:\n"
+        f"{axis_values}"
+        "    steps:\n"
+        "      - uses: actions/setup-python@abc\n"
+        f"        with:\n          python-version: {expression}\n"
+    )
+
+
+AXIS = '    strategy:\n      matrix:\n        python-version: ["3.12", "3.13", "3.14"]\n'
+
+
+class TestMatrixDrivenSteps(unittest.TestCase):
+    """A `${{ matrix.x }}` pass-through relocates the level into the axis, so the axis is checked.
+
+    Testing more versions than the pin is the point (#272). Testing fewer means the job stops
+    exercising the version the rest of the repo targets, the moment the pin advances.
+    """
+
+    def _run(self, workflow: str, version: str | None = "3.14") -> list[str]:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write(root, ".github/workflows/ci.yml", workflow)
+            return cpv.check_workflows(root, version)
+
+    def test_axis_containing_the_pin_passes(self):
+        self.assertEqual(self._run(matrix_workflow(AXIS)), [])
+
+    def test_axis_missing_the_pin_is_caught(self):
+        axis = '    strategy:\n      matrix:\n        python-version: ["3.12", "3.13"]\n'
+        problems = self._run(matrix_workflow(axis))
+        self.assertEqual(len(problems), 1)
+        self.assertIn("does not include", problems[0])
+
+    def test_include_can_supply_the_pin(self):
+        axis = (
+            "    strategy:\n      matrix:\n"
+            '        python-version: ["3.12"]\n'
+            '        include:\n          - python-version: "3.14"\n'
+        )
+        self.assertEqual(self._run(matrix_workflow(axis)), [])
+
+    def test_reference_to_an_undefined_axis_is_caught(self):
+        problems = self._run(matrix_workflow(""))
+        self.assertEqual(len(problems), 1)
+        self.assertIn("does not define", problems[0])
+
+    def test_a_computed_matrix_is_caught_rather_than_waved_through(self):
+        axis = "    strategy:\n      matrix: ${{ fromJSON(needs.x.outputs.m) }}\n"
+        problems = self._run(matrix_workflow(axis))
+        self.assertEqual(len(problems), 1)
+        self.assertIn("does not define", problems[0])
+
+    def test_a_non_matrix_expression_is_caught(self):
+        problems = self._run(matrix_workflow(AXIS, "${{ env.PYVER }}"))
+        self.assertEqual(len(problems), 1)
+        self.assertIn("cannot resolve", problems[0])
+
+    def test_axis_is_unchecked_when_the_pin_is_unreadable(self):
+        """Structural problems still report without a pin; only the value comparison needs one."""
+        axis = '    strategy:\n      matrix:\n        python-version: ["3.12"]\n'
+        self.assertEqual(self._run(matrix_workflow(axis), version=None), [])
+
+
 class TestAgainstThisRepo(unittest.TestCase):
     """Held against the repo's real YAML, where a false positive fails CI for everyone.
 
@@ -337,7 +402,9 @@ class TestAgainstThisRepo(unittest.TestCase):
         )
 
     def test_repo_is_clean(self):
-        self.assertEqual(cpv.check_workflows(self.root), [])
+        version, pin_problems = cpv.read_pin(self.root)
+        self.assertEqual(pin_problems, [])
+        self.assertEqual(cpv.check_workflows(self.root, version), [])
 
 
 if __name__ == "__main__":

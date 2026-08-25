@@ -264,6 +264,7 @@ py_test(
     # Real workflow and action files, for the same reason test__workflows uses them: a false
     # positive over the repo's own YAML fails CI for everyone and no synthetic fixture shows it.
     data = [
+        "//:.python-version",
         "//:composite_actions",
         "//:workflows",
     ],

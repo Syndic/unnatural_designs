@@ -47,8 +47,9 @@ _DOCKERFILE_ARG_RE = re.compile(r"^ARG\s+PYTHON_VERSION=(\S+)")
 
 _SETUP_PYTHON = "actions/setup-python"
 
-# `${{ … }}` anywhere in the value: a matrix pass-through or other expression is parameterised,
-# not hardcoded, so it is not this guard's business.
+# A whole-value reference to one matrix axis -- the only expression form this guard can resolve,
+# and so the only one it accepts. Anything else is reported rather than waved through.
+_MATRIX_REF_RE = re.compile(r"^\$\{\{\s*matrix\.([A-Za-z0-9_-]+)\s*\}\}$")
 _EXPRESSION_RE = re.compile(r"\$\{\{.*\}\}")
 
 
@@ -193,7 +194,57 @@ def action_yaml_files(root: Path) -> list[Path]:
     return sorted(found)
 
 
-def check_workflows(root: Path) -> list[str]:
+def _literal_problem(
+    value: str | None, matrix: dict[str, list[str]], version: str | None
+) -> str | None:
+    """What is wrong with a `python-version:` input, or None if nothing is.
+
+    Split out because the expression case has three outcomes rather than two, and inlining them
+    buried the ordinary hardcoded-literal path under the matrix bookkeeping.
+    """
+    if value is None:
+        # A list or nested mapping. Still a level set inline; it just has no useful text form,
+        # so describe the shape rather than rendering the None the parser reports.
+        return (
+            "hardcoded python-version (a list or mapping, not a version string); "
+            f"use `python-version-file: {PIN_FILE}` so the level has one home"
+        )
+
+    reference = _MATRIX_REF_RE.match(value.strip())
+    if reference is None:
+        if _EXPRESSION_RE.search(value):
+            # Some other expression -- `env.`, `inputs.`, a computed string. Reported rather than
+            # allowed: an unreadable pin is otherwise indistinguishable from a correct one, and
+            # the second reading is the one that passes.
+            return (
+                f"python-version is the expression {value}, which this guard cannot resolve; "
+                f"use `python-version-file: {PIN_FILE}`, or a plain `${{{{ matrix.<axis> }}}}` "
+                f"reference whose axis can be read"
+            )
+        return (
+            f"hardcoded python-version: {value}; use `python-version-file: {PIN_FILE}` "
+            f"so the level has one home"
+        )
+
+    axis = reference.group(1)
+    values = matrix.get(axis)
+    if values is None:
+        return (
+            f"python-version reads `matrix.{axis}`, which this job does not define as a plain "
+            f"list of values, so the level it installs cannot be checked"
+        )
+    if version is not None and version not in values:
+        # The axis is the level for this job. Testing a range wider than the pin is the point
+        # (#272), but the pin itself must be in the range, or the job stops exercising the
+        # version everything else in the repo targets the moment the pin moves.
+        return (
+            f"matrix.{axis} is {values}, which does not include {PIN_FILE}'s {version}; "
+            f"a matrix may test more versions than the pin, never fewer"
+        )
+    return None
+
+
+def check_workflows(root: Path, version: str | None = None) -> list[str]:
     """Every `setup-python` step must pin the level, and only via the pin file.
 
     Parsed, not matched. A line-oriented scan has no notion of step context, so it flags a
@@ -202,10 +253,12 @@ def check_workflows(root: Path) -> list[str]:
     (`- {uses: …, with: {python-version: "3.13"}}`) entirely, which is a literal that passes the
     guard. Structure is what tells those apart; see `_workflows.py` and #268.
 
-    A `${{ }}` expression is deliberately allowed: a job that drives `setup-python` from a matrix
-    axis is parameterised rather than hardcoded, and that is the shape #272 needs for testing a
-    member across its supported range. Note this moves the level into the matrix list, which
-    nothing here checks -- a known gap, not a claim of safety.
+    The only expression accepted is a whole-value `${{ matrix.<axis> }}` reference whose axis
+    this job defines as a plain list, and that list must contain the pin. A job may test more
+    versions than the pin (#272's shape, testing a member across its supported range) but never
+    fewer -- otherwise the level simply moves into a list nothing verifies, and the job stops
+    exercising the version the rest of the repo targets the moment the pin advances. Every other
+    expression is reported: an unreadable pin is otherwise indistinguishable from a correct one.
 
     A step carrying *both* inputs is rejected outright rather than resolved. setup-python prefers
     `python-version` and ignores the file (warning only, in the run log), so the file reads as the
@@ -221,7 +274,7 @@ def check_workflows(root: Path) -> list[str]:
         for lineno, message in sorted(parse_problems.items()):
             problems.append(_problem(rel, lineno, (1, 2), message))
 
-        for uses, step_line, inputs in steps:
+        for uses, step_line, inputs, matrix in steps:
             if uses is None or not uses.startswith(f"{_SETUP_PYTHON}@"):
                 continue
 
@@ -255,23 +308,10 @@ def check_workflows(root: Path) -> list[str]:
                     )
             elif literal is not None:
                 value, lineno = literal
-                if value is None or not _EXPRESSION_RE.search(value):
-                    # A non-scalar value (a list, a nested mapping) has no useful text form, so
-                    # describe the shape instead of rendering the None the parser reports.
-                    shown = (
-                        f": {value}"
-                        if value is not None
-                        else " (a list or mapping, not a version string)"
-                    )
-                    problems.append(
-                        _problem(
-                            rel,
-                            lineno,
-                            col_range(path, lineno, "python-version"),
-                            f"hardcoded python-version{shown}; use "
-                            f"`python-version-file: {PIN_FILE}` so the level has one home",
-                        )
-                    )
+                cols = col_range(path, lineno, "python-version")
+                message = _literal_problem(value, matrix, version)
+                if message is not None:
+                    problems.append(_problem(rel, lineno, cols, message))
             else:
                 # Neither input: the step silently takes the runner image's default Python.
                 problems.append(
@@ -294,7 +334,9 @@ def main() -> int:
         problems += check_pyproject(root, version)
         problems += check_module_bazel(root, version)
         problems += check_dockerfile(root, version)
-    problems += check_workflows(root)
+    # Passed through rather than gated on: the structural problems (a hardcoded literal, both
+    # inputs, a wrong file) are worth reporting even when the pin file itself is unreadable.
+    problems += check_workflows(root, version)
 
     for problem in problems:
         print(problem)

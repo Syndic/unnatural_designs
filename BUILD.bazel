@@ -13,6 +13,9 @@ exports_files([
     ".github/workflows/devcontainer.yml",
     ".github/workflows/renovate-derived-files.yml",
     ".github/workflows/security.yml",
+    # The canonical Python language level, read by //meta/scripts:test_check_python_version so
+    # its sweep over the repo's real YAML compares against the same value CI does.
+    ".python-version",
 ])
 
 # Every workflow, as one dep: //meta/scripts:test_check_modules asserts the matrix-shape guard

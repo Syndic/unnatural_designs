@@ -27,6 +27,7 @@ presence is itself unknown.
 """
 
 from pathlib import Path
+from typing import NamedTuple
 
 import yaml
 
@@ -179,32 +180,75 @@ def unrecognised_matrix_keys(workflow_file: Path, matrix_key: str) -> dict[int, 
     return _scan(workflow_file, matrix_key)[1]
 
 
-# (uses, step_line, {input_name: (scalar value or None, line)}) — the shape callers destructure.
-Step = tuple[str | None, int, dict[str, tuple[str | None, int]]]
+class Step(NamedTuple):
+    """One step, with the enclosing job's matrix axes attached.
 
-
-def _step_nodes(root: yaml.Node | None) -> list[yaml.Node]:
-    """Step nodes from a workflow's `jobs.*.steps` and a composite action's `runs.steps`.
-
-    Both shapes in one walk because the two file kinds are the same question asked twice: a step
-    is a step whether a job or a composite action holds it, and a guard that reads only one of
-    them has a blind spot exactly where nobody is looking.
+    `matrix` travels with the step because a `${{ matrix.x }}` input is only checkable against
+    the axis it names, and that axis lives two levels up. Empty for a composite action, which
+    has no `strategy:` — and where a `matrix.` reference would not resolve at run time either.
     """
-    found: list[yaml.Node] = []
-    containers = []
+
+    uses: str | None
+    line: int
+    inputs: dict[str, tuple[str | None, int]]
+    matrix: dict[str, list[str]]
+
+
+def _matrix_axes(job: yaml.Node | None) -> dict[str, list[str]]:
+    """`{axis: [values]}` for a job's `strategy.matrix`, scalars only, with `include:` unioned in.
+
+    An axis whose value is not a list of scalars is omitted rather than reported as empty, so a
+    caller can tell "no such axis" from "an axis I could not read" only by its own lookup failing
+    — the same reporting line `_scan` draws, for the same reason.
+    """
+    strategy = _lookup(job, "strategy")
+    if strategy is None:
+        return {}
+    matrix = _lookup(strategy[1], "matrix")
+    if matrix is None or not isinstance(matrix[1], yaml.MappingNode):
+        return {}
+
+    axes: dict[str, list[str]] = {}
+    for key_node, value_node in _pairs(matrix[1]):
+        if key_node.value in (_INCLUDE, _EXCLUDE):
+            continue
+        if isinstance(value_node, yaml.SequenceNode):
+            values = [i.value for i in value_node.value if isinstance(i, yaml.ScalarNode)]
+            if len(values) == len(value_node.value):
+                axes[key_node.value] = values
+
+    # `include:` can introduce a value for an axis that the base list never names.
+    block = _lookup(matrix[1], _INCLUDE)
+    if block is not None and isinstance(block[1], yaml.SequenceNode):
+        for item in block[1].value:
+            for key_node, value_node in _pairs(item):
+                if isinstance(value_node, yaml.ScalarNode):
+                    axes.setdefault(key_node.value, []).append(value_node.value)
+    return axes
+
+
+def _step_nodes(root: yaml.Node | None) -> list[tuple[yaml.Node, dict[str, list[str]]]]:
+    """Step nodes, paired with their job's matrix axes.
+
+    Workflow `jobs.*.steps` and composite-action `runs.steps` in one walk, because the two file
+    kinds are the same question asked twice: a step is a step whether a job or a composite action
+    holds it, and a guard that reads only one of them has a blind spot exactly where nobody looks.
+    """
+    found: list[tuple[yaml.Node, dict[str, list[str]]]] = []
+    containers: list[tuple[yaml.Node, dict[str, list[str]]]] = []
 
     jobs = _lookup(root, "jobs")
     if jobs is not None:
-        containers.extend(job for _, job in _pairs(jobs[1]))
+        containers.extend((job, _matrix_axes(job)) for _, job in _pairs(jobs[1]))
 
     runs = _lookup(root, "runs")
     if runs is not None:
-        containers.append(runs[1])
+        containers.append((runs[1], {}))
 
-    for container in containers:
+    for container, axes in containers:
         block = _lookup(container, "steps")
         if block is not None and isinstance(block[1], yaml.SequenceNode):
-            found.extend(block[1].value)
+            found.extend((node, axes) for node in block[1].value)
     return found
 
 
@@ -230,7 +274,7 @@ def action_steps(yaml_file: Path) -> tuple[list[Step], dict[int, str]]:
         return [], problems
 
     collected: list[Step] = []
-    for node in _step_nodes(root):
+    for node, axes in _step_nodes(root):
         if not isinstance(node, yaml.MappingNode):
             continue
 
@@ -246,5 +290,5 @@ def action_steps(yaml_file: Path) -> tuple[list[Step], dict[int, str]]:
                 value = value_node.value if isinstance(value_node, yaml.ScalarNode) else None
                 inputs[key_node.value] = (value, _line(key_node))
 
-        collected.append((uses, _line(node), inputs))
+        collected.append(Step(uses, _line(node), inputs, axes))
     return collected, problems
