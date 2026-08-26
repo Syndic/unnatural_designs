@@ -1,0 +1,17 @@
+ci(security): gate CodeQL on file coverage, drop the temporary probe
+
+Two things the real Security runs corrected. The Go extraction-error
+diagnostics carry no location at all, so the source-root split the first
+commit gated on could never fire. And the failures were not unannotated: the
+runner already raises nine failure-level check-run annotations for them, but
+untitled, at paths it mis-parsed out of the log text, under a green check --
+unreadable rather than absent, which is what let 55 runs pass unnoticed.
+
+So the gate moves to the coverage sets in the same SARIF -- expected files
+against successfully-extracted ones -- which are per-file and source-root
+relative. An expected file that never reached the database is this repo's own
+code going unanalysed and fails the job; extraction errors warn and stay green.
+Excludes _test.go, which `go build` never compiles, and reports rather than
+passes when an analysis publishes no baseline, as the actions row does not.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>

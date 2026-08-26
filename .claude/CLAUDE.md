@@ -167,20 +167,28 @@ configuration that runs CodeQL with no workflow file in the repo. Load-bearing f
   `x/text/unicode/bidi` and `x/text/unicode/norm`. Those are I/O, network and text-normalisation
   primitives, i.e. what taint tracking wants to follow, so the analysis covers less than it looks
   like it does. It clears on GitHub's schedule for the same reason the previous bullet gives, and
-  `tools:` would pin an *older* extractor rather than a newer one.
-- **`meta/scripts/codeql_extraction_report.py` is what says so**, run after `analyze` on every
-  matrix row. CodeQL calls a run that read part of the code a success and GitHub raises no
-  annotation for the failures, so before this the only record was `##[error]` lines inside a green
-  job's raw log — 55 runs of them in one week before anyone read the logs. The report reads the
-  diagnostics out of the SARIF the CLI wrote, since the uploaded copy has them stripped, and
-  re-emits them as a warning annotation and a step summary. It fails the job for one case only:
-  an extraction failure *inside* the source root, which is this repo's own code going unanalysed
-  and never waits on an upstream release. Failures outside it warn and stay green — a hard gate
-  there would block every merge from the next Go bump until GitHub shipped a new bundle, an
-  outage on a schedule nobody here controls. Missing diagnostics warn too, and deliberately do not
-  read as clean: the CodeQL Action includes them based on a feature flag it resolves from GitHub
-  per run, so "no diagnostics" is not "no problems". There is no tolerance count in any of the
-  three, so there is nothing to widen the day a run goes red.
+  `tools:` would pin an *older* extractor rather than a newer one. This repo's own Go code is
+  unaffected throughout — every non-test `.go` file extracts.
+- **`meta/scripts/codeql_extraction_report.py` is what makes that legible**, run after `analyze`
+  on every matrix row. The failures were not *unannotated*: the runner turns the extractor's
+  `##[error]` lines into nine `failure`-level check-run annotations. They were unreadable — no
+  title, attached to paths the runner mis-parsed out of the log text (`.github:5`, `.github:237`),
+  and sitting under a check that concludes success, which is what made them read as noise for 55
+  runs. The report adds one titled annotation and a step summary naming what is degraded, read out
+  of the SARIF the CLI wrote rather than the uploaded copy, which has the diagnostics stripped.
+- **The report's one gate is file coverage, not the extraction errors.** Those errors carry no
+  location at all, so nothing can attribute them to a file — an important thing to know before
+  trying to gate on "is it our code". What can be attributed is the pair of coverage sets in the
+  same SARIF: `cli/expected-extracted-files/<lang>` against
+  `<lang>/diagnostics/successfully-extracted-files`. An expected file that never reached the
+  database is this repo's own code going unanalysed, which never waits on an upstream release, so
+  it fails the job. Extraction errors warn and stay green — a hard gate there would hand this
+  repo's merge queue to GitHub's bundle release schedule from the next Go bump onward. Two
+  properties of that gate are load-bearing and both are held by
+  `//meta/scripts:test_codeql_extraction_report`: it excludes `_test.go` files, since
+  `build-mode: autobuild` runs `go build`, which never compiles them (widening that exclusion to
+  quiet a red run is the move it exists to prevent); and it says so rather than passing when the
+  analysis published no baseline, which the `actions` row does not.
 - **`build-mode: none` is not available for Go** (nor Swift or Kotlin), so Go is the one language
   whose analysis has to build, and so the one that needs a toolchain on PATH.
 - **`CodeQL Analysis (all languages)` is the name for the ruleset to require**, not the

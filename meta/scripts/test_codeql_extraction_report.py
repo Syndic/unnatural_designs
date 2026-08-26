@@ -1,14 +1,16 @@
-"""Holds the CodeQL extraction report to the two answers a green job must not hide.
+"""Holds the CodeQL extraction report to the answers a green job must not be allowed to hide.
 
 The report exists because "the analysis succeeded" and "the analysis read the code" are different
-claims, and CodeQL only ever makes the first one. So the assertions here are about which of the
-two failure shapes reaches which channel: our own code going unextracted has to fail the job,
-someone else's code has to warn without failing, and a run whose diagnostics are missing entirely
-has to say so rather than read as clean.
+claims, and CodeQL only ever makes the first. So the assertions here are about which failure shape
+reaches which channel: this repo's own code going unextracted fails the job, an extractor that gave
+up on someone else's code warns without failing, and a SARIF with no diagnostics at all says so
+rather than reading as clean.
 
-The last one is the trap worth naming. A report that treats "no diagnostics" as "no problems"
-inherits exactly the blindness it was written to remove -- and the diagnostics are opt-in behind a
-feature flag GitHub resolves per run, so the empty case is reachable without any change here.
+Every fixture below is the shape a real Security run produced (32924314733), because two of the
+assumptions this file started from were wrong and only the run said so. The extraction-error
+diagnostics carry **no location**, so nothing can attribute them to a file -- which is why the gate
+is built on the coverage sets instead. And the expected-files baseline is published for `go` and
+`python` but not for `actions`, so "no baseline" is a live case, not a hypothetical.
 """
 
 import json
@@ -19,34 +21,58 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from meta.scripts.codeql_extraction_report import Diagnostic, main, read_diagnostics, report
+from meta.scripts.codeql_extraction_report import Coverage, main, read_sarif, report
 
-# Where the runner unpacks the pinned Go toolchain. Every path below is under it, which is the
-# property that makes them someone else's code as far as this repo is concerned.
-_GOROOT = "/opt/hostedtoolcache/go/1.27.0/x64/src"
+_MODULE = "tools/network_infrastructure_maintenance"
 
-# The five packages the Go extractor could not read on every Security run from 2026-08-20 on,
-# with the type-checker errors it logged for them. Reproduced here because a report that would
-# not have caught this is not a report -- see .claude/CLAUDE.md "CodeQL runs as advanced setup".
-_TOO_NEW = "file requires newer Go version go1.27"
-_GO_1_27_EXTRACTION_FAILURES = [
-    ("internal/poll/splice_linux.go", "unknown field rfd in struct literal"),
-    ("math/rand/v2/rand.go", "method must have no type parameters"),
-    ("vendor/golang.org/x/net/idna/tables1_27.go", _TOO_NEW),
-    ("vendor/golang.org/x/text/unicode/bidi/tables1_27.go", _TOO_NEW),
-    ("vendor/golang.org/x/text/unicode/norm/tables1_27.go", _TOO_NEW),
+# The seven extraction errors the Go extractor logged on every Security run from 2026-08-20 on,
+# verbatim. Reproduced because a report that would not have caught this is not a report -- see
+# .claude/CLAUDE.md "CodeQL runs as advanced setup". Note the absent location: that is the real
+# shape, and it is why these can only ever warn.
+_GO_1_27_EXTRACTION_ERRORS = [
+    "Extraction failed with error unknown field rfd in struct literal of type splicePipe",
+    "Extraction failed with error unknown field wfd in struct literal of type splicePipe",
+    "Extraction failed with error This application uses version go1.26 of the source-processing"
+    " packages but runs version go1.27 of 'go list'.",
+    "Extraction failed with error method must have no type parameters",
+    "Extraction failed with error Int (function) is not a type",
+    "Extraction failed with error too many arguments in call to Int have (uint64) want ()",
+    "Extraction failed with error file requires newer Go version go1.27 (application built with"
+    " go1.26)",
 ]
 
+# The nine _test.go files `go build` does not compile, so `build-mode: autobuild` never extracts
+# them. They are the entire difference between the 44 expected and the 35 extracted.
+_TEST_FILES = [
+    f"{_MODULE}/cmd/netbox_audit/config_docs_test.go",
+    f"{_MODULE}/cmd/netbox_audit/main_test.go",
+    f"{_MODULE}/internal/audit/audit_test.go",
+    f"{_MODULE}/internal/netbox/client_test.go",
+    f"{_MODULE}/internal/netbox/snapshot_test.go",
+    f"{_MODULE}/internal/shared/terminal_test.go",
+    f"{_MODULE}/internal/ui/progress/plain_test.go",
+    f"{_MODULE}/internal/ui/progress/reporter_test.go",
+    f"{_MODULE}/internal/ui/progress/rich_test.go",
+]
+_SOURCE_FILES = [f"{_MODULE}/internal/audit/cables.go", f"{_MODULE}/cmd/netbox_audit/main.go"]
 
-def notification(level: str, uri: str | None, message: str, rule_id: str = "go/diagnostics/x"):
-    body: dict = {
-        "level": level,
-        "message": {"text": message},
+
+def located(rule_id: str, *uris: str) -> dict:
+    """A `note`-level notification carrying file locations, which is how the coverage sets ship."""
+    return {
+        "level": "none",
+        "message": {"text": ""},
         "descriptor": {"id": rule_id},
+        "locations": [
+            {"physicalLocation": {"artifactLocation": {"uri": uri, "uriBaseId": "%SRCROOT%"}}}
+            for uri in uris
+        ],
     }
-    if uri is not None:
-        body["locations"] = [{"physicalLocation": {"artifactLocation": {"uri": uri}}}]
-    return body
+
+
+def unlocated(level: str, message: str, rule_id: str = "go/diagnostics/extraction-errors") -> dict:
+    """An extraction problem. No `locations` key at all -- verified against the real SARIF."""
+    return {"level": level, "message": {"text": message}, "descriptor": {"id": rule_id}}
 
 
 def sarif(*notifications: dict) -> dict:
@@ -54,137 +80,148 @@ def sarif(*notifications: dict) -> dict:
 
 
 def go_sarif_as_shipped() -> dict:
-    """The real run's shape: one informational note plus the five unreadable stdlib packages."""
+    """The real run: 44 expected, 35 extracted, and seven unreadable stdlib packages."""
     return sarif(
-        notification(
-            "note",
-            None,
-            "Extracted 35 files",
-            "go/diagnostics/successfully-extracted-files",
-        ),
-        *(
-            notification("error", f"{_GOROOT}/{path}", message, "go/diagnostics/extraction-errors")
-            for path, message in _GO_1_27_EXTRACTION_FAILURES
-        ),
+        located("cli/expected-extracted-files/go", *_SOURCE_FILES, *_TEST_FILES),
+        located("go/diagnostics/successfully-extracted-files", *_SOURCE_FILES, f"{_MODULE}/go.mod"),
+        *(unlocated("error", message) for message in _GO_1_27_EXTRACTION_ERRORS),
     )
 
 
-def commands_for(sarif_document: dict, language: str = "go") -> list[str]:
-    diagnostics, total = read_diagnostics(sarif_document)
-    return report(language, diagnostics, total)[1]
+def run_report(document: dict, language: str = "go") -> tuple[str, list[str]]:
+    coverage, problems, total = read_sarif(document, language)
+    summary, commands = report(language, coverage, problems, total)
+    return "\n".join(summary), commands
 
 
-def summary_for(sarif_document: dict, language: str = "go") -> str:
-    diagnostics, total = read_diagnostics(sarif_document)
-    return "\n".join(report(language, diagnostics, total)[0])
-
-
-def run_main(sarif_document: dict | str) -> tuple[int, str]:
+def run_main(document: dict | str, language: str = "go") -> tuple[int, str]:
     """Run the script over a SARIF file on disk; returns its exit code and the summary written."""
     with tempfile.TemporaryDirectory() as tmp:
-        sarif_path = Path(tmp) / "go.sarif"
+        sarif_path = Path(tmp) / f"{language}.sarif"
         summary_path = Path(tmp) / "summary.md"
         sarif_path.write_text(
-            sarif_document if isinstance(sarif_document, str) else json.dumps(sarif_document),
-            encoding="utf-8",
+            document if isinstance(document, str) else json.dumps(document), encoding="utf-8"
         )
-        code = main([str(sarif_path), "--language", "go", "--summary", str(summary_path)])
+        code = main([str(sarif_path), "--language", language, "--summary", str(summary_path)])
         return code, summary_path.read_text(encoding="utf-8") if summary_path.exists() else ""
 
 
-class ReadDiagnosticsTest(unittest.TestCase):
-    def test_counts_every_notification_but_reports_only_error_and_warning(self):
-        diagnostics, total = read_diagnostics(
-            sarif(
-                notification("note", None, "Extracted 35 files"),
-                notification("warning", "/usr/lib/go/src/net/http.go", "gave up"),
-                notification("error", "internal/audit/cables.go", "gave up"),
-            )
+class ReadSarifTest(unittest.TestCase):
+    def test_it_separates_the_three_notification_families(self):
+        coverage, problems, total = read_sarif(go_sarif_as_shipped(), "go")
+        self.assertEqual(len(coverage.expected), 11)
+        self.assertEqual(len(coverage.extracted), 3)
+        self.assertEqual(len(problems), 7)
+        self.assertEqual(total, 9, "every notification is counted, including the coverage sets")
+
+    def test_the_baseline_is_read_for_this_language_only(self):
+        """Each SARIF carries `cli/expected-extracted-files/*` for languages it did not analyse."""
+        document = sarif(
+            located("cli/expected-extracted-files/go", "a.go"),
+            located("cli/expected-extracted-files/python", "b.py", "c.py"),
         )
-        self.assertEqual(total, 3, "the note is the evidence the diagnostics ran; count it")
-        self.assertEqual([d.level for d in diagnostics], ["warning", "error"])
+        self.assertEqual(read_sarif(document, "go")[0].expected, ("a.go",))
+        self.assertEqual(len(read_sarif(document, "python")[0].expected), 2)
 
-    def test_a_sarif_without_invocations_reports_nothing_and_counts_nothing(self):
-        self.assertEqual(read_diagnostics({"runs": [{"results": []}]}), ([], 0))
-
-    def test_message_and_rule_id_survive(self):
-        (diagnostic,), _ = read_diagnostics(
-            sarif(notification("error", "main.go", "  boom  ", "go/diagnostics/extraction-errors"))
-        )
-        self.assertEqual(diagnostic.message, "boom")
-        self.assertEqual(diagnostic.rule_id, "go/diagnostics/extraction-errors")
-
-
-class FirstPartyTest(unittest.TestCase):
-    """Whose code failed is the whole gate, so the URI test is the load-bearing line."""
-
-    def first_party(self, uri: str | None) -> bool:
-        (diagnostic,), _ = read_diagnostics(sarif(notification("error", uri, "gave up")))
-        return diagnostic.first_party
-
-    def test_repo_relative_paths_are_ours(self):
-        self.assertTrue(self.first_party("tools/network_infrastructure_maintenance/main.go"))
-
-    def test_absolute_toolchain_paths_are_not(self):
-        self.assertFalse(self.first_party(f"{_GOROOT}/internal/poll.go"))
-
-    def test_file_urls_are_not(self):
-        self.assertFalse(self.first_party(f"file://{_GOROOT}/rand.go"))
-
-    def test_a_diagnostic_with_no_location_is_not_claimed_as_ours(self):
-        """Nothing to point a reader at, so it is reported without failing the job."""
-        self.assertFalse(self.first_party(None))
+    def test_a_sarif_without_invocations_yields_nothing(self):
+        coverage, problems, total = read_sarif({"runs": [{"results": []}]}, "go")
+        self.assertEqual((coverage.expected, problems, total), ((), [], 0))
 
 
 class GoExtractorLagTest(unittest.TestCase):
-    """The situation the report was written for: five stdlib packages, and a green job."""
+    """The situation this was written for: seven stdlib errors, and a job that reported success."""
 
     def setUp(self):
-        self.document = go_sarif_as_shipped()
+        self.summary, self.commands = run_report(go_sarif_as_shipped())
 
     def test_it_warns(self):
-        commands = commands_for(self.document)
-        self.assertEqual(len(commands), 1, commands)
-        self.assertTrue(commands[0].startswith("::warning "), commands[0])
+        self.assertEqual(len(self.commands), 1, self.commands)
+        self.assertTrue(self.commands[0].startswith("::warning "), self.commands[0])
 
-    def test_the_warning_names_every_unreadable_package(self):
-        (command,) = commands_for(self.document)
-        for path, _ in _GO_1_27_EXTRACTION_FAILURES:
-            self.assertIn(f"{_GOROOT}/{path}", command)
+    def test_the_warning_is_titled(self):
+        """The runner's own annotations arrive untitled; a title is what makes this findable."""
+        self.assertIn("title=CodeQL go extraction degraded", self.commands[0])
 
-    def test_the_summary_carries_the_type_checker_message(self):
-        summary = summary_for(self.document)
-        for _, message in _GO_1_27_EXTRACTION_FAILURES:
-            self.assertIn(message, summary)
+    def test_the_summary_carries_every_error_the_extractor_reported(self):
+        for message in _GO_1_27_EXTRACTION_ERRORS:
+            self.assertIn(message.replace("\n", " "), self.summary)
 
     def test_it_does_not_fail_the_job(self):
         """Upstream lag on GitHub's schedule; failing here blocks merges nobody here can unblock."""
-        code, _ = run_main(self.document)
-        self.assertEqual(code, 0)
+        self.assertEqual(run_main(go_sarif_as_shipped())[0], 0)
+
+    def test_it_does_not_read_as_clean(self):
+        self.assertNotIn("Clean", self.summary)
 
 
-class FirstPartyFailsTheJobTest(unittest.TestCase):
+class CoverageGateTest(unittest.TestCase):
+    """The one hard failure: files this repo owns that never reached the database."""
+
+    def test_go_test_files_are_not_a_coverage_gap(self):
+        """`go build` does not compile them, so autobuild never extracts them. 35 of 44 is full."""
+        summary, commands = run_report(go_sarif_as_shipped())
+        self.assertEqual([c for c in commands if c.startswith("::error ")], [])
+        self.assertIn(f"**{len(_SOURCE_FILES)} of 11**", summary)
+
+    def test_an_unextracted_source_file_fails_the_job(self):
+        document = sarif(
+            located("cli/expected-extracted-files/go", *_SOURCE_FILES),
+            located("go/diagnostics/successfully-extracted-files", _SOURCE_FILES[0]),
+        )
+        code, summary = run_main(document)
+        self.assertEqual(code, 1)
+        self.assertIn(_SOURCE_FILES[1], summary)
+
+    def test_the_failure_names_the_files(self):
+        document = sarif(
+            located("cli/expected-extracted-files/go", *_SOURCE_FILES),
+            located("go/diagnostics/successfully-extracted-files"),
+        )
+        (command,) = run_report(document)[1]
+        self.assertTrue(command.startswith("::error "), command)
+        for path in _SOURCE_FILES:
+            self.assertIn(path, command)
+
+    def test_the_exclusion_is_go_only(self):
+        """Nothing else builds, so nothing else has a compile set to be outside of."""
+        coverage = Coverage(expected=("a_test.go",), extracted=frozenset())
+        self.assertEqual(coverage.unextracted("go"), [])
+        self.assertEqual(coverage.unextracted("python"), ["a_test.go"])
+
+    def test_both_failures_can_be_reported_at_once(self):
+        document = sarif(
+            located("cli/expected-extracted-files/go", *_SOURCE_FILES),
+            located("go/diagnostics/successfully-extracted-files"),
+            *(unlocated("error", message) for message in _GO_1_27_EXTRACTION_ERRORS),
+        )
+        levels = [command.split(" ", 1)[0] for command in run_report(document)[1]]
+        self.assertEqual(levels, ["::error", "::warning"])
+
+
+class MissingBaselineTest(unittest.TestCase):
+    """Live case, not hypothetical: the `actions` row publishes no expected-files set."""
+
     def setUp(self):
         self.document = sarif(
-            notification("note", None, "Extracted 30 files"),
-            notification("error", "internal/audit/cables.go", "gave up on this file"),
+            located("actions/diagnostics/successfully-extracted-files", ".github/workflows/ci.yml"),
+            located("codeql-action/overlay-disabled"),
         )
 
-    def test_it_errors(self):
-        (command,) = commands_for(self.document)
-        self.assertTrue(command.startswith("::error "), command)
+    def test_it_says_coverage_was_not_checked(self):
+        summary, _ = run_report(self.document, "actions")
+        self.assertIn("no expected-files baseline", summary)
 
-    def test_it_fails_the_job(self):
-        code, _ = run_main(self.document)
-        self.assertEqual(code, 1)
+    def test_it_does_not_invent_a_gap(self):
+        code, _ = run_main(self.document, "actions")
+        self.assertEqual(code, 0)
 
-    def test_first_party_and_upstream_are_reported_separately(self):
-        document = sarif(
-            notification("error", "internal/audit/cables.go", "gave up"),
-            notification("error", f"{_GOROOT}/rand.go", "gave up"),
-        )
-        levels = [command.split(" ", 1)[0] for command in commands_for(document)]
-        self.assertEqual(levels, ["::warning", "::error"])
+    def test_it_does_not_annotate(self):
+        """The `actions` row would otherwise carry this warning on every run, forever."""
+        self.assertEqual(run_report(self.document, "actions")[1], [])
+
+    def test_it_does_not_claim_the_coverage_it_did_not_check(self):
+        """ "Clean" here would assert full coverage off a baseline this analysis never published."""
+        self.assertNotIn("Clean", run_report(self.document, "actions")[0])
 
 
 class CleanRunTest(unittest.TestCase):
@@ -192,21 +229,14 @@ class CleanRunTest(unittest.TestCase):
 
     def setUp(self):
         self.document = sarif(
-            notification(
-                "note",
-                None,
-                "Extracted 35 files",
-                "go/diagnostics/successfully-extracted-files",
-            )
+            located("cli/expected-extracted-files/go", *_SOURCE_FILES),
+            located("go/diagnostics/successfully-extracted-files", *_SOURCE_FILES),
         )
 
     def test_no_annotations(self):
-        self.assertEqual(commands_for(self.document), [])
+        self.assertEqual(run_report(self.document)[1], [])
 
     def test_summary_says_so(self):
-        self.assertIn("Clean", summary_for(self.document))
-
-    def test_exit_zero(self):
         code, summary = run_main(self.document)
         self.assertEqual(code, 0)
         self.assertIn("Clean", summary)
@@ -216,25 +246,23 @@ class BlindRunTest(unittest.TestCase):
     """No diagnostics is not the same claim as no problems, and must not be reported as one."""
 
     def test_it_warns_that_it_could_not_check(self):
-        (command,) = commands_for(sarif())
+        (command,) = run_report(sarif())[1]
         self.assertTrue(command.startswith("::warning "), command)
         self.assertIn("unverified", command)
 
     def test_it_does_not_read_as_clean(self):
-        self.assertNotIn("Clean", summary_for(sarif()))
+        self.assertNotIn("Clean", run_report(sarif())[0])
 
     def test_it_does_not_fail_the_job(self):
         """The flag that governs this is GitHub's, so a failure here is an outage we can't end."""
-        code, _ = run_main(sarif())
-        self.assertEqual(code, 0)
+        self.assertEqual(run_main(sarif())[0], 0)
 
 
 class UnreadableSarifTest(unittest.TestCase):
     """Unlike every case above, this one is our own wiring and so is always ours to fix."""
 
     def test_malformed_sarif_fails(self):
-        code, _ = run_main("{not json")
-        self.assertEqual(code, 1)
+        self.assertEqual(run_main("{not json")[0], 1)
 
     def test_missing_sarif_fails(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -244,19 +272,13 @@ class UnreadableSarifTest(unittest.TestCase):
 class SummaryFormattingTest(unittest.TestCase):
     def test_multi_line_messages_stay_on_one_table_row(self):
         """The extractor lists one error per line; a newline in a cell ends the markdown table."""
-        summary = summary_for(
-            sarif(notification("error", "/usr/lib/go/src/x.go", "first error\nsecond error"))
-        )
-        rows = [line for line in summary.splitlines() if line.startswith("|")]
-        self.assertTrue(any("first error second error" in row for row in rows), summary)
+        summary, _ = run_report(sarif(unlocated("error", "first error\nsecond error")))
+        rows = [line for line in summary.splitlines() if line.startswith("| error")]
+        self.assertEqual(len(rows), 1)
+        self.assertIn("first error second error", rows[0])
 
     def test_the_report_is_titled_with_the_language(self):
-        self.assertIn("## CodeQL extraction: python", summary_for(sarif(), language="python"))
-
-
-class DiagnosticTest(unittest.TestCase):
-    def test_where_names_the_absence_of_a_location(self):
-        self.assertEqual(Diagnostic("error", "x", (), "").where, "(no location)")
+        self.assertIn("## CodeQL extraction: python", run_report(sarif(), "python")[0])
 
 
 if __name__ == "__main__":

@@ -1,26 +1,28 @@
 #!/usr/bin/env python3
-"""Turns CodeQL's extraction diagnostics into an annotation, a step summary, and an exit code.
+"""Reports what a CodeQL analysis actually read, and fails when it skipped this repo's own code.
 
-CodeQL reports success whenever the *analysis* completed, even when the extractor gave up on part
-of the code it was asked to read. The gap it leaves is invisible: GitHub raises no check-run
-annotation for it, so the only record is `##[error]` lines inside a green job's raw log. This
-script reads the SARIF the CLI just wrote — where those same failures are recorded as
-`toolExecutionNotifications` — and re-emits them where a human or the annotations API will see
-them.
+CodeQL concludes success whenever the *analysis* completed, which is a different claim from
+"the extractor read the code". The gap is easy to miss: the runner does turn the extractor's
+`##[error]` lines into check-run annotations, but they arrive untitled, at paths the runner
+mis-parsed out of the log text, and under a green check — so they read as noise rather than as
+"part of the analysis did not happen". This script reads the SARIF the CLI wrote, where the same
+facts are recorded properly as `toolExecutionNotifications`, and reports them as one titled
+annotation plus a step summary.
 
-What it gates on is *whose* code failed to extract, which is the axis that decides whether anyone
-here can act:
+Two independent things live in that SARIF, and only one of them is anyone's to fix here:
 
-  - **Inside the source root** is our own code going unanalysed. Always ours to fix, never
-    dependent on an upstream release, so it fails the job.
-  - **Outside it** is the toolchain or a dependency the extractor could not parse. Nothing in
-    this repo can fix that and the upstream fix ships on GitHub's schedule, so it warns loudly
-    and stays green. What is degraded today, and why, is in .claude/CLAUDE.md "CodeQL runs as
-    advanced setup".
+  - **File coverage.** `cli/expected-extracted-files/<language>` is the set of source-root files
+    the CLI expected to extract; `<lang>/diagnostics/successfully-extracted-files` is what it got.
+    A file in the first and not the second is this repo's own code going unanalysed, which never
+    waits on an upstream release — so it fails the job.
+  - **Extraction problems.** Error- and warning-level diagnostics from the extractor. These carry
+    no location at all (verified against a real run), so they cannot be attributed to a file, and
+    today they are all the toolchain's own standard library rather than ours. Nothing here fixes
+    that, so they warn loudly and stay green. What is degraded today, and why, is in
+    .claude/CLAUDE.md "CodeQL runs as advanced setup".
 
-There is deliberately no tolerance count to tune in either direction: the first is zero by
-construction, and the second never fails, so neither can be quietly widened to make a red run
-green.
+Only the first is a gate, and it has no tolerance count: any expected file that went unextracted
+fails, so there is no number to widen the day a run goes red.
 
 Usage: ./meta/scripts/codeql_extraction_report.py <sarif-file> [--language <name>]
 """
@@ -31,137 +33,163 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-# SARIF notification levels worth reporting. "note" is the level the informational diagnostics use
-# (`<lang>/diagnostics/successfully-extracted-files`), which is signal only in aggregate: it is how
-# this script knows the diagnostic machinery ran at all.
-_REPORTED_LEVELS = ("error", "warning")
+_EXPECTED_ID = "cli/expected-extracted-files/"
+_EXTRACTED_ID_SUFFIX = "/diagnostics/successfully-extracted-files"
+
+# Levels that mean the extractor gave up on something, as opposed to reporting what it did.
+_PROBLEM_LEVELS = ("error", "warning")
+
+# `build-mode: autobuild` builds Go with `go build`, which never compiles test files — so they are
+# outside the compile set by construction, not by concession. This is the one exclusion the
+# coverage gate makes, and widening it to quiet a red run is the move it exists to prevent.
+_NOT_IN_THE_BUILD = {"go": lambda uri: uri.endswith("_test.go")}
 
 
 @dataclass(frozen=True)
-class Diagnostic:
-    """One `toolExecutionNotification`, reduced to the fields this report prints."""
+class Problem:
+    """One error- or warning-level `toolExecutionNotification`."""
 
     level: str
     rule_id: str
-    locations: tuple[str, ...]
     message: str
 
-    @property
-    def first_party(self) -> bool:
-        """True when any location is in the analysed source root.
 
-        CodeQL writes source-root files as repo-relative URIs and everything else — the Go
-        toolchain's own stdlib, module cache entries — as absolute ones. A notification with no
-        location at all is not claimed as ours: it is reported, but it does not fail the job,
-        since there is nothing to point a reader at.
+@dataclass(frozen=True)
+class Coverage:
+    """What the CLI expected to extract for one language, and what it did extract."""
+
+    expected: tuple[str, ...]
+    extracted: frozenset[str]
+
+    def unextracted(self, language: str) -> list[str]:
+        """Expected files that never made it into the database, build-mode exclusions aside."""
+        excluded = _NOT_IN_THE_BUILD.get(language, lambda _: False)
+        return sorted(f for f in self.expected if f not in self.extracted and not excluded(f))
+
+    @property
+    def has_baseline(self) -> bool:
+        """False when this analysis published no expected-files set, so coverage is unknowable.
+
+        Real and not hypothetical: the `actions` row publishes none, while `go` and `python` do.
         """
-        return any(not (uri.startswith("/") or "://" in uri) for uri in self.locations)
-
-    @property
-    def where(self) -> str:
-        return ", ".join(self.locations) if self.locations else "(no location)"
+        return bool(self.expected)
 
 
-def _notification_locations(notification: dict) -> tuple[str, ...]:
-    uris = []
-    for location in notification.get("locations", []):
-        uri = location.get("physicalLocation", {}).get("artifactLocation", {}).get("uri")
-        if uri:
-            uris.append(uri)
-    return tuple(uris)
+def _locations(notification: dict) -> list[str]:
+    return [
+        uri
+        for location in notification.get("locations", [])
+        if (uri := location.get("physicalLocation", {}).get("artifactLocation", {}).get("uri"))
+    ]
 
 
-def read_diagnostics(sarif: dict) -> tuple[list[Diagnostic], int]:
-    """Every reported-level diagnostic in the SARIF, and the total notification count.
+def read_sarif(sarif: dict, language: str) -> tuple[Coverage, list[Problem], int]:
+    """One language's coverage and problems, plus the total notification count.
 
-    The count is the non-vacuity signal. `codeql database interpret-results` only writes
-    notifications when it is asked for them, and the CodeQL Action asks based on a server-side
-    feature flag rather than anything in this repo — so "no diagnostics" is ambiguous between a
-    clean extraction and a blind report, and the two have to be told apart.
+    That count is the non-vacuity signal: the CodeQL Action asks for diagnostics in SARIF based on
+    a feature flag it resolves from GitHub, so a SARIF with none at all is a blind report rather
+    than a clean one, and the two have to be told apart.
     """
-    diagnostics, total = [], 0
+    expected: list[str] = []
+    extracted: set[str] = set()
+    problems: list[Problem] = []
+    total = 0
+
     for run in sarif.get("runs", []):
         for invocation in run.get("invocations", []):
             for notification in invocation.get("toolExecutionNotifications", []):
                 total += 1
-                level = notification.get("level", "none")
-                if level not in _REPORTED_LEVELS:
-                    continue
-                diagnostics.append(
-                    Diagnostic(
-                        level=level,
-                        rule_id=notification.get("descriptor", {}).get("id", "(unidentified)"),
-                        locations=_notification_locations(notification),
-                        message=notification.get("message", {}).get("text", "").strip(),
+                rule_id = notification.get("descriptor", {}).get("id", "(unidentified)")
+                if rule_id == _EXPECTED_ID + language:
+                    expected.extend(_locations(notification))
+                elif rule_id.endswith(_EXTRACTED_ID_SUFFIX):
+                    extracted.update(_locations(notification))
+                elif notification.get("level") in _PROBLEM_LEVELS:
+                    problems.append(
+                        Problem(
+                            level=notification["level"],
+                            rule_id=rule_id,
+                            # One line: these are multi-line whenever the type-checker lists more
+                            # than one error, and a newline ends the markdown table row below.
+                            message=" ".join(
+                                notification.get("message", {}).get("text", "").split()
+                            ),
+                        )
                     )
-                )
-    return diagnostics, total
+
+    return Coverage(tuple(expected), frozenset(extracted)), problems, total
 
 
-def _table(diagnostics: list[Diagnostic]) -> list[str]:
-    lines = ["| Level | Diagnostic | Location | Message |", "| --- | --- | --- | --- |"]
-    for d in diagnostics:
-        # One line per row: a newline inside a cell ends the table, and these messages are
-        # multi-line whenever the type-checker lists more than one error for a package.
-        message = " ".join(d.message.split())
-        lines.append(f"| {d.level} | `{d.rule_id}` | `{d.where}` | {message} |")
-    return lines
-
-
-def report(language: str, diagnostics: list[Diagnostic], total: int) -> tuple[list[str], list[str]]:
+def report(
+    language: str, coverage: Coverage, problems: list[Problem], total: int
+) -> tuple[list[str], list[str]]:
     """The step-summary markdown and the workflow commands to emit, for one language's SARIF."""
-    ours = [d for d in diagnostics if d.first_party]
-    theirs = [d for d in diagnostics if not d.first_party]
-
     summary = [f"## CodeQL extraction: {language}", ""]
     commands = []
 
     if total == 0:
-        summary += [
-            "CodeQL wrote **no extraction diagnostics at all**, so this report cannot tell a "
-            "clean extraction from a blind one. The CodeQL Action includes diagnostics in SARIF "
-            "based on a feature flag it reads from GitHub, not on anything in this repo.",
-        ]
+        summary.append(
+            "This SARIF carried **no diagnostics at all**, so neither file coverage nor "
+            "extraction problems could be read. The CodeQL Action includes diagnostics based on a "
+            "feature flag it resolves from GitHub, not on anything in this repo."
+        )
         commands.append(
             f"::warning title=CodeQL {language} extraction unverified::"
-            f"No diagnostics in the {language} SARIF, so extraction coverage could not be checked."
+            f"The {language} SARIF carried no diagnostics, so extraction coverage was not checked."
         )
         return summary, commands
 
-    if not diagnostics:
-        summary += [f"Clean — {total} diagnostics, none at error or warning level."]
-        return summary, commands
-
-    if theirs:
-        packages = ", ".join(sorted({d.where for d in theirs}))
+    unextracted = coverage.unextracted(language)
+    if coverage.has_baseline:
+        covered = sum(1 for path in coverage.expected if path in coverage.extracted)
         summary += [
-            f"**{len(theirs)} outside the source root.** The extractor could not read code this "
-            "repo does not own — the pinned Go toolchain's standard library, or a dependency. "
-            "Nothing here fixes that; it clears when GitHub ships a CodeQL bundle whose extractor "
-            "has caught up.",
-            "",
-            *_table(theirs),
+            f"**{covered} of {len(coverage.expected)}** expected `{language}` files extracted.",
             "",
         ]
-        commands.append(
-            f"::warning title=CodeQL {language} extraction degraded::"
-            f"{len(theirs)} location(s) outside the source root failed to extract, so this "
-            f"analysis covered less than it appears to: {packages}"
-        )
-
-    if ours:
+    else:
         summary += [
-            f"**{len(ours)} inside the source root.** This repo's own code went unanalysed. "
-            "Unlike the entries above this is not upstream lag, and it fails the job.",
+            "This analysis published no expected-files baseline, so file coverage is not "
+            "checked here.",
             "",
-            *_table(ours),
+        ]
+
+    if unextracted:
+        summary += [
+            "**This repo's own code went unanalysed.** These files were expected and not "
+            "extracted, which is not upstream lag — it fails the job.",
+            "",
+            *(f"- `{path}`" for path in unextracted),
             "",
         ]
         commands.append(
             f"::error title=CodeQL {language} did not extract this repo's code::"
-            f"{len(ours)} source-root location(s) failed to extract; CodeQL analysed less than "
-            "the whole tree. Fix the extraction failure or the analysis is not covering the code "
-            "it claims to."
+            f"{len(unextracted)} expected file(s) never reached the database, so the analysis "
+            f"covered less than the tree: {', '.join(unextracted)}"
+        )
+
+    if problems:
+        summary += [
+            f"**{len(problems)} extraction problem(s).** The extractor gave up on code outside "
+            "this repo — the pinned toolchain's own standard library, or a dependency. These "
+            "carry no file location, and nothing here fixes them; they clear when the CodeQL "
+            "bundle's extractor catches up.",
+            "",
+            "| Level | Diagnostic | Message |",
+            "| --- | --- | --- |",
+            *(f"| {p.level} | `{p.rule_id}` | {p.message} |" for p in problems),
+            "",
+        ]
+        commands.append(
+            f"::warning title=CodeQL {language} extraction degraded::"
+            f"{len(problems)} extraction problem(s) — the analysis read less than it appears to. "
+            "See this job's summary for the list."
+        )
+
+    if not unextracted and not problems:
+        summary.append(
+            "Clean — every expected file extracted, no extraction problems."
+            if coverage.has_baseline
+            else "No extraction problems. Nothing here speaks to file coverage."
         )
 
     return summary, commands
@@ -170,7 +198,7 @@ def report(language: str, diagnostics: list[Diagnostic], total: int) -> tuple[li
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("sarif", type=Path, help="SARIF file written by codeql-action/analyze")
-    parser.add_argument("--language", default="", help="CodeQL language name, for the report title")
+    parser.add_argument("--language", default="", help="CodeQL language name; keys the report")
     parser.add_argument(
         "--summary",
         type=Path,
@@ -188,8 +216,8 @@ def main(argv: list[str]) -> int:
         print(f"::error title=CodeQL report could not read its SARIF::{args.sarif}: {exc}")
         return 1
 
-    diagnostics, total = read_diagnostics(sarif)
-    summary, commands = report(language, diagnostics, total)
+    coverage, problems, total = read_sarif(sarif, language)
+    summary, commands = report(language, coverage, problems, total)
 
     for line in summary:
         print(line)
@@ -200,7 +228,7 @@ def main(argv: list[str]) -> int:
         with args.summary.open("a", encoding="utf-8") as handle:
             handle.write("\n".join(summary) + "\n")
 
-    return 1 if any(d.first_party for d in diagnostics) else 0
+    return 1 if coverage.unextracted(language) else 0
 
 
 if __name__ == "__main__":

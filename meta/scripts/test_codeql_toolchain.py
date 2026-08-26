@@ -21,7 +21,8 @@ protection reads as a pass: the gate is still listed, still green, and no longer
 The extraction report is the third: it is what turns "the analysis succeeded" back into a claim
 about whether the code was read, and it can only do that from the SARIF the analyze step wrote —
 so its position after that step, and the `id:` it reads the path from, are held here. What the
-report *says* is `//meta/scripts:test_codeql_extraction_report`'s half.
+report *says*, and the file-coverage gate it fails on, are
+`//meta/scripts:test_codeql_extraction_report`'s half.
 """
 
 import re
