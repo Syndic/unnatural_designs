@@ -3,8 +3,8 @@
 The report exists because "the analysis succeeded" and "the analysis read the code" are different
 claims, and CodeQL only ever makes the first. So the assertions here are about which failure shape
 reaches which channel: this repo's own code going unextracted fails the job, an extractor that gave
-up on someone else's code warns without failing, and a SARIF with no diagnostics at all says so
-rather than reading as clean.
+up on someone else's code also fails it but with a different remedy, and a SARIF with no
+diagnostics at all says so rather than reading as clean.
 
 Every fixture below is the shape a real Security run produced (32924314733), because two of the
 assumptions this file started from were wrong and only the run said so. The extraction-error
@@ -134,21 +134,27 @@ class GoExtractorLagTest(unittest.TestCase):
     def setUp(self):
         self.summary, self.commands = run_report(go_sarif_as_shipped())
 
-    def test_it_warns(self):
+    def test_it_errors(self):
         self.assertEqual(len(self.commands), 1, self.commands)
-        self.assertTrue(self.commands[0].startswith("::warning "), self.commands[0])
+        self.assertTrue(self.commands[0].startswith("::error "), self.commands[0])
 
-    def test_the_warning_is_titled(self):
+    def test_the_error_is_titled(self):
         """The runner's own annotations arrive untitled; a title is what makes this findable."""
-        self.assertIn("title=CodeQL go extraction degraded", self.commands[0])
+        self.assertIn("title=CodeQL go extraction is incomplete", self.commands[0])
 
     def test_the_summary_carries_every_error_the_extractor_reported(self):
         for message in _GO_1_27_EXTRACTION_ERRORS:
             self.assertIn(message.replace("\n", " "), self.summary)
 
-    def test_it_does_not_fail_the_job(self):
-        """Upstream lag on GitHub's schedule; failing here blocks merges nobody here can unblock."""
-        self.assertEqual(run_main(go_sarif_as_shipped())[0], 0)
+    def test_it_fails_the_job(self):
+        """A partly-extracted analysis is indistinguishable from a clean one, so it cannot pass."""
+        self.assertEqual(run_main(go_sarif_as_shipped())[0], 1)
+
+    def test_it_names_the_remedy_not_just_the_diagnosis(self):
+        """Red for as long as the lag lasts; a gate nobody can act on gets removed."""
+        for text in (self.summary, self.commands[0]):
+            self.assertIn("drop the", text)
+            self.assertIn("bundle", text)
 
     def test_it_does_not_read_as_clean(self):
         self.assertNotIn("Clean", self.summary)
@@ -158,9 +164,14 @@ class CoverageGateTest(unittest.TestCase):
     """The one hard failure: files this repo owns that never reached the database."""
 
     def test_go_test_files_are_not_a_coverage_gap(self):
-        """`go build` does not compile them, so autobuild never extracts them. 35 of 44 is full."""
+        """`go build` does not compile them, so autobuild never extracts them. 35 of 44 is full.
+
+        Asserted against the coverage annotation specifically, not against "no error at all":
+        the same fixture also carries the stdlib extraction problems, which fail for their own
+        reason, and a test that could not tell the two apart would pass for the wrong one.
+        """
         summary, commands = run_report(go_sarif_as_shipped())
-        self.assertEqual([c for c in commands if c.startswith("::error ")], [])
+        self.assertEqual([c for c in commands if "did not extract this repo's code" in c], [])
         self.assertIn(f"**{len(_SOURCE_FILES)} of 11**", summary)
 
     def test_an_unextracted_source_file_fails_the_job(self):
@@ -188,14 +199,18 @@ class CoverageGateTest(unittest.TestCase):
         self.assertEqual(coverage.unextracted("go"), [])
         self.assertEqual(coverage.unextracted("python"), ["a_test.go"])
 
-    def test_both_failures_can_be_reported_at_once(self):
+    def test_both_failures_are_reported_separately(self):
+        """Both fail the job, but they have different remedies, so they stay distinct."""
         document = sarif(
             located("cli/expected-extracted-files/go", *_SOURCE_FILES),
             located("go/diagnostics/successfully-extracted-files"),
             *(unlocated("error", message) for message in _GO_1_27_EXTRACTION_ERRORS),
         )
-        levels = [command.split(" ", 1)[0] for command in run_report(document)[1]]
-        self.assertEqual(levels, ["::error", "::warning"])
+        commands = run_report(document)[1]
+        self.assertEqual([c.split(" ", 1)[0] for c in commands], ["::error", "::error"])
+        self.assertIn("did not extract this repo's code", commands[0])
+        self.assertIn("extraction is incomplete", commands[1])
+        self.assertEqual(run_main(document)[0], 1)
 
 
 class MissingBaselineTest(unittest.TestCase):

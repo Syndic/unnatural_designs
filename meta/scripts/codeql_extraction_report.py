@@ -9,20 +9,22 @@ mis-parsed out of the log text, and under a green check — so they read as nois
 facts are recorded properly as `toolExecutionNotifications`, and reports them as one titled
 annotation plus a step summary.
 
-Two independent things live in that SARIF, and only one of them is anyone's to fix here:
+Two independent things live in that SARIF, and both fail the job:
 
   - **File coverage.** `cli/expected-extracted-files/<language>` is the set of source-root files
     the CLI expected to extract; `<lang>/diagnostics/successfully-extracted-files` is what it got.
-    A file in the first and not the second is this repo's own code going unanalysed, which never
-    waits on an upstream release — so it fails the job.
+    A file in the first and not the second is this repo's own code going unanalysed.
   - **Extraction problems.** Error- and warning-level diagnostics from the extractor. These carry
-    no location at all (verified against a real run), so they cannot be attributed to a file, and
-    today they are all the toolchain's own standard library rather than ours. Nothing here fixes
-    that, so they warn loudly and stay green. What is degraded today, and why, is in
-    .claude/CLAUDE.md "CodeQL runs as advanced setup".
+    no location at all (verified against a real run), so they cannot be attributed to a file —
+    today they are the toolchain's own standard library rather than ours.
 
-Only the first is a gate, and it has no tolerance count: any expected file that went unextracted
-fails, so there is no number to widen the day a run goes red.
+The second used to warn, on the reasoning that this repo cannot hasten an upstream fix and a red
+check would block unrelated merges. That trades the wrong way: a partly-extracted analysis is
+indistinguishable from a clean one, so it is worse than a clean failure. What makes failing
+affordable is quarantining the predictable cause — a Go minor bump landing ahead of the extractor
+now arrives in its own Renovate PR, so the degradation is blocked there instead of reaching main.
+
+Neither gate has a tolerance count, so there is no number to widen the day a run goes red.
 
 Usage: ./meta/scripts/codeql_extraction_report.py <sarif-file> [--language <name>]
 """
@@ -170,9 +172,12 @@ def report(
     if problems:
         summary += [
             f"**{len(problems)} extraction problem(s).** The extractor gave up on code outside "
-            "this repo — the pinned toolchain's own standard library, or a dependency. These "
-            "carry no file location, and nothing here fixes them; they clear when the CodeQL "
-            "bundle's extractor catches up.",
+            "this repo — the pinned toolchain's own standard library, or a dependency — so this "
+            "analysis read less than a passing check would imply.",
+            "",
+            f"**To clear this:** wait for a CodeQL bundle whose `{language}` extractor supports "
+            "the toolchain this repo pins, or drop the toolchain bump that outran it. There is "
+            "nothing to fix in this repo and nothing to override.",
             "",
             "| Level | Diagnostic | Message |",
             "| --- | --- | --- |",
@@ -180,9 +185,10 @@ def report(
             "",
         ]
         commands.append(
-            f"::warning title=CodeQL {language} extraction degraded::"
-            f"{len(problems)} extraction problem(s) — the analysis read less than it appears to. "
-            "See this job's summary for the list."
+            f"::error title=CodeQL {language} extraction is incomplete::"
+            f"{len(problems)} extraction problem(s), so this analysis covered less than it "
+            f"appears to. Wait for a CodeQL bundle whose {language} extractor supports the "
+            "pinned toolchain, or drop the bump that outran it. See this job's summary."
         )
 
     if not unextracted and not problems:
@@ -228,7 +234,7 @@ def main(argv: list[str]) -> int:
         with args.summary.open("a", encoding="utf-8") as handle:
             handle.write("\n".join(summary) + "\n")
 
-    return 1 if coverage.unextracted(language) else 0
+    return 1 if coverage.unextracted(language) or problems else 0
 
 
 if __name__ == "__main__":
