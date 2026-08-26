@@ -117,8 +117,8 @@ jobs:
             --language "${LANGUAGE}" \
             --summary "${GITHUB_STEP_SUMMARY}"
 
-      # TEMPORARY probe: prints the SARIF's diagnostic structure so the report above can be
-      # held against real output. Removed before this branch merges.
+      # TEMPORARY probe: prints the SARIF's coverage sets so the report above can be held
+      # against real output. Removed before this branch merges.
       - name: TEMPORARY diagnostic-shape probe
         if: always()
         env:
@@ -127,20 +127,21 @@ jobs:
         run: |
           set -euo pipefail
           sarif="${SARIF_DIR}/${LANGUAGE}.sarif"
-          ls -la "${SARIF_DIR}"
-          jq '{
-            run_keys: [.runs[0] | keys[]],
-            invocation_keys: [.runs[0].invocations[]? | keys[]],
-            notification_count: ([.runs[].invocations[]?.toolExecutionNotifications[]?] | length),
-            notification_levels: ([.runs[].invocations[]?.toolExecutionNotifications[]?.level]
-              | group_by(.) | map({level: .[0], n: length})),
-            notification_ids: ([.runs[].invocations[]?.toolExecutionNotifications[]?.descriptor.id]
-              | group_by(.) | map({id: .[0], n: length})),
-            diagnostic_rule_ids: ([.runs[].tool.extensions[]?.rules[]?.id]
-              | map(select(test("diagnostic")))),
-            result_rule_ids: ([.runs[].results[]?.ruleId] | group_by(.) | map({id: .[0], n: length}))
-          }' "${sarif}"
-          jq '[.runs[].invocations[]?.toolExecutionNotifications[]?] | .[0:8]' "${sarif}"
+          jq --arg lang "${LANGUAGE}" '
+            [.runs[].invocations[]?.toolExecutionNotifications[]?] as $n
+            | ($n | map(select(.descriptor.id == "cli/expected-extracted-files/" + $lang))
+                  | map(.locations[]?.physicalLocation.artifactLocation.uri) | sort) as $expected
+            | ($n | map(select(.descriptor.id | endswith("/successfully-extracted-files")))
+                  | map(.locations[]?.physicalLocation.artifactLocation.uri) | sort) as $extracted
+            | {
+                expected_count: ($expected | length),
+                extracted_count: ($extracted | length),
+                missing: ($expected - $extracted),
+                extracted_but_unexpected: ($extracted - $expected),
+                expected_ids: ($n | map(.descriptor.id) | unique)
+              }' "${sarif}"
+          jq '[.runs[].invocations[]?.toolExecutionNotifications[]?
+               | select(.level == "error" or .level == "warning")]' "${sarif}"
 
   # Fan-in for the ruleset; the pattern's reasoning is at devcontainer.yml's `base-image-all`.
   # Strict on `skipped` unlike that one, since nothing gates this matrix. `if: always()` is
