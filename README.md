@@ -286,9 +286,10 @@ Codecov, so local gutters and the Codecov dashboard reflect the same data.
 
 **Dependency updates** are managed automatically by [Renovate](https://docs.renovatebot.com).
 Minor and patch bumps, across every manager, land in a single recurring `all non-major
-dependencies` PR. Every other update type gets its own PR, so it is reviewed on its own terms:
-`major` (breaking), `replacement` (a package renamed out from under us — `config:recommended`
-pulls in `replacements:all`), `rollback`, and `digest`.
+dependencies` PR — with one exception, the Go **minor** bump, which gets its own `Go language
+version` PR (see below). Every other update type gets its own PR, so it is reviewed on its own
+terms: `major` (breaking), `replacement` (a package renamed out from under us —
+`config:recommended` pulls in `replacements:all`), `rollback`, and `digest`.
 
 `digest` is the one worth calling out. Renovate raises it when a SHA-pinned reference's version
 tag resolves to a *different* commit — same version string, different content, i.e. the author
@@ -403,9 +404,19 @@ into a red check; it discovers workflows by glob, so a new one is covered withou
 
 Three grouping exceptions in [`renovate.json`](renovate.json)'s `packageRules` keep *major* bumps
 atomic. Each is scoped with `matchUpdateTypes: ["major"]` so it cannot overlap the minor/patch
-catch-all — the *grouping* rules match disjoint sets of updates, and the order they appear in does
-not matter. (Renovate merges every matching rule in order and the last writer wins, so two rules
-setting `groupName` for the same update would be order-dependent. Don't introduce that overlap.)
+catch-all, and the order those three appear in does not matter.
+
+A fourth, `Go language version`, **does** overlap the catch-all, and is the deliberate exception to
+the rule the previous paragraph would otherwise state. Renovate merges every matching rule in order
+and the last writer wins, so this one has to sit *after* the catch-all or Go minors fall back into
+the batch. The overlap is unavoidable rather than sloppy: Go *patch* bumps must stay batched while
+Go *minor* bumps leave it, and no single rule expresses "minor-or-patch except Go minor". Why it is
+worth the overlap: CodeQL's Go extractor is built against a Go release and lags a new one by
+roughly a week, during which extraction fails and the CodeQL job is red — see
+[`.claude/CLAUDE.md`](.claude/CLAUDE.md), "CodeQL runs as advanced setup". Isolating the Go minor
+means that week blocks one PR rather than every dependency update. Because the ordering is
+load-bearing and its failure is silent — a reordered file just quietly re-batches Go minors —
+[`//meta/scripts:test_renovate_grouping`](meta/scripts/test_renovate_grouping.py) holds it.
 
 Two rules set no `groupName` at all. `matchManagers: ["devcontainer"]` with `pinDigests: false`
 turns off digest pinning for devcontainer features (the reason is in
@@ -421,7 +432,7 @@ observed lag and still lands the bump the same day. Under the default `internalC
 back, and joins on the next run once it has aged in.
 
 Both rules overlap the grouping rules, which is harmless because each is the only rule that touches
-its field. Keep that true, or make the order deliberate.
+its field. Keep that true, or make the order deliberate — as `Go language version` above does.
 
 - **Language toolchain SDKs** — the Go and Python version pins, tracked across `MODULE.bazel`,
   `go.work`, per-module `go.mod`, [`.python-version`](.python-version), the devcontainer

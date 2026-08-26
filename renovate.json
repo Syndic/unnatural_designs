@@ -79,6 +79,12 @@
       "groupSlug": "all-minor-patch"
     },
     {
+      "matchDepNames": [ "go" ],
+      "matchUpdateTypes": [ "minor" ],
+      "groupName": "Go language version",
+      "groupSlug": "go-minor"
+    },
+    {
       "matchManagers": [ "devcontainer" ],
       "pinDigests": false
     },

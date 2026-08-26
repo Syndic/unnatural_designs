@@ -171,6 +171,16 @@ py_test(
     deps = [":codeql_extraction_report_lib"],
 )
 
+# Same shape as the three above: the assertion is the whole gate. What it guards fails silently —
+# a reordered renovate.json just quietly re-batches Go minors, with nothing to report it.
+py_test(
+    name = "test_renovate_grouping",
+    size = "small",
+    srcs = ["test_renovate_grouping.py"],
+    data = ["//:renovate.json"],
+    main = "test_renovate_grouping.py",
+)
+
 py_library(
     name = "classify_changed_paths_lib",
     srcs = ["classify_changed_paths.py"],
