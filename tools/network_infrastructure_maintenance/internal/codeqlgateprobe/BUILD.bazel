@@ -1,0 +1,8 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "codeqlgateprobe",
+    srcs = ["probe.go"],
+    importpath = "github.com/Syndic/unnatural_designs/tools/network_infrastructure_maintenance/internal/codeqlgateprobe",
+    visibility = ["//tools/network_infrastructure_maintenance:__subpackages__"],
+)
