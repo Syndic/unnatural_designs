@@ -92,10 +92,55 @@ jobs:
           build-mode: ${{ matrix.build-mode }}
 
       - uses: github/codeql-action/analyze@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
+        id: analyze
         with:
           # The string default setup uploaded under; it is what separates one language's
           # results from another's within a tool.
           category: "/language:${{ matrix.language }}"
+
+      # After analyze, not before: on the `python` row an interpreter installed ahead of
+      # extraction is one the extractor would resolve imports against.
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version-file: .python-version
+
+      # A completed analysis is not a complete one — see .claude/CLAUDE.md "CodeQL runs as
+      # advanced setup" for what the job reports success over. The uploaded SARIF has the
+      # diagnostics stripped, so this reads the CLI's own copy.
+      - name: Report extraction coverage
+        env:
+          SARIF_DIR: ${{ steps.analyze.outputs.sarif-output }}
+          LANGUAGE: ${{ matrix.language }}
+        run: |
+          python3 meta/scripts/codeql_extraction_report.py \
+            "${SARIF_DIR}/${LANGUAGE}.sarif" \
+            --language "${LANGUAGE}" \
+            --summary "${GITHUB_STEP_SUMMARY}"
+
+      # TEMPORARY probe: prints the SARIF's diagnostic structure so the report above can be
+      # held against real output. Removed before this branch merges.
+      - name: TEMPORARY diagnostic-shape probe
+        if: always()
+        env:
+          SARIF_DIR: ${{ steps.analyze.outputs.sarif-output }}
+          LANGUAGE: ${{ matrix.language }}
+        run: |
+          set -euo pipefail
+          sarif="${SARIF_DIR}/${LANGUAGE}.sarif"
+          ls -la "${SARIF_DIR}"
+          jq '{
+            run_keys: [.runs[0] | keys[]],
+            invocation_keys: [.runs[0].invocations[]? | keys[]],
+            notification_count: ([.runs[].invocations[]?.toolExecutionNotifications[]?] | length),
+            notification_levels: ([.runs[].invocations[]?.toolExecutionNotifications[]?.level]
+              | group_by(.) | map({level: .[0], n: length})),
+            notification_ids: ([.runs[].invocations[]?.toolExecutionNotifications[]?.descriptor.id]
+              | group_by(.) | map({id: .[0], n: length})),
+            diagnostic_rule_ids: ([.runs[].tool.extensions[]?.rules[]?.id]
+              | map(select(test("diagnostic")))),
+            result_rule_ids: ([.runs[].results[]?.ruleId] | group_by(.) | map({id: .[0], n: length}))
+          }' "${sarif}"
+          jq '[.runs[].invocations[]?.toolExecutionNotifications[]?] | .[0:8]' "${sarif}"
 
   # Fan-in for the ruleset; the pattern's reasoning is at devcontainer.yml's `base-image-all`.
   # Strict on `skipped` unlike that one, since nothing gates this matrix. `if: always()` is

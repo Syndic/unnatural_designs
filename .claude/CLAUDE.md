@@ -159,6 +159,28 @@ configuration that runs CodeQL with no workflow file in the repo. Load-bearing f
   on older queries. The `uses:` pin itself is unrelated and stays — it is repo-wide policy
   (README's "Dependency updates"), it guards the code running with `security-events: write` and
   `autobuild` over our source, and Renovate keeps it current in the routine batch.
+- **The bundle's Go extractor is built against a Go release, and can lag the one this repo
+  pins.** Since 2026-08-20 — #236 giving Go analysis a toolchain and #233 moving the pin to
+  1.27.0, 70 minutes apart — the autobuilder has logged `Autobuilder was built with go1.26.5,
+  environment has go1.27.0` and given up on five standard-library packages it could not
+  type-check: `internal/poll`, `math/rand/v2`, and the vendored `x/net/idna`,
+  `x/text/unicode/bidi` and `x/text/unicode/norm`. Those are I/O, network and text-normalisation
+  primitives, i.e. what taint tracking wants to follow, so the analysis covers less than it looks
+  like it does. It clears on GitHub's schedule for the same reason the previous bullet gives, and
+  `tools:` would pin an *older* extractor rather than a newer one.
+- **`meta/scripts/codeql_extraction_report.py` is what says so**, run after `analyze` on every
+  matrix row. CodeQL calls a run that read part of the code a success and GitHub raises no
+  annotation for the failures, so before this the only record was `##[error]` lines inside a green
+  job's raw log — 55 runs of them in one week before anyone read the logs. The report reads the
+  diagnostics out of the SARIF the CLI wrote, since the uploaded copy has them stripped, and
+  re-emits them as a warning annotation and a step summary. It fails the job for one case only:
+  an extraction failure *inside* the source root, which is this repo's own code going unanalysed
+  and never waits on an upstream release. Failures outside it warn and stay green — a hard gate
+  there would block every merge from the next Go bump until GitHub shipped a new bundle, an
+  outage on a schedule nobody here controls. Missing diagnostics warn too, and deliberately do not
+  read as clean: the CodeQL Action includes them based on a feature flag it resolves from GitHub
+  per run, so "no diagnostics" is not "no problems". There is no tolerance count in any of the
+  three, so there is nothing to widen the day a run goes red.
 - **`build-mode: none` is not available for Go** (nor Swift or Kotlin), so Go is the one language
   whose analysis has to build, and so the one that needs a toolchain on PATH.
 - **`CodeQL Analysis (all languages)` is the name for the ruleset to require**, not the

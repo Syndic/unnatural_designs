@@ -17,6 +17,11 @@ The `codeql-all` fan-in is here for the same reason. It is the name the ruleset 
 what makes every matrix row required — but only while it depends on the matrix and runs when the
 matrix fails. Drop `if: always()` and the job is skipped rather than failed, which branch
 protection reads as a pass: the gate is still listed, still green, and no longer gating.
+
+The extraction report is the third: it is what turns "the analysis succeeded" back into a claim
+about whether the code was read, and it can only do that from the SARIF the analyze step wrote —
+so its position after that step, and the `id:` it reads the path from, are held here. What the
+report *says* is `//meta/scripts:test_codeql_extraction_report`'s half.
 """
 
 import re
@@ -32,6 +37,8 @@ _WORKFLOW = _ROOT / ".github" / "workflows" / "security.yml"
 
 _SETUP_GO = "actions/setup-go@"
 _CODEQL_INIT = "github/codeql-action/init@"
+_CODEQL_ANALYZE = "github/codeql-action/analyze@"
+_EXTRACTION_REPORT = "meta/scripts/codeql_extraction_report.py"
 
 # The context branch protection requires. It is a string in repo settings, which nothing here can
 # read, so the coupling this file can hold is between the job and the docs that quote it.
@@ -200,6 +207,35 @@ class ToolchainStepTest(unittest.TestCase):
             "setup-go runs after codeql-action/init, so extraction still gets the runner "
             "image's Go",
         )
+
+
+class ExtractionReportStepTest(unittest.TestCase):
+    """CodeQL calls a run that read part of the code a success; this step is what says otherwise."""
+
+    def test_the_job_runs_the_report(self):
+        self.assertIn(
+            _EXTRACTION_REPORT,
+            _CODEQL,
+            "without it the only record of an extraction failure is `##[error]` lines inside a "
+            "green job's raw log, which GitHub raises no annotation for",
+        )
+
+    def test_the_report_follows_analyze(self):
+        self.assertLess(
+            _CODEQL.index(_CODEQL_ANALYZE),
+            _CODEQL.index(_EXTRACTION_REPORT),
+            "the report reads the SARIF that step writes",
+        )
+
+    def test_analyze_is_addressable(self):
+        """The SARIF path is an output of that step, so the report needs its `id:` to reach it."""
+        self.assertIn("id: analyze", step_block(_CODEQL, _CODEQL_ANALYZE))
+        self.assertIn("steps.analyze.outputs.sarif-output", _CODEQL)
+
+    def test_the_report_writes_the_step_summary(self):
+        """Annotations are the loud channel; the summary is where the detail has to survive."""
+        self.assertIn("--summary", _CODEQL)
+        self.assertIn("GITHUB_STEP_SUMMARY", _CODEQL)
 
 
 class DocumentedNameTest(unittest.TestCase):

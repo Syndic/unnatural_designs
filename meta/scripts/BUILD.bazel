@@ -153,6 +153,25 @@ py_test(
 )
 
 py_library(
+    name = "codeql_extraction_report_lib",
+    srcs = ["codeql_extraction_report.py"],
+)
+
+py_binary(
+    name = "codeql_extraction_report",
+    srcs = ["codeql_extraction_report.py"],
+    main = "codeql_extraction_report.py",
+)
+
+py_test(
+    name = "test_codeql_extraction_report",
+    size = "small",
+    srcs = ["test_codeql_extraction_report.py"],
+    main = "test_codeql_extraction_report.py",
+    deps = [":codeql_extraction_report_lib"],
+)
+
+py_library(
     name = "classify_changed_paths_lib",
     srcs = ["classify_changed_paths.py"],
 )
