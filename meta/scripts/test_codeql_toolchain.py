@@ -39,6 +39,7 @@ _WORKFLOW = _ROOT / ".github" / "workflows" / "security.yml"
 _SETUP_GO = "actions/setup-go@"
 _CODEQL_INIT = "github/codeql-action/init@"
 _CODEQL_ANALYZE = "github/codeql-action/analyze@"
+_SETUP_PYTHON = "actions/setup-python@"
 _EXTRACTION_REPORT = "meta/scripts/codeql_extraction_report.py"
 
 # Each pins an input the report reads. Both are CodeQL Action *feature* overrides, which take
@@ -249,6 +250,20 @@ class ExtractionReportStepTest(unittest.TestCase):
         """Annotations are the loud channel; the summary is where the detail has to survive."""
         self.assertIn("--summary", _CODEQL)
         self.assertIn("GITHUB_STEP_SUMMARY", _CODEQL)
+
+    def test_setup_python_follows_analyze(self):
+        """Ahead of extraction it is an interpreter the python extractor resolves imports against.
+
+        The step's own comment says the position matters, which is the same class of coupling the
+        setup-go assertion above exists for — and the tidy that groups both `setup-*` steps ahead
+        of `init` would pass every other test in this file.
+        """
+        self.assertLess(
+            _CODEQL.index(_CODEQL_ANALYZE),
+            _CODEQL.index(_SETUP_PYTHON),
+            "setup-python runs before extraction, so the python extractor resolves imports "
+            "against an interpreter that was not on PATH when the analysis was configured",
+        )
 
     def test_the_reports_inputs_are_pinned(self):
         """Unpinned, these follow GitHub's rollout, and the report's own inputs move under it."""

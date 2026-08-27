@@ -183,15 +183,18 @@ configuration that runs CodeQL with no workflow file in the repo. Load-bearing f
   coverage* compares `<lang>/diagnostics/successfully-extracted-files` against what the tree says
   should have been built. *No diagnostics at all* is a report that could not check, which is not a
   pass. There is no tolerance count in any of the three, and no path that reports "skipped".
-- **Coverage is computed from the tree, and only for Go.** CodeQL's own
-  `cli/expected-extracted-files` baseline is *not* used: the Action stopped computing file
-  coverage on pull requests in April 2026 (`--no-calculate-baseline`), so depending on it would
-  mean depending on a deprecated opt-in. `expected_files()` walks `go.work`'s registered modules
-  instead. Go-only because Go is the only language that builds — `build-mode: none` offers the
-  extractor every matching file, so nothing can be silently left out, while `autobuild` submits
-  only what `go build` compiles. That is also why `_test.go` is excluded: never compiled, so never
-  offered, and the nine in this repo raise no error on any run. Widening that exclusion to quiet a
-  red run is the move the coverage half exists to prevent.
+- **Coverage asks `go list`, and is Go-only.** CodeQL's own `cli/expected-extracted-files`
+  baseline is *not* used: the Action stopped computing file coverage on pull requests in April
+  2026 (`--no-calculate-baseline`), so depending on it would mean depending on a deprecated
+  opt-in. `expected_files()` runs `go list -f '{{range .GoFiles}}…'` per `go.work` module
+  instead — the compiler's own file list, so there is nothing left to model. The tempting
+  alternative, "every non-test `.go` file", is wrong in a way that matters: `go build` also skips
+  `testdata/` trees, `_`- and `.`-prefixed directories, and files excluded by build constraints,
+  so a hand-rolled filter grows an exclusion per convention and each new one is indistinguishable
+  from widening the gate to quiet a red run. Go-only because Go is the only language that builds:
+  `build-mode: none` offers the extractor every matching file, so nothing can be silently left
+  out. The nine `_test.go` files here are unextracted on every run and raise no error at all,
+  which is why extraction errors alone cannot answer "was all of it read".
 - **Extraction errors used to warn.** The reasoning was that this repo cannot hasten an upstream
   fix, so a hard gate would hand the merge queue to GitHub's bundle release schedule from the next
   Go bump onward. That trades the wrong way: a partly-extracted analysis is indistinguishable from

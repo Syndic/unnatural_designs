@@ -14,10 +14,12 @@ database let one run's diagnostics reappear in another's results, which is why t
 """
 
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
@@ -79,6 +81,18 @@ def go_tree(root: Path, *relative_paths: str) -> None:
         path.write_text("package x\n", encoding="utf-8")
 
 
+def go_list_returning(root: Path, *relative_paths: str):
+    """Mock `go list`, which is what decides the expected set.
+
+    Mocked rather than run, for the reason test_check_no_cgo gives for the same call: the
+    subprocess wrapper's argument construction and parsing are what this file can hold, and the
+    real invocation against a fixture module belongs to CI.
+    """
+    stdout = "".join(f"{root / rel}\n" for rel in relative_paths)
+    completed = subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
+    return mock.patch.object(subprocess, "run", return_value=completed)
+
+
 def run_report(document: dict, expected: list[str], language: str = "go"):
     extracted, problems, total = read_sarif(document)
     summary, commands = report(language, expected, extracted, problems, total)
@@ -95,52 +109,83 @@ def run_main(document: dict | str, tree: list[str], language: str = "go") -> tup
         sarif_path.write_text(
             document if isinstance(document, str) else json.dumps(document), encoding="utf-8"
         )
-        code = main(
-            [
-                str(sarif_path),
-                "--language",
-                language,
-                "--source-root",
-                str(root),
-                "--summary",
-                str(summary_path),
-            ]
-        )
+        with go_list_returning(root, *tree):
+            code = main(
+                [
+                    str(sarif_path),
+                    "--language",
+                    language,
+                    "--source-root",
+                    str(root),
+                    "--summary",
+                    str(summary_path),
+                ]
+            )
         return code, summary_path.read_text(encoding="utf-8") if summary_path.exists() else ""
 
 
 class ExpectedFilesTest(unittest.TestCase):
-    """The expected set is read from the tree, because CodeQL no longer publishes it on PRs."""
+    """The expected set is whatever `go build` compiles, so it is asked rather than modelled."""
 
-    def test_it_finds_non_test_go_files_across_registered_modules(self):
+    def test_it_reports_what_go_list_compiles(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            go_tree(root, *_SOURCE_FILES)
-            self.assertEqual(expected_files(root, "go"), sorted(_SOURCE_FILES))
+            go_tree(root)
+            with go_list_returning(root, *_SOURCE_FILES):
+                self.assertEqual(expected_files(root, "go"), sorted(_SOURCE_FILES))
 
-    def test_test_files_are_excluded(self):
-        """`go build` never compiles them, so autobuild never offers them to the extractor."""
+    def test_it_asks_for_the_compiled_file_list(self):
+        """`.GoFiles` is the compiler's own list: no test files, no testdata, no excluded builds."""
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            go_tree(root, *_SOURCE_FILES, f"{_MODULE}/internal/audit/audit_test.go")
-            self.assertEqual(expected_files(root, "go"), sorted(_SOURCE_FILES))
+            go_tree(root)
+            with go_list_returning(root) as run:
+                expected_files(root, "go")
+            argv = run.call_args.args[0]
+            self.assertEqual(argv[:3], ["go", "list", "-f"])
+            self.assertIn(".GoFiles", argv[3])
+            self.assertIn("./...", argv)
 
-    def test_files_outside_a_registered_module_are_not_expected(self):
-        """go.work's use directives are the boundary; an unregistered module is not built."""
+    def test_conventions_the_go_tool_applies_are_not_reimplemented(self):
+        """testdata/, _-prefixed dirs and build-constrained files are go list's job, not ours.
+
+        Modelling them here would mean an exclusion per convention, and each new one would be
+        indistinguishable from widening the gate to quiet a red run.
+        """
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            go_tree(root, *_SOURCE_FILES)
-            stray = root / "elsewhere" / "stray.go"
-            stray.parent.mkdir(parents=True)
-            stray.write_text("package x\n", encoding="utf-8")
-            self.assertNotIn("elsewhere/stray.go", expected_files(root, "go"))
+            go_tree(
+                root,
+                *_SOURCE_FILES,
+                f"{_MODULE}/internal/audit/testdata/sample.go",
+                f"{_MODULE}/internal/audit/_scratch/x.go",
+                f"{_MODULE}/internal/audit/helpers_windows.go",
+                f"{_MODULE}/internal/audit/audit_test.go",
+            )
+            with go_list_returning(root, *_SOURCE_FILES):
+                self.assertEqual(expected_files(root, "go"), sorted(_SOURCE_FILES))
 
-    def test_unbuilt_languages_have_no_expected_set(self):
-        """`build-mode: none` offers every matching file, so nothing can be left out."""
+    def test_a_failing_go_list_is_not_a_pass(self):
+        """An expected set nobody could compute is a check that did not run."""
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            go_tree(root, *_SOURCE_FILES)
-            self.assertEqual(expected_files(root, "python"), [])
+            go_tree(root)
+            with (
+                mock.patch.object(
+                    subprocess, "run", side_effect=subprocess.CalledProcessError(1, "go list")
+                ),
+                self.assertRaises(subprocess.CalledProcessError),
+            ):
+                expected_files(root, "go")
+
+    def test_unbuilt_languages_are_not_asked(self):
+        """`build-mode: none` offers every matching file, so there is nothing to compare."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            go_tree(root)
+            with mock.patch.object(subprocess, "run") as run:
+                self.assertEqual(expected_files(root, "python"), [])
+            run.assert_not_called()
 
 
 class ReadSarifTest(unittest.TestCase):
@@ -227,6 +272,82 @@ class CoverageGateTest(unittest.TestCase):
         self.assertEqual([c.split(" ", 1)[0] for c in commands], ["::error", "::error"])
         self.assertIn("did not extract this repo's code", commands[0])
         self.assertIn("extraction is incomplete", commands[1])
+
+
+class LevelDefaultTest(unittest.TestCase):
+    """SARIF defaults an omitted `level` to "warning"; reading it as None fails the gate open."""
+
+    def setUp(self):
+        self.document = sarif(
+            located("go/diagnostics/successfully-extracted-files", *_SOURCE_FILES),
+            {
+                "message": {"text": "Extraction failed with error something real"},
+                "descriptor": {"id": "go/diagnostics/extraction-errors"},
+            },
+        )
+
+    def test_a_notification_without_a_level_is_still_a_problem(self):
+        _, problems, total = read_sarif(self.document)
+        self.assertEqual(len(problems), 1, "an omitted level defaults to warning, not to nothing")
+        self.assertEqual(problems[0].level, "warning")
+        self.assertEqual(total, 2)
+
+    def test_it_fails_the_job(self):
+        """The non-vacuity path does not catch this: `total` is 2, so the SARIF is not blind."""
+        code, summary = run_main(self.document, _SOURCE_FILES)
+        self.assertEqual(code, 1)
+        self.assertNotIn("Clean", summary)
+
+
+class NonExtractionDiagnosticTest(unittest.TestCase):
+    """Everything the bundle reports fails, but only extraction failures get the lag remedy."""
+
+    def setUp(self):
+        self.document = sarif(
+            located("py/diagnostics/successfully-extracted-files", "meta/scripts/x.py"),
+            unlocated("warning", "Deprecated flag --foo", "cli/deprecated-flag"),
+        )
+
+    def test_it_still_fails(self):
+        self.assertEqual(run_main(self.document, _SOURCE_FILES, language="python")[0], 1)
+
+    def test_it_does_not_name_a_remedy_it_cannot_support(self):
+        """There is no pinned toolchain on the python row, so "drop the bump" is unactionable."""
+        summary, commands = run_report(self.document, [], language="python")
+        (command,) = commands
+        self.assertNotIn("drop the bump", command)
+        self.assertNotIn("drop the toolchain bump", summary)
+        self.assertIn("reported a diagnostic", command)
+
+    def test_extraction_failures_still_get_the_remedy(self):
+        document = sarif(
+            located("go/diagnostics/successfully-extracted-files", *_SOURCE_FILES),
+            unlocated("error", "Extraction failed with error boom"),
+        )
+        _, (command,) = run_report(document, sorted(_SOURCE_FILES))
+        self.assertIn("drop the bump", command)
+
+
+class EmptyExpectedSetStillReportsProblemsTest(unittest.TestCase):
+    """A broken go.work must not bury the extractor's diagnostics back in the raw log."""
+
+    def setUp(self):
+        self.document = sarif(
+            located("go/diagnostics/successfully-extracted-files"),
+            *(unlocated("error", m) for m in _GO_1_27_EXTRACTION_ERRORS),
+        )
+
+    def test_both_failures_are_reported(self):
+        commands = run_report(self.document, [])[1]
+        titles = [c.split("::")[1] for c in commands]
+        self.assertEqual(len(commands), 2, titles)
+        self.assertTrue(any("coverage could not be checked" in t for t in titles), titles)
+        self.assertTrue(any("extraction is incomplete" in t for t in titles), titles)
+
+    def test_the_extraction_errors_reach_the_summary(self):
+        summary, _ = run_report(self.document, [])
+        for message in _GO_1_27_EXTRACTION_ERRORS:
+            self.assertIn(message, summary)
 
 
 class UnbuiltLanguageTest(unittest.TestCase):
