@@ -16,6 +16,9 @@ exports_files([
     # The canonical Python language level, read by //meta/scripts:test_check_python_version so
     # its sweep over the repo's real YAML compares against the same value CI does.
     ".python-version",
+    # Renovate's config, read by //meta/scripts:test_renovate_grouping — one grouping rule is
+    # correct only while it sits after the catch-all, and a reorder breaks it with no error.
+    "renovate.json",
 ])
 
 # Every workflow, as one dep: //meta/scripts:test_check_modules asserts the matrix-shape guard

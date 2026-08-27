@@ -17,6 +17,12 @@ The `codeql-all` fan-in is here for the same reason. It is the name the ruleset 
 what makes every matrix row required — but only while it depends on the matrix and runs when the
 matrix fails. Drop `if: always()` and the job is skipped rather than failed, which branch
 protection reads as a pass: the gate is still listed, still green, and no longer gating.
+
+The extraction report is the third: it is what turns "the analysis succeeded" back into a claim
+about whether the code was read, and it can only do that from the SARIF the analyze step wrote —
+so its position after that step, and the `id:` it reads the path from, are held here. What the
+report *says*, and the file-coverage gate it fails on, are
+`//meta/scripts:test_codeql_extraction_report`'s half.
 """
 
 import re
@@ -32,6 +38,21 @@ _WORKFLOW = _ROOT / ".github" / "workflows" / "security.yml"
 
 _SETUP_GO = "actions/setup-go@"
 _CODEQL_INIT = "github/codeql-action/init@"
+_CODEQL_ANALYZE = "github/codeql-action/analyze@"
+_SETUP_PYTHON = "actions/setup-python@"
+_EXTRACTION_REPORT = "meta/scripts/codeql_extraction_report.py"
+
+# Each pins an input the report reads. Both are CodeQL Action *feature* overrides, which take
+# precedence over GitHub's feature-flag API — so unsetting one hands the report's inputs back to a
+# server-side default, silently, and the report has no way to tell that happened.
+_PINNED_FEATURE_ENV = {
+    # Overlay reuses a database built from another commit and re-extracts only changed source
+    # files. Observed: a base built while Go 1.27 was pinned carried its extraction errors into a
+    # PR that had already reverted to 1.26, failing a commit that was in fact clean.
+    "CODEQL_ACTION_OVERLAY_ANALYSIS": "false",
+    # Without diagnostics in the SARIF there is nothing for the report to read at all.
+    "CODEQL_ACTION_EXPORT_DIAGNOSTICS": "true",
+}
 
 # The context branch protection requires. It is a string in repo settings, which nothing here can
 # read, so the coupling this file can hold is between the job and the docs that quote it.
@@ -200,6 +221,67 @@ class ToolchainStepTest(unittest.TestCase):
             "setup-go runs after codeql-action/init, so extraction still gets the runner "
             "image's Go",
         )
+
+
+class ExtractionReportStepTest(unittest.TestCase):
+    """CodeQL calls a run that read part of the code a success; this step is what says otherwise."""
+
+    def test_the_job_runs_the_report(self):
+        self.assertIn(
+            _EXTRACTION_REPORT,
+            _CODEQL,
+            "without it the only record of an extraction failure is `##[error]` lines inside a "
+            "green job's raw log, which GitHub raises no annotation for",
+        )
+
+    def test_the_report_follows_analyze(self):
+        self.assertLess(
+            _CODEQL.index(_CODEQL_ANALYZE),
+            _CODEQL.index(_EXTRACTION_REPORT),
+            "the report reads the SARIF that step writes",
+        )
+
+    def test_analyze_is_addressable(self):
+        """The SARIF path is an output of that step, so the report needs its `id:` to reach it."""
+        self.assertIn("id: analyze", step_block(_CODEQL, _CODEQL_ANALYZE))
+        self.assertIn("steps.analyze.outputs.sarif-output", _CODEQL)
+
+    def test_the_report_writes_the_step_summary(self):
+        """Annotations are the loud channel; the summary is where the detail has to survive."""
+        self.assertIn("--summary", _CODEQL)
+        self.assertIn("GITHUB_STEP_SUMMARY", _CODEQL)
+
+    def test_setup_python_follows_analyze(self):
+        """Ahead of extraction it is an interpreter the python extractor resolves imports against.
+
+        The step's own comment says the position matters, which is the same class of coupling the
+        setup-go assertion above exists for — and the tidy that groups both `setup-*` steps ahead
+        of `init` would pass every other test in this file.
+        """
+        self.assertLess(
+            _CODEQL.index(_CODEQL_ANALYZE),
+            _CODEQL.index(_SETUP_PYTHON),
+            "setup-python runs before extraction, so the python extractor resolves imports "
+            "against an interpreter that was not on PATH when the analysis was configured",
+        )
+
+    def test_the_reports_inputs_are_pinned(self):
+        """Unpinned, these follow GitHub's rollout, and the report's own inputs move under it."""
+        for name, value in _PINNED_FEATURE_ENV.items():
+            with self.subTest(env=name):
+                self.assertIn(
+                    f'{name}: "{value}"',
+                    _CODEQL,
+                    f"{name} is what keeps the report reading the same thing from run to run; "
+                    "without it the analysis can change shape with no change in this repo",
+                )
+
+    def test_the_pins_are_set_for_every_row(self):
+        """Job-level, not step-level: init reads them, and init runs before any step of ours."""
+        job_env = _CODEQL[_CODEQL.index("env:") : _CODEQL.index("permissions:")]
+        for name in _PINNED_FEATURE_ENV:
+            with self.subTest(env=name):
+                self.assertIn(name, job_env)
 
 
 class DocumentedNameTest(unittest.TestCase):

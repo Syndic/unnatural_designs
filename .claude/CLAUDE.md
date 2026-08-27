@@ -159,6 +159,66 @@ configuration that runs CodeQL with no workflow file in the repo. Load-bearing f
   on older queries. The `uses:` pin itself is unrelated and stays — it is repo-wide policy
   (README's "Dependency updates"), it guards the code running with `security-events: write` and
   `autobuild` over our source, and Renovate keeps it current in the routine batch.
+- **The bundle's Go extractor is built against a Go release, and can lag the one this repo
+  pins.** Since 2026-08-20 — #236 giving Go analysis a toolchain and #233 moving the pin to
+  1.27.0, 70 minutes apart — the autobuilder has logged `Autobuilder was built with go1.26.5,
+  environment has go1.27.0` and given up on five standard-library packages it could not
+  type-check: `internal/poll`, `math/rand/v2`, and the vendored `x/net/idna`,
+  `x/text/unicode/bidi` and `x/text/unicode/norm`. Those are I/O, network and text-normalisation
+  primitives, i.e. what taint tracking wants to follow, so the analysis covers less than it looks
+  like it does. It clears on GitHub's schedule for the same reason the previous bullet gives, and
+  `tools:` would pin an *older* extractor rather than a newer one. This repo's own Go code is
+  unaffected throughout — every non-test `.go` file extracts.
+- **`meta/scripts/codeql_extraction_report.py` is what makes that legible**, run after `analyze`
+  on every matrix row. The failures were not *unannotated*: the runner turns the extractor's
+  `##[error]` lines into nine `failure`-level check-run annotations. They were unreadable — no
+  title, attached to paths the runner mis-parsed out of the log text (`.github:5`, `.github:237`),
+  and sitting under a check that concludes success, which is what made them read as noise for 55
+  runs. The report adds one titled annotation and a step summary naming what is degraded, read out
+  of the SARIF the CLI wrote rather than the uploaded copy, which has the diagnostics stripped.
+- **The report gates on three things, and all of them fail the job.** *Extraction problems* are
+  error- or warning-level diagnostics — the extractor gave up on something. They carry no location
+  at all, so nothing can attribute them to a file; worth knowing before trying to gate on "is it
+  our code", which is why coverage is a separate signal rather than a filter over them. *File
+  coverage* compares `<lang>/diagnostics/successfully-extracted-files` against what the tree says
+  should have been built. *No diagnostics at all* is a report that could not check, which is not a
+  pass. There is no tolerance count in any of the three, and no path that reports "skipped".
+- **Coverage asks `go list`, and is Go-only.** CodeQL's own `cli/expected-extracted-files`
+  baseline is *not* used: the Action stopped computing file coverage on pull requests in April
+  2026 (`--no-calculate-baseline`), so depending on it would mean depending on a deprecated
+  opt-in. `expected_files()` runs `go list -f '{{range .GoFiles}}…'` per `go.work` module
+  instead — the compiler's own file list, so there is nothing left to model. The tempting
+  alternative, "every non-test `.go` file", is wrong in a way that matters: `go build` also skips
+  `testdata/` trees, `_`- and `.`-prefixed directories, and files excluded by build constraints,
+  so a hand-rolled filter grows an exclusion per convention and each new one is indistinguishable
+  from widening the gate to quiet a red run. Go-only because Go is the only language that builds:
+  `build-mode: none` offers the extractor every matching file, so nothing can be silently left
+  out. The nine `_test.go` files here are unextracted on every run and raise no error at all,
+  which is why extraction errors alone cannot answer "was all of it read".
+- **Extraction errors used to warn.** The reasoning was that this repo cannot hasten an upstream
+  fix, so a hard gate would hand the merge queue to GitHub's bundle release schedule from the next
+  Go bump onward. That trades the wrong way: a partly-extracted analysis is indistinguishable from
+  a clean one, so it is worse than a clean failure — a security control failing open. What makes
+  failing affordable is removing the cause rather than tolerating it: `renovate.json` groups Go
+  **minor** bumps into their own `go-minor` PR (that rule must stay *after* the `all-minor-patch`
+  catch-all, since later matching rules win), so a Go release that outruns the extractor is
+  blocked in its own PR instead of degrading main. Go *patch* bumps stay in the batch — the
+  language-version gate the extractor trips on moves on minors — though a patch touching stdlib
+  internals could in principle trip it too, which the same failure now catches.
+  Measured lag from a Go minor's tag to the CodeQL release supporting it: 5.8 days (1.25.0),
+  9.6 days (1.26.0), 6.6 days (1.27.0), plus GitHub's own rollout to runners on top.
+- **Two feature overrides are pinned on the job, and they are load-bearing.**
+  `CODEQL_ACTION_OVERLAY_ANALYSIS: "false"` and `CODEQL_ACTION_EXPORT_DIAGNOSTICS: "true"`. Both
+  are CodeQL Action *features*, whose `envVar` takes precedence over GitHub's feature-flag API, so
+  each pins an input the report reads rather than letting a server-side default move it.
+  `//meta/scripts:test_codeql_toolchain` holds both. Overlay is the one with a measured failure
+  behind it: it reuses a database built from another commit and re-extracts only *changed source
+  files*, so a base built while Go 1.27 was pinned carried its seven extraction errors into a PR
+  that had already reverted to 1.26 — failing a commit that was clean, on evidence belonging to a
+  different tree. Re-running the same commit once the cache expired passed. Overlay bought about
+  8–10s per language here, which is not worth a signal that depends on which runs preceded it. The
+  symmetric risk — a stale base *masking* new errors, letting a Go bump pass the gate written to
+  block it — is untested, and does not arise while overlay is off.
 - **`build-mode: none` is not available for Go** (nor Swift or Kotlin), so Go is the one language
   whose analysis has to build, and so the one that needs a toolchain on PATH.
 - **`CodeQL Analysis (all languages)` is the name for the ruleset to require**, not the
