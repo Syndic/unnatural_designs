@@ -92,6 +92,11 @@ def expected_files(root: Path, language: str) -> list[str]:
     Cgo sources are deliberately absent: `.CgoFiles` would belong here, but the repo-wide no-cgo
     policy (//meta/scripts:check_no_cgo) means including them is structure for a case that cannot
     occur.
+
+    A non-zero exit is fatal even though `go list` still prints a usable file list alongside it.
+    Non-zero means the module graph did not fully resolve, so what it printed is not "what the
+    build compiles" — it is a subset of unknown size, and a short expected set makes the coverage
+    gate easier to pass. Parsing it anyway would be fail-open in the one check that must not be.
     """
     if language != _BUILT_LANGUAGE:
         return []
@@ -310,7 +315,19 @@ def main(argv: list[str]) -> int:
         return 1
 
     extracted, problems, total = read_sarif(sarif)
-    expected = expected_files(root, language)
+
+    try:
+        expected = expected_files(root, language)
+    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+        # Our own wiring, like the SARIF read above: `go list` defines the expected set, so a run
+        # that could not ask it is a check that did not happen — and it has to say so through the
+        # same channel as everything else, not as a traceback in the raw log.
+        print(
+            f"::error title=CodeQL {language} coverage could not be computed::"
+            f"`go list` failed, so the set of files the build compiles is unknown: {exc}"
+        )
+        return 1
+
     summary, commands = report(language, expected, extracted, problems, total)
 
     for line in summary:

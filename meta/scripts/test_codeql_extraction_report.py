@@ -13,6 +13,8 @@ database let one run's diagnostics reappear in another's results, which is why t
 `CODEQL_ACTION_OVERLAY_ANALYSIS=false`.
 """
 
+import contextlib
+import io
 import json
 import subprocess
 import sys
@@ -99,7 +101,19 @@ def run_report(document: dict, expected: list[str], language: str = "go"):
     return "\n".join(summary), commands
 
 
-def run_main(document: dict | str, tree: list[str], language: str = "go") -> tuple[int, str]:
+def run_main_capturing(
+    document: dict | str, tree: list[str], language: str = "go", mock_go_list: bool = True
+) -> tuple[int, str]:
+    """Run the script end to end and capture stdout, so annotations can be asserted on."""
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        code, _ = run_main(document, tree, language, mock_go_list=mock_go_list)
+    return code, buffer.getvalue()
+
+
+def run_main(
+    document: dict | str, tree: list[str], language: str = "go", mock_go_list: bool = True
+) -> tuple[int, str]:
     """Run the script end to end over a SARIF file and a real on-disk tree."""
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -109,7 +123,7 @@ def run_main(document: dict | str, tree: list[str], language: str = "go") -> tup
         sarif_path.write_text(
             document if isinstance(document, str) else json.dumps(document), encoding="utf-8"
         )
-        with go_list_returning(root, *tree):
+        with go_list_returning(root, *tree) if mock_go_list else contextlib.nullcontext():
             code = main(
                 [
                     str(sarif_path),
@@ -147,10 +161,14 @@ class ExpectedFilesTest(unittest.TestCase):
             self.assertIn("./...", argv)
 
     def test_conventions_the_go_tool_applies_are_not_reimplemented(self):
-        """testdata/, _-prefixed dirs and build-constrained files are go list's job, not ours.
+        """The tree is not walked: files the go tool omits stay omitted because it omitted them.
 
-        Modelling them here would mean an exclusion per convention, and each new one would be
-        indistinguishable from widening the gate to quiet a red run.
+        What this holds is the *absence* of a filesystem walk, which is the regression that would
+        reintroduce the original bug — not the go tool's conventions themselves. `go list` is
+        mocked here, so the `testdata/`, `_scratch/` and `_windows.go` fixtures on disk cannot
+        influence the result; they are there to make the walk, if one came back, produce a
+        visibly wrong answer. The conventions are the go tool's contract and are exercised by the
+        real invocation in CI.
         """
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -166,17 +184,24 @@ class ExpectedFilesTest(unittest.TestCase):
                 self.assertEqual(expected_files(root, "go"), sorted(_SOURCE_FILES))
 
     def test_a_failing_go_list_is_not_a_pass(self):
-        """An expected set nobody could compute is a check that did not run."""
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            go_tree(root)
-            with (
-                mock.patch.object(
-                    subprocess, "run", side_effect=subprocess.CalledProcessError(1, "go list")
-                ),
-                self.assertRaises(subprocess.CalledProcessError),
-            ):
-                expected_files(root, "go")
+        """An expected set nobody could compute is a check that did not run.
+
+        Asserted on the exit code and the annotation rather than on a raised exception: a
+        traceback is the one failure channel this whole script exists to close, so `go list`
+        failing has to report through the same channel as an unreadable SARIF. Both reachable
+        shapes are covered -- a non-zero exit, and no `go` on PATH at all.
+        """
+        for label, side_effect in (
+            ("non-zero exit", subprocess.CalledProcessError(1, "go list")),
+            ("go not installed", FileNotFoundError(2, "No such file or directory", "go")),
+        ):
+            with self.subTest(label):
+                with mock.patch.object(subprocess, "run", side_effect=side_effect):
+                    code, printed = run_main_capturing(
+                        extracted_sarif(*_SOURCE_FILES), _SOURCE_FILES, mock_go_list=False
+                    )
+                self.assertEqual(code, 1)
+                self.assertIn("::error title=CodeQL go coverage could not be computed", printed)
 
     def test_unbuilt_languages_are_not_asked(self):
         """`build-mode: none` offers every matching file, so there is nothing to compare."""
