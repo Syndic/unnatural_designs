@@ -41,6 +41,18 @@ _CODEQL_INIT = "github/codeql-action/init@"
 _CODEQL_ANALYZE = "github/codeql-action/analyze@"
 _EXTRACTION_REPORT = "meta/scripts/codeql_extraction_report.py"
 
+# Each pins an input the report reads. Both are CodeQL Action *feature* overrides, which take
+# precedence over GitHub's feature-flag API — so unsetting one hands the report's inputs back to a
+# server-side default, silently, and the report has no way to tell that happened.
+_PINNED_FEATURE_ENV = {
+    # Overlay reuses a database built from another commit and re-extracts only changed source
+    # files. Observed: a base built while Go 1.27 was pinned carried its extraction errors into a
+    # PR that had already reverted to 1.26, failing a commit that was in fact clean.
+    "CODEQL_ACTION_OVERLAY_ANALYSIS": "false",
+    # Without diagnostics in the SARIF there is nothing for the report to read at all.
+    "CODEQL_ACTION_EXPORT_DIAGNOSTICS": "true",
+}
+
 # The context branch protection requires. It is a string in repo settings, which nothing here can
 # read, so the coupling this file can hold is between the job and the docs that quote it.
 _FAN_IN_NAME = "CodeQL Analysis (all languages)"
@@ -237,6 +249,24 @@ class ExtractionReportStepTest(unittest.TestCase):
         """Annotations are the loud channel; the summary is where the detail has to survive."""
         self.assertIn("--summary", _CODEQL)
         self.assertIn("GITHUB_STEP_SUMMARY", _CODEQL)
+
+    def test_the_reports_inputs_are_pinned(self):
+        """Unpinned, these follow GitHub's rollout, and the report's own inputs move under it."""
+        for name, value in _PINNED_FEATURE_ENV.items():
+            with self.subTest(env=name):
+                self.assertIn(
+                    f'{name}: "{value}"',
+                    _CODEQL,
+                    f"{name} is what keeps the report reading the same thing from run to run; "
+                    "without it the analysis can change shape with no change in this repo",
+                )
+
+    def test_the_pins_are_set_for_every_row(self):
+        """Job-level, not step-level: init reads them, and init runs before any step of ours."""
+        job_env = _CODEQL[_CODEQL.index("env:") : _CODEQL.index("permissions:")]
+        for name in _PINNED_FEATURE_ENV:
+            with self.subTest(env=name):
+                self.assertIn(name, job_env)
 
 
 class DocumentedNameTest(unittest.TestCase):

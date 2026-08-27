@@ -155,12 +155,14 @@ py_test(
 py_library(
     name = "codeql_extraction_report_lib",
     srcs = ["codeql_extraction_report.py"],
+    deps = [":_workspace_lib"],
 )
 
 py_binary(
     name = "codeql_extraction_report",
     srcs = ["codeql_extraction_report.py"],
     main = "codeql_extraction_report.py",
+    deps = [":_workspace_lib"],
 )
 
 py_test(
@@ -168,7 +170,10 @@ py_test(
     size = "small",
     srcs = ["test_codeql_extraction_report.py"],
     main = "test_codeql_extraction_report.py",
-    deps = [":codeql_extraction_report_lib"],
+    deps = [
+        ":_workspace_lib",
+        ":codeql_extraction_report_lib",
+    ],
 )
 
 # Same shape as the three above: the assertion is the whole gate. What it guards fails silently —

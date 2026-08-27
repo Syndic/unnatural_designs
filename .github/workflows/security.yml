@@ -48,6 +48,16 @@ jobs:
   codeql:
     name: CodeQL Analysis (${{ matrix.language }})
     runs-on: ubuntu-latest
+    env:
+      # Both pin an input the extraction report reads, so that "the report could not check" stops
+      # being reachable by a change of GitHub's defaults. See .claude/CLAUDE.md "CodeQL runs as
+      # advanced setup"; //meta/scripts:test_codeql_toolchain keeps them here.
+      #
+      # Overlay reuses a database built from another commit and re-extracts only changed source
+      # files, so extraction diagnostics stop being a property of the commit under test.
+      CODEQL_ACTION_OVERLAY_ANALYSIS: "false"
+      # Without diagnostics in the SARIF there is nothing to report on at all.
+      CODEQL_ACTION_EXPORT_DIAGNOSTICS: "true"
     permissions:
       contents: read
       # Uploads the SARIF. The starter workflow's `actions: read` (private repos) and

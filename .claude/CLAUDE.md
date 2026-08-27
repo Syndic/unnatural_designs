@@ -176,17 +176,22 @@ configuration that runs CodeQL with no workflow file in the repo. Load-bearing f
   and sitting under a check that concludes success, which is what made them read as noise for 55
   runs. The report adds one titled annotation and a step summary naming what is degraded, read out
   of the SARIF the CLI wrote rather than the uploaded copy, which has the diagnostics stripped.
-- **The report gates on two things, and both fail the job.** *File coverage* is the pair of
-  coverage sets in the same SARIF — `cli/expected-extracted-files/<lang>` against
-  `<lang>/diagnostics/successfully-extracted-files`; an expected file that never reached the
-  database is this repo's own code going unanalysed. *Extraction errors* are the extractor giving
-  up on code outside the tree. Note those carry no location at all, so nothing can attribute them
-  to a file — worth knowing before trying to gate on "is it our code", which is why coverage is a
-  separate signal rather than a filter over the errors. Two properties of the coverage half are
-  load-bearing and both are held by `//meta/scripts:test_codeql_extraction_report`: it excludes
-  `_test.go` files, since `build-mode: autobuild` runs `go build`, which never compiles them
-  (widening that exclusion to quiet a red run is the move it exists to prevent); and it says so
-  rather than passing when the analysis published no baseline, which the `actions` row does not.
+- **The report gates on three things, and all of them fail the job.** *Extraction problems* are
+  error- or warning-level diagnostics — the extractor gave up on something. They carry no location
+  at all, so nothing can attribute them to a file; worth knowing before trying to gate on "is it
+  our code", which is why coverage is a separate signal rather than a filter over them. *File
+  coverage* compares `<lang>/diagnostics/successfully-extracted-files` against what the tree says
+  should have been built. *No diagnostics at all* is a report that could not check, which is not a
+  pass. There is no tolerance count in any of the three, and no path that reports "skipped".
+- **Coverage is computed from the tree, and only for Go.** CodeQL's own
+  `cli/expected-extracted-files` baseline is *not* used: the Action stopped computing file
+  coverage on pull requests in April 2026 (`--no-calculate-baseline`), so depending on it would
+  mean depending on a deprecated opt-in. `expected_files()` walks `go.work`'s registered modules
+  instead. Go-only because Go is the only language that builds — `build-mode: none` offers the
+  extractor every matching file, so nothing can be silently left out, while `autobuild` submits
+  only what `go build` compiles. That is also why `_test.go` is excluded: never compiled, so never
+  offered, and the nine in this repo raise no error on any run. Widening that exclusion to quiet a
+  red run is the move the coverage half exists to prevent.
 - **Extraction errors used to warn.** The reasoning was that this repo cannot hasten an upstream
   fix, so a hard gate would hand the merge queue to GitHub's bundle release schedule from the next
   Go bump onward. That trades the wrong way: a partly-extracted analysis is indistinguishable from
@@ -199,10 +204,18 @@ configuration that runs CodeQL with no workflow file in the repo. Load-bearing f
   internals could in principle trip it too, which the same failure now catches.
   Measured lag from a Go minor's tag to the CodeQL release supporting it: 5.8 days (1.25.0),
   9.6 days (1.26.0), 6.6 days (1.27.0), plus GitHub's own rollout to runners on top.
-- **One path still warns rather than fails: a SARIF with no diagnostics at all.** The CodeQL
-  Action includes them based on a feature flag it resolves from GitHub per run, so failing there
-  would be an outage nobody here could end. It is reported as unverified rather than clean, and it
-  has never been observed — every language publishes diagnostics today.
+- **Two feature overrides are pinned on the job, and they are load-bearing.**
+  `CODEQL_ACTION_OVERLAY_ANALYSIS: "false"` and `CODEQL_ACTION_EXPORT_DIAGNOSTICS: "true"`. Both
+  are CodeQL Action *features*, whose `envVar` takes precedence over GitHub's feature-flag API, so
+  each pins an input the report reads rather than letting a server-side default move it.
+  `//meta/scripts:test_codeql_toolchain` holds both. Overlay is the one with a measured failure
+  behind it: it reuses a database built from another commit and re-extracts only *changed source
+  files*, so a base built while Go 1.27 was pinned carried its seven extraction errors into a PR
+  that had already reverted to 1.26 — failing a commit that was clean, on evidence belonging to a
+  different tree. Re-running the same commit once the cache expired passed. Overlay bought about
+  8–10s per language here, which is not worth a signal that depends on which runs preceded it. The
+  symmetric risk — a stale base *masking* new errors, letting a Go bump pass the gate written to
+  block it — is untested, and does not arise while overlay is off.
 - **`build-mode: none` is not available for Go** (nor Swift or Kotlin), so Go is the one language
   whose analysis has to build, and so the one that needs a toolchain on PATH.
 - **`CodeQL Analysis (all languages)` is the name for the ruleset to require**, not the
