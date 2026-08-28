@@ -269,7 +269,7 @@ jobs:
         if: steps.changed.outputs.devcontainer == 'true' && steps.ratify.outputs.conflicts == ''
         with:
           # renovate: datasource=node-version depName=node
-          node-version: "24.19.0"
+          node-version: "24.20.0"
 
       # `--ignore-scripts` because nothing here needs them: the package publishes no install
       # script (`hasInstallScript` is absent on the registry entry), so this is free hardening on
