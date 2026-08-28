@@ -34,11 +34,12 @@ repos:
         # commit — which bazel-mod-tidy above does not cover, its files are go.mod/work/sum —
         # this can rewrite MODULE.bazel.lock too. pre-commit then blames base-image-pin for
         # modifying files. The lock really was stale; the attribution is what misleads.
-        entry: bash -c 'set -euo pipefail; bazel build //meta/devcontainer-base:image; python3 meta/scripts/sync_base_image_pin.py'
-        pass_filenames: false
-        # Every input to the image, not just the base directory: MODULE.bazel carries the
-        # upstream pull plus rules_oci/rules_pkg, and .bazelversion is in the same class.
-        files: ^(meta/devcontainer-base/|MODULE\.bazel$|\.bazelversion$)
+        #
+        # No `files:` filter, deliberately: which paths are inputs to the image is defined in
+        # .github/path-rules.toml, which a pre-commit regex cannot read. The hook takes the
+        # staged filenames and gates on the shared set itself, doing nothing on a commit that
+        # touches none of them.
+        entry: python3 meta/scripts/base_image_pin_hook.py
 
       # ruff check first (with --fix), then ruff format — check's import
       # sorting can produce output the formatter wants to retouch. Both fix in

@@ -19,6 +19,10 @@ exports_files([
     # Renovate's config, read by //meta/scripts:test_renovate_grouping — one grouping rule is
     # correct only while it sits after the catch-all, and a reorder breaks it with no error.
     "renovate.json",
+    # The shared path-classification rule sets. Unlike everything else in this block it is not
+    # only test data: the classifier and the base-image-pin hook read it at run time, so it is a
+    # data dep of those binaries as well as of the test that covers the sets themselves.
+    ".github/path-rules.toml",
 ])
 
 # Every workflow, as one dep: //meta/scripts:test_check_modules asserts the matrix-shape guard

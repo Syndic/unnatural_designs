@@ -49,40 +49,15 @@ jobs:
           else
             base="${{ github.event.before }}"
           fi
-          # MODULE.bazel is in both rules because it is where the base image is *assembled
-          # from*: the `devcontainers_base_debian` oci.pull it sits on, and the rules_oci /
-          # rules_pkg versions that lay it out. Without it, Renovate's automerged digest bump
-          # moves that pin, skips every job here, and never republishes — so the published
-          # image keeps the superseded Debian layers and the bump reaches nothing. It is in
-          # `changed` too so the automerged bump is gated by a real consumer build, which is
-          # what `publish` needs.
-          #
-          # `.bazelversion` is in both for a narrower reason: renovate-derived-files.yml
-          # classifies it as a bazel change and re-derives the pin from it, so leaving it out
-          # here would let a bump write a pin that no job ever publishes — a red PR with no way
-          # to green it. The two classifications have to agree on what feeds the image.
-          #
-          # This one is the expensive direction, deliberately, and it cuts against the
-          # false-positive argument below: the bazel version cannot enter `pkg_tar` layers over
-          # a pulled base, so every bazelisk bump buys a publish of a byte-identical index. The
-          # cheap alternative — drop it from the re-derivation instead and let
-          # //.devcontainer:test_base_image_pin fail if the digest ever does move — leaves the
-          # recovery path needing a config change at the moment someone is already confused.
-          # A recurring known cost beats a rare unrecoverable one.
-          #
-          # Deliberately the whole file, not a grep for the pull's name. MODULE.bazel moves on
-          # roughly 1 in 6 commits here and most of those cannot touch the image, so the false
-          # positives are real and not cheap: two base-image runners, plus a consumer build
-          # that cold-misses `cacheFrom` from the FROM layer down. Narrowing to one dep name
-          # would trade that for silence on a rules_oci or rules_pkg bump that *does* change
-          # the assembled bytes — the same class of hole this rule exists to close.
-          #
-          # Keep `base` a subset of `changed`: the BASE_IMAGE override below only reaches the
-          # build when both are true.
+          # Which paths feed which set — and why MODULE.bazel and .bazelversion are in the
+          # base-image set, and what including them costs — is defined once in
+          # .github/path-rules.toml. `base` is a subset of `changed` by construction there,
+          # which is what the BASE_IMAGE override below depends on.
           python3 meta/scripts/classify_changed_paths.py \
             --base "$base" \
-            --rule 'changed=^\.devcontainer/|^meta/devcontainer-base/|^MODULE\.bazel$|^\.bazelversion$|^\.github/workflows/devcontainer\.yml$' \
-            --rule 'base=^meta/devcontainer-base/|^MODULE\.bazel$|^\.bazelversion$'
+            --rules-file .github/path-rules.toml \
+            --emit changed \
+            --emit base
 
   # ── Shared base image ───────────────────────────────────────────────────────────────
   # meta/devcontainer-base/ is published for other Syndic repos to FROM. Bazel assembles it and

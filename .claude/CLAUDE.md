@@ -100,6 +100,29 @@ Monday. The accepted consequence is that a stale matrix shows `ci.yml` red while
 reports green — the merge is still blocked, but security.yml's green answers a narrower question
 than it looks like it does.
 
+## Changed-path rule sets live in one file
+
+`.github/path-rules.toml` defines every named path set the repo classifies changes into, and
+`meta/scripts/_path_rules.py` flattens their composition. Consumers name a set; nobody restates a
+pattern. The rationale for each set lives beside it in that file — this section carries only what
+is invisible from there:
+
+- **The set that matters is `base`, and it has two consumers that must agree.** `devcontainer.yml`
+  gates publishing a new base image on it; `renovate-derived-files.yml` re-derives
+  `.devcontainer/Dockerfile`'s pin from the `bazel` set inside it. A path in the second but not the
+  first writes a digest no job publishes — a red PR with no way to green it. They used to be two
+  regexes plus two long comments asking a reader to keep them in step, and they had already
+  diverged on anchoring. Composition (`changed` includes `base` includes `bazel`) is what makes
+  them agree now.
+- **pre-commit cannot read the file, so the `base-image-pin` hook carries no `files:` filter.** It
+  runs on every commit and gates internally in `meta/scripts/base_image_pin_hook.py`. pre-commit may
+  split the filename list across several invocations; both halves of the hook's work are idempotent
+  and the second invocation hits a warm Bazel cache, so that costs a process spawn.
+- **`//meta/scripts:test_classify_changed_paths` deliberately does not test the rules.** It covers
+  the classifier only. `:test_path_rules` covers the sets, against the real file. The suites used to
+  be one, reading `--rule` arguments back out of the workflows to hold two copies together — a job
+  that exists only while there are two copies.
+
 ## Superseding CI runs
 
 Every workflow except `renovate-derived-files.yml` carries the same block, and the shape of the
@@ -265,12 +288,12 @@ the `Renovate helper`. Load-bearing facts:
 - **`.bazelversion` invalidates the lock too.** `MODULE.bazel.lock`'s `lockFileVersion` (and the
   shape of its recorded extensions) tracks the bazel release, so a Renovate bazel bump leaves the
   committed lock stale. Builds don't notice — `--lockfile_mode=update` rewrites in memory and stays
-  green — so the staleness surfaces either as a blocked local commit (`base-image-pin` selects
-  `.bazelversion` itself and rewrites the lock as a side effect of its `bazel build`;
-  `bazel mod tidy` does the same, but only on a `go.mod`/`go.work`/`go.sum` change) or as ci.yml's
-  `MODULE.bazel.lock freshness` job, which is the backstop for commits that ran no hook. The
-  workflow therefore triggers on `.bazelversion` and folds it into the same `bazel` classification
-  as `MODULE.bazel`: one output, one `bazel mod deps` refresh. bazelisk reads the checked-out
+  green — so the staleness surfaces either as a blocked local commit (`.bazelversion` is in the
+  shared `base` set `base-image-pin` gates on, so the hook rewrites the lock as a side effect of
+  its `bazel build`; `bazel mod tidy` does the same, but only on a `go.mod`/`go.work`/`go.sum`
+  change) or as ci.yml's `MODULE.bazel.lock freshness` job, which is the backstop for commits that
+  ran no hook. The workflow therefore triggers on `.bazelversion` and folds it into the same
+  `bazel` classification as `MODULE.bazel`: one output, one `bazel mod deps` refresh. bazelisk reads the checked-out
   `.bazelversion`, so the regenerated lock is in the bumped version's format.
 - **Go tidy/sync rides the same commit.** Renovate's `go get` bumps `go.mod`/`go.sum` but never
   runs `go mod tidy` (opt-in) or `go work sync` (Renovate does it only when vendoring, which this

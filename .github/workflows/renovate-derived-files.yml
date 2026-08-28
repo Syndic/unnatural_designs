@@ -66,8 +66,9 @@ on:
       # A bazel version bump re-derives the lock too: `lockFileVersion` and the recorded
       # extension shape track the bazel release, so a bumped `.bazelversion` leaves the
       # committed lock stale. CI hides that (`--lockfile_mode=update` rewrites in memory),
-      # but the `base-image-pin` pre-commit hook — the one whose `files` selects `.bazelversion`
-      # — rewrites it on disk as a side effect of its `bazel build` and blocks the commit.
+      # but the `base-image-pin` pre-commit hook — which gates on the shared `base` set, and
+      # `.bazelversion` is in it — rewrites it on disk as a side effect of its `bazel build`
+      # and blocks the commit.
       - ".bazelversion"
       - "pyproject.toml"
       - "uv.lock"
@@ -118,13 +119,10 @@ jobs:
         with:
           python-version-file: .python-version
 
-      # Classify what this PR changed into `python` / `bazel` / `go` outputs (three-dot diff
-      # and the tested regexes live in the script). `bazel` means "an input that invalidates
-      # MODULE.bazel.lock moved" — either MODULE.bazel (module graph) or .bazelversion (lock
-      # format); both need the same refresh, so they share one output. Whether a Python change
-      # ALSO needs a Bazel refresh is decided after ratify, by the requirements-lock check
-      # below — a pyproject-only edit that doesn't move requirements_lock.txt leaves
-      # MODULE.bazel.lock's pip `facts` valid and skips it.
+      # Classify what this PR changed into `python` / `bazel` / `go` / `devcontainer` outputs.
+      # The three-dot diff lives in the script; which paths are in each set, and why, lives in
+      # .github/path-rules.toml. `bazel` is shared with the devcontainer workflow's base-image
+      # set, which is what keeps re-deriving the pin and publishing the image in step.
       - name: Classify changed manifests
         id: changed
         env:
@@ -132,10 +130,11 @@ jobs:
         run: |
           python3 meta/scripts/classify_changed_paths.py \
             --base "origin/${BASE_REF}" \
-            --rule 'python=(^|/)(pyproject\.toml|uv\.lock|requirements_lock\.txt)$' \
-            --rule 'bazel=(^|/)(MODULE\.bazel|\.bazelversion)$' \
-            --rule 'go=(^|/)(go\.mod|go\.work)$' \
-            --rule 'devcontainer=^\.devcontainer/devcontainer\.json$'
+            --rules-file .github/path-rules.toml \
+            --emit python \
+            --emit bazel \
+            --emit go \
+            --emit devcontainer
 
       # ── Python: ratify Renovate's proposals via uv ────────────────────────────────
       # A skipped step's outputs are empty, so `steps.ratify.outputs.conflicts == ''`

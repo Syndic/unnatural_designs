@@ -77,6 +77,20 @@ module here with a third-party dependency — `check_modules.py` and `check_pyth
 its two consumers, which is why both run under `uv run --frozen` in CI while the others use a
 bare `python3`.
 
+`_path_rules.py` is the third such helper: it loads `.github/path-rules.toml`, the single
+definition of every named path set this repo classifies changed files into, and flattens the
+`include` composition between sets. `tomllib` is stdlib, so unlike `_workflows.py` it adds no
+dependency — which is what lets `classify_changed_paths.py` keep running under a bare `python3` in
+the job that feeds a required check. `test_path_rules.py` covers both the loader and the real rule
+sets; the definitions carry their own rationale, so neither this file nor the workflows restate
+which paths are in a set.
+
+`classify_changed_paths.py` and `base_image_pin_hook.py` are its consumers. The first turns a
+three-dot diff into `name=true|false` step outputs for `devcontainer.yml` and
+`renovate-derived-files.yml`; the second is the `base-image-pin` pre-commit entry, which exists
+because pre-commit's `files:` cannot read a shared definition — so the hook takes no filter, gates
+on the shared set itself, and does nothing on a commit touching none of it.
+
 `test_precommit_docs.py` has no script half. It asserts that README's pre-commit hook table, and
 the paragraph that classifies each hook, still agree with `.pre-commit-config.yaml` — a coupling
 between two checked-in files rather than a check over the tree, so the assertion is the whole gate

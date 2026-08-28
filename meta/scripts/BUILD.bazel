@@ -14,6 +14,25 @@ py_test(
     deps = [":_workspace_lib"],
 )
 
+# The shared path-classification rule sets, and the loader that flattens their composition.
+# `tomllib` is stdlib, so this stays dependency-free like _workspace.py — which matters because
+# the classifier runs before any uv setup in the job that feeds a required check.
+py_library(
+    name = "_path_rules_lib",
+    srcs = ["_path_rules.py"],
+)
+
+py_test(
+    name = "test_path_rules",
+    size = "small",
+    srcs = ["test_path_rules.py"],
+    # The real rules file: this test covers the sets themselves, not just the loader, so a
+    # synthetic fixture would assert nothing about what the workflows and the hook actually use.
+    data = ["//:.github/path-rules.toml"],
+    main = "test_path_rules.py",
+    deps = [":_path_rules_lib"],
+)
+
 # The one library here that needs a third-party dep. Kept separate from _workspace_lib so the
 # four check scripts that never read a workflow — go_work, adr_numbers, secrets_dir, no_cgo —
 # stay dependency-free, along with the CI job each of them runs in.
@@ -189,24 +208,52 @@ py_test(
 py_library(
     name = "classify_changed_paths_lib",
     srcs = ["classify_changed_paths.py"],
+    deps = [":_path_rules_lib"],
 )
 
 py_binary(
     name = "classify_changed_paths",
     srcs = ["classify_changed_paths.py"],
+    data = ["//:.github/path-rules.toml"],
     main = "classify_changed_paths.py",
+    deps = [":_path_rules_lib"],
+)
+
+# pre-commit entry for `base-image-pin`. Gates on the same shared set the publish job uses, which
+# is why the hook carries no `files:` regex of its own.
+py_library(
+    name = "base_image_pin_hook_lib",
+    srcs = ["base_image_pin_hook.py"],
+    deps = [
+        ":_path_rules_lib",
+        ":sync_base_image_pin_lib",
+    ],
+)
+
+py_binary(
+    name = "base_image_pin_hook",
+    srcs = ["base_image_pin_hook.py"],
+    data = ["//:.github/path-rules.toml"],
+    main = "base_image_pin_hook.py",
+    deps = [
+        ":_path_rules_lib",
+        ":sync_base_image_pin_lib",
+    ],
+)
+
+py_test(
+    name = "test_base_image_pin_hook",
+    size = "small",
+    srcs = ["test_base_image_pin_hook.py"],
+    data = ["//:.github/path-rules.toml"],
+    main = "test_base_image_pin_hook.py",
+    deps = [":base_image_pin_hook_lib"],
 )
 
 py_test(
     name = "test_classify_changed_paths",
     size = "small",
     srcs = ["test_classify_changed_paths.py"],
-    # The rules under test live in the workflows' `--rule` arguments; read them from there
-    # rather than restating them, so an edit on one side can't drift from the other.
-    data = [
-        "//:.github/workflows/devcontainer.yml",
-        "//:.github/workflows/renovate-derived-files.yml",
-    ],
     main = "test_classify_changed_paths.py",
     deps = [":classify_changed_paths_lib"],
 )
