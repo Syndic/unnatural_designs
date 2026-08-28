@@ -229,6 +229,20 @@ configuration that runs CodeQL with no workflow file in the repo. Load-bearing f
   check as passed. The context itself is repo settings and unreadable from here, so
   `//meta/scripts:test_codeql_toolchain` holds the workflow and the docs that quote it to the one
   string.
+- **What the analysis *found* is gated by a second, separate rule.** Requiring `CodeQL Analysis
+  (all languages)` gates on the analysis running and succeeding, not on its results. Those are the
+  `code_scanning` ruleset rule, where `CodeQL` sits alongside `Trivy` at `alerts_threshold:
+  errors` and `security_alerts_threshold: high_or_higher`. It keys on the tool name the upload
+  carries — `CodeQL`, for all three categories — so a language added to the matrix is covered
+  with no ruleset edit, the same property the fan-in gives the status check. Both rules are kept
+  because they fail in opposite directions: with only the status check, a run that finds something
+  still merges; with only the alert gate, a run whose extractor read half the tree reports green,
+  which is the failure the extraction report above exists to catch. The alert gate is confirmed to
+  fire — #279 injected two `security-severity 7.5` findings and the `CodeQL` check run concluded
+  `failure` with the PR `BLOCKED`. That is worth recording because before it, "has never blocked
+  anything" and "does not work" were indistinguishable from outside. Unlike the fan-in name, no
+  test can hold this: the rule is repo settings and nothing in the tree emits the string it
+  matches on.
 
 ## Renovate auto-commit helper (`Renovate helper` app)
 
