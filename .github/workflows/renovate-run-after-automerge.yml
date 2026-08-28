@@ -7,7 +7,9 @@ name: Renovate — run after automerge
 # Dashboard, an edit whose webhook Mend does act on.
 #
 # `workflow_dispatch` is deliberate rather than a convenience: it makes the mechanism testable on
-# demand, without waiting for an automerge.
+# demand, without waiting for an automerge. The monthly `schedule` exists because nothing else
+# exercises this while automerge is off — see "Proving a dormant control still works" in
+# .claude/CLAUDE.md for why the probe ticks the box for real and waits to be answered.
 #
 # See .claude/CLAUDE.md "Renovate run after automerge" for the evidence, the measured cost, and the
 # alternative considered (`platformAutomerge: false`).
@@ -17,10 +19,16 @@ on:
     types: [closed]
     branches: [main]
   workflow_dispatch:
+  schedule:
+    # Monthly rot probe, 04:00 UTC on the 1st. Monthly rather than weekly because what it guards
+    # is dormant: a month's detection latency is nothing against a re-enable date measured in
+    # months, and each run costs a real (harmless) Renovate run.
+    - cron: "0 4 1 * *"
 
 # Carried for consistency with every other workflow here (see .claude/CLAUDE.md "Superseding CI
 # runs"), though it can't actually supersede anything: `closed` fires once per PR, and a dispatch
-# keys on the unique `run_id`. Keeping the shape uniform beats an exception to explain.
+# or scheduled run keys on the unique `run_id`. Keeping the shape uniform beats an exception to
+# explain.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
@@ -35,7 +43,7 @@ jobs:
     # spelling of the actor GraphQL reports as `app/renovate` — matching the GraphQL spelling
     # here would silently never fire.
     if: >-
-      github.event_name == 'workflow_dispatch' ||
+      github.event_name != 'pull_request' ||
       (github.event.pull_request.merged &&
       github.event.pull_request.merged_by.login == 'renovate[bot]')
     runs-on: ubuntu-latest
@@ -114,3 +122,44 @@ jobs:
           jq -Rs '{body: .}' < body.new.md \
             | gh api -X PATCH "repos/${REPO}/issues/${ISSUE}" --input -
           echo "Requested a Renovate run via the Dependency Dashboard checkbox."
+
+      # Ticking the box only proves we can edit an issue. The half that can rot silently is Mend
+      # still *acting* on an edit from `github-actions[bot]` — the assumption the whole design
+      # rests on — and the only observable for that is Renovate clearing the box on the run it
+      # starts. Measured at ~37s twice: 2026-08-01, and 2026-08-28 with no open Renovate PRs at
+      # all, so ten minutes is a wide margin rather than a guess.
+      #
+      # An `already-ticked` result reaches here too, and should: a box still ticked from a previous
+      # request is exactly the stuck state worth failing on.
+      #
+      # Skipped on `pull_request`: after a real automerge the request either works or the stale PRs
+      # make it obvious, and holding a runner for ten minutes to re-learn that buys nothing.
+      - name: Verify Renovate acted on the request
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ISSUE: ${{ steps.dashboard.outputs.issue }}
+        run: |
+          set -euo pipefail
+          for _ in $(seq 1 30); do
+            sleep 20
+            state=$(gh api "repos/${REPO}/issues/${ISSUE}" | jq -j .body \
+              | python3 meta/scripts/renovate_manual_job.py --check)
+            case "${state}" in
+              clear)
+                echo "Renovate cleared the checkbox; the request was received and acted on."
+                exit 0
+                ;;
+              absent)
+                echo "The checkbox disappeared while polling, so Mend has changed the dashboard."
+                echo "::error::The '<!-- manual job -->' checkbox vanished mid-poll."
+                exit 1
+                ;;
+            esac
+          done
+          echo "The edit landed but the checkbox never cleared. Either Mend stopped enqueueing"
+          echo "jobs for this sender, or its queue is badly backed up. Read the job log at"
+          echo "developer.mend.io before assuming this workflow is at fault."
+          echo "::error::Renovate did not clear the manual-job checkbox within 10 minutes."
+          exit 1

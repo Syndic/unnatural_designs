@@ -33,12 +33,38 @@ _MANUAL_JOB_RE = re.compile(
     re.MULTILINE,
 )
 
+# What `tick_manual_job` did — the contract renovate-run-after-automerge.yml gates steps on.
 TICKED = "ticked"
 ALREADY_TICKED = "already-ticked"
 ABSENT = "absent"
 
+# What the checkbox currently *is*, independent of any edit — what `--check` reports. Kept a
+# separate vocabulary because "ticked" as an outcome ("I ticked it") and as a state ("it is
+# ticked") are different claims, and the polling probe needs the second.
+STATE_CLEAR = "clear"
+STATE_TICKED = "ticked"
+STATE_ABSENT = "absent"
+
 
 # ── Pure functions (the part the tests exercise) ──────────────────────────────
+
+
+def _state_from_match(match: re.Match[str] | None) -> str:
+    """Map a `_MANUAL_JOB_RE` match (or its absence) to a state constant."""
+    if match is None:
+        return STATE_ABSENT
+    return STATE_CLEAR if match["mark"] == " " else STATE_TICKED
+
+
+def manual_job_state(body: str) -> str:
+    """Report the checkbox's state: STATE_CLEAR, STATE_TICKED or STATE_ABSENT.
+
+    Read by the scheduled probe, which ticks the box and then waits for Renovate to clear it. It
+    shares `_state_from_match` with `tick_manual_job` so the probe's idea of the marker cannot
+    drift from the transform's — a probe matching a shape the transform no longer writes would
+    pass while the mechanism was broken.
+    """
+    return _state_from_match(_MANUAL_JOB_RE.search(body))
 
 
 def tick_manual_job(body: str) -> tuple[str, str]:
@@ -51,7 +77,7 @@ def tick_manual_job(body: str) -> tuple[str, str]:
     match = _MANUAL_JOB_RE.search(body)
     if match is None:
         return body, ABSENT
-    if match["mark"] != " ":
+    if _state_from_match(match) == STATE_TICKED:
         return body, ALREADY_TICKED
     return f"{body[: match.start('mark')]}x{body[match.end('mark') :]}", TICKED
 
@@ -76,7 +102,17 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.parse_args(argv)
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Report the checkbox state (clear|ticked|absent) on stdout and exit, without "
+        "emitting a body. Used by the scheduled probe to wait for Renovate to clear the box.",
+    )
+    args = parser.parse_args(argv)
+
+    if args.check:
+        print(manual_job_state(sys.stdin.read()))
+        return 0
 
     body, status = tick_manual_job(sys.stdin.read())
     # Diagnostics on stderr: stdout carries the body.

@@ -361,13 +361,14 @@ nothing tells it that `main` moved, so every other open Renovate PR sits `BEHIND
 repo's ruleset requires up-to-date branches, so those PRs are unmergeable — until the next
 scheduled run.
 
-**Currently dormant.** No `packageRule` sets `automerge` — #226 removed the one that had it — so
-the `pull_request` half of the trigger never fires and `workflow_dispatch` is the only path that
-reaches the job. The wiring stays because the gap belongs to automerge itself rather than to any
-one rule: re-enable it anywhere and this starts closing the gap again with no edit. One consequence
-to carry into that day — the guard's *positive* path has never run in production. Every human merge
-since #223 has produced a `skipped` run, but no Renovate merge has ever reached this workflow,
-because #221 predates it and #226 landed before another could happen. Tracked in #286.
+**Currently dormant.** No `packageRule` sets `automerge` — #226 removed the one that had it — so the
+`pull_request` half of the trigger never fires; `workflow_dispatch` and the monthly `schedule` below
+are the only paths that reach the job. The wiring stays because the gap belongs to automerge itself
+rather than to any one rule: re-enable it anywhere and this starts closing the gap again with no
+edit. One consequence to carry into that day — the guard's *positive* path has never run in
+production. Every human merge since #223 has produced a `skipped` run, but no Renovate merge has
+ever reached this workflow, because #221 predates it and #226 landed before another could happen.
+Tracked in #286.
 
 The observations behind the missing job, from the Mend job log (developer.mend.io) and the repo's
 own event history:
@@ -406,7 +407,8 @@ Two things worth knowing before changing this:
   (`Reason: requested`) 37 seconds later, on a clean trial with no other job in flight to confound
   it. So the `Renovate helper` app fallback is not needed — it would only be if Mend's filtering
   widened, and it would need `Issues: read & write`. If a run stops appearing after an automerge,
-  re-test with `workflow_dispatch` and read the job log before assuming the workflow is at fault.
+  re-test with `workflow_dispatch`, which now answers that question itself rather than leaving it
+  to a reading of the job log.
 
 **The alternative, deliberately not taken:** `platformAutomerge: false` on the automerge
 packageRule. Renovate would then merge the PR itself inside a run, and `writeUpdates` returning
@@ -416,6 +418,36 @@ only merges a branch whose status is *already* green (`pr/automerge.js` → `Bra
 PR cannot merge in the run that creates it and the bump waits for the next scheduled run. That
 trade was judged badly when the automerged thing was a base image digest wanted within minutes of
 going green; it may read differently for whatever gets automerged next, so #286 reconsiders it.
+
+### Proving a dormant control still works
+
+The workflow above guards something that only happens on a day nobody has scheduled, and between
+now and that day it can rot with no commit in this repo and no signal. Its three load-bearing
+facts all belong to Mend or GitHub: the Dependency Dashboard is discoverable by title and author,
+the `<!-- manual job -->` marker exists in its body, and an edit from `github-actions[bot]` still
+makes Mend enqueue a job. Nothing in the tree changes when any of those stop being true.
+
+A dormant control that has quietly stopped working is indistinguishable from a working one, which
+is the failure this repo refuses elsewhere: it fails open. So the monthly `schedule` **exercises
+the real path** — it ticks the box for real and requests a real Renovate run. There is no dry-run
+mode, deliberately: a probe that verified less than the live path could pass while the live path
+was broken, which is the thing being guarded against.
+
+**It waits to be answered rather than stopping at the write.** Ticking the box only proves we can
+edit an issue; the assumption the design rests on is that Mend *acts* on our sender, and the only
+observable for that is Renovate clearing the box on the run it starts. The job polls for it, and
+fails if it never comes. Timing is measured, not guessed: ~37 s on 2026-08-01, and ~37 s again on
+2026-08-28 — the second with no open Renovate PRs at all, which is what establishes that Renovate
+still rewrites the dashboard when it has nothing else to do. The ten-minute timeout is a wide
+margin over both.
+
+**Why it is not in `ci.yml` or `security.yml`.** By the axis in "Which workflow a check belongs
+in" this is not a tree-only check, so `ci.yml` is wrong; and `security.yml` would fit the letter of
+the rule while making that workflow's green mean something muddier than it does today. The probe
+also has to *be* the workflow it tests — a copy living elsewhere would verify a copy. It rides its
+own `schedule` for the same reason the checks in `security.yml` ride theirs.
+
+The cost is one extra Renovate job a month, against a repo that runs them several times a day.
 
 ## .devcontainer plumbing and feature pins
 

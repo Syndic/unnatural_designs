@@ -502,13 +502,20 @@ until the next scheduled run, a window measured at a 6.7 hour median.
 
 | Workflow | Trigger | Does |
 | --- | --- | --- |
-| [`renovate-run-after-automerge.yml`](.github/workflows/renovate-run-after-automerge.yml) | a PR closed as merged by `renovate[bot]`, or `workflow_dispatch` | ticks the "manual job" checkbox on the Dependency Dashboard, which requests a Renovate run |
+| [`renovate-run-after-automerge.yml`](.github/workflows/renovate-run-after-automerge.yml) | a PR closed as merged by `renovate[bot]`, `workflow_dispatch`, or a monthly schedule | ticks the "manual job" checkbox on the Dependency Dashboard, which requests a Renovate run |
 
 No `packageRule` currently sets `automerge`, so the `pull_request` half of that trigger is dormant
 and the workflow is reached by `workflow_dispatch` alone. It stays wired because the gap belongs to
 automerge itself rather than to any one rule: re-enable automerge anywhere and it starts closing
 that gap again with no edit. Re-enabling — which rule deserves it, and what to watch the first time
 it fires — is tracked in [#286](https://github.com/Syndic/unnatural_designs/issues/286).
+
+Because it is dormant, nothing would otherwise notice it breaking: the dashboard's discoverability,
+the checkbox's existence, and Mend's willingness to act on an edit from `github-actions[bot]` are
+all outside this repo, and none of them changes a file here when it stops being true. A monthly
+scheduled run therefore exercises the real path — ticking the box and waiting for Renovate to clear
+it, failing if it never does — rather than a dry run that could pass while the live path was broken.
+It costs one extra Renovate job a month.
 
 That checkbox is Mend's own, not OSS Renovate's, and on the Community tier it is the only way to
 request a run — there is no public trigger API. Renovate unticks it during the run it starts, so

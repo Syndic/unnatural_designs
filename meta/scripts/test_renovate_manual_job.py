@@ -14,7 +14,11 @@ import unittest
 from meta.scripts.renovate_manual_job import (
     ABSENT,
     ALREADY_TICKED,
+    STATE_ABSENT,
+    STATE_CLEAR,
+    STATE_TICKED,
     TICKED,
+    manual_job_state,
     tick_manual_job,
 )
 
@@ -48,6 +52,50 @@ class TestStatusContract(unittest.TestCase):
         # constants elsewhere would let a rename pass every test while the workflow's
         # missing-checkbox guard silently stopped firing.
         self.assertEqual((TICKED, ALREADY_TICKED, ABSENT), ("ticked", "already-ticked", "absent"))
+
+    def test_state_values_are_the_probe_contract(self):
+        # The scheduled probe's polling loop branches on these literals coming out of `--check`.
+        self.assertEqual((STATE_CLEAR, STATE_TICKED, STATE_ABSENT), ("clear", "ticked", "absent"))
+
+
+class TestManualJobState(unittest.TestCase):
+    """`manual_job_state` backs the scheduled probe's wait-for-Renovate-to-clear-it loop."""
+
+    def test_clear_when_unticked(self):
+        self.assertEqual(manual_job_state(DASHBOARD), STATE_CLEAR)
+
+    def test_ticked_after_our_own_edit(self):
+        # The exact transition the probe watches: we tick, then poll until Renovate clears it.
+        ticked, _ = tick_manual_job(DASHBOARD)
+        self.assertEqual(manual_job_state(ticked), STATE_TICKED)
+
+    def test_ticked_uppercase(self):
+        self.assertEqual(
+            manual_job_state(DASHBOARD.replace("- [ ] <!-- manual job", "- [X] <!-- manual job")),
+            STATE_TICKED,
+        )
+
+    def test_absent_without_the_marker(self):
+        self.assertEqual(manual_job_state(DASHBOARD.replace(MANUAL_JOB_LINE, "")), STATE_ABSENT)
+
+    def test_absent_on_empty_body(self):
+        self.assertEqual(manual_job_state(""), STATE_ABSENT)
+
+    def test_agrees_with_the_transform(self):
+        # The drift guard. A probe that recognised a shape the transform no longer writes would
+        # report `clear` forever and pass while the mechanism was broken, so pin the two together.
+        cases = {
+            DASHBOARD: (STATE_CLEAR, TICKED),
+            DASHBOARD.replace("- [ ] <!-- manual job", "- [x] <!-- manual job"): (
+                STATE_TICKED,
+                ALREADY_TICKED,
+            ),
+            DASHBOARD.replace(MANUAL_JOB_LINE, ""): (STATE_ABSENT, ABSENT),
+        }
+        for body, (state, status) in cases.items():
+            with self.subTest(state=state):
+                self.assertEqual(manual_job_state(body), state)
+                self.assertEqual(tick_manual_job(body)[1], status)
 
 
 class TestTickManualJob(unittest.TestCase):
