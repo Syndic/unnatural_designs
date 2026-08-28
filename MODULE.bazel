@@ -42,17 +42,17 @@ go_sdk = use_extension("@rules_go//go:extensions.bzl", "go_sdk")
 go_sdk.download(
     goarch = "amd64",
     goos = "linux",
-    version = "1.26.6",
+    version = "1.27.0",
 )
 go_sdk.download(
     goarch = "arm64",
     goos = "linux",
-    version = "1.26.6",
+    version = "1.27.0",
 )
 go_sdk.download(
     goarch = "arm64",
     goos = "darwin",
-    version = "1.26.6",
+    version = "1.27.0",
 )
 
 # Discover external Go deps from the workspace's go.work + per-module go.mod files.
