@@ -507,7 +507,8 @@ until the next scheduled run, a window measured at a 6.7 hour median.
 No `packageRule` currently sets `automerge`, so the `pull_request` half of that trigger is dormant
 and the workflow is reached by `workflow_dispatch` alone. It stays wired because the gap belongs to
 automerge itself rather than to any one rule: re-enable automerge anywhere and it starts closing
-that gap again with no edit.
+that gap again with no edit. Re-enabling — which rule deserves it, and what to watch the first time
+it fires — is tracked in [#286](https://github.com/Syndic/unnatural_designs/issues/286).
 
 That checkbox is Mend's own, not OSS Renovate's, and on the Community tier it is the only way to
 request a run — there is no public trigger API. Renovate unticks it during the run it starts, so

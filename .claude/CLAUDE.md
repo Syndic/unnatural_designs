@@ -318,8 +318,16 @@ nothing tells it that `main` moved, so every other open Renovate PR sits `BEHIND
 repo's ruleset requires up-to-date branches, so those PRs are unmergeable — until the next
 scheduled run.
 
-The observations behind that, from the Mend job log (developer.mend.io) and the repo's own event
-history:
+**Currently dormant.** No `packageRule` sets `automerge` — #226 removed the one that had it — so
+the `pull_request` half of the trigger never fires and `workflow_dispatch` is the only path that
+reaches the job. The wiring stays because the gap belongs to automerge itself rather than to any
+one rule: re-enable it anywhere and this starts closing the gap again with no edit. One consequence
+to carry into that day — the guard's *positive* path has never run in production. Every human merge
+since #223 has produced a `skipped` run, but no Renovate merge has ever reached this workflow,
+because #221 predates it and #226 landed before another could happen. Tracked in #286.
+
+The observations behind the missing job, from the Mend job log (developer.mend.io) and the repo's
+own event history:
 
 - Every push to `main` by a human that left a Renovate branch behind was followed by a
   `requested` job within 0.4–5 minutes. The one push authored by `renovate[bot]` (PR #221,
@@ -349,11 +357,22 @@ Two things worth knowing before changing this:
 - **`merged_by.login` is `renovate[bot]`, not `app/renovate`.** GraphQL (`gh pr view --json
   mergedBy`) reports the latter; the REST payload the workflow gates on reports the former.
   Matching the GraphQL spelling would make the workflow silently never fire.
-- **The sender assumption is the load-bearing risk.** The workflow ticks the box as
-  `github-actions[bot]`, on the theory that Mend filters `renovate[bot]` specifically rather than
-  every bot. If a run stops appearing after an automerge, re-test with `workflow_dispatch` and
-  check the job log; the fallback is to make the edit as the `Renovate helper` app instead, which
-  would need `Issues: read & write` added to its permissions.
+- **A `github-actions[bot]` edit does reach Mend, and that half is measured.** The design needs
+  Mend's filtering to be specific to `renovate[bot]` rather than blanket-bot; unlike the mechanism
+  above, this is not inference. On 2026-08-01 ticking the box enqueued Mend job `63afb1d5`
+  (`Reason: requested`) 37 seconds later, on a clean trial with no other job in flight to confound
+  it. So the `Renovate helper` app fallback is not needed — it would only be if Mend's filtering
+  widened, and it would need `Issues: read & write`. If a run stops appearing after an automerge,
+  re-test with `workflow_dispatch` and read the job log before assuming the workflow is at fault.
+
+**The alternative, deliberately not taken:** `platformAutomerge: false` on the automerge
+packageRule. Renovate would then merge the PR itself inside a run, and `writeUpdates` returning
+`"automerged"` makes the repository job restart once and rebase the remaining branches in-process
+— no webhook needed, and one line instead of a whole workflow. It was rejected because Renovate
+only merges a branch whose status is *already* green (`pr/automerge.js` → `BranchNotGreen`), so the
+PR cannot merge in the run that creates it and the bump waits for the next scheduled run. That
+trade was judged badly when the automerged thing was a base image digest wanted within minutes of
+going green; it may read differently for whatever gets automerged next, so #286 reconsiders it.
 
 ## .devcontainer plumbing and feature pins
 
