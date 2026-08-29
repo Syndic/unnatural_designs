@@ -97,13 +97,15 @@ class TestSelect(unittest.TestCase):
         with self.assertRaises(SystemExit):
             select(["base", "nope"])
 
-    def test_the_refusal_names_what_was_missing(self):
+    def test_the_refusal_names_every_missing_set_not_just_the_first(self):
         # The message is the whole diagnosis: the caller is a workflow, so nobody is at a REPL to
-        # go looking.
+        # go looking. Fixture names must not be substrings of one another — an earlier pair
+        # ("nope"/"alsonope") let a first-only message satisfy both assertions, so this test passed
+        # on exactly the regression it exists to catch.
         with self.assertRaises(SystemExit) as caught:
-            select(["nope", "base", "alsonope"])
-        self.assertIn("nope", str(caught.exception))
-        self.assertIn("alsonope", str(caught.exception))
+            select(["ghost", "base", "phantom"])
+        self.assertIn("ghost", str(caught.exception))
+        self.assertIn("phantom", str(caught.exception))
 
     def test_no_names_selects_nothing(self):
         self.assertEqual(select([]), {})
