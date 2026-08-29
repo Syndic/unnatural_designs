@@ -249,7 +249,12 @@ py_test(
     size = "small",
     srcs = ["test_classify_changed_paths.py"],
     main = "test_classify_changed_paths.py",
-    deps = [":classify_changed_paths_lib"],
+    deps = [
+        ":classify_changed_paths_lib",
+        # Direct: TestSelect resolves caller names against the real sets, since resolving them is
+        # what `select` does. It asserts nothing about their contents.
+        ":path_classification_pattern_sets_lib",
+    ],
 )
 
 py_library(

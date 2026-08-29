@@ -80,8 +80,10 @@ bare `python3`.
 `path_classification_pattern_sets.py` is the single definition of every named pattern set this
 repo classifies paths against. Unlike the two helpers above it has no leading underscore and no
 logic at all — the sets are module-level constants composed by set union (`BASE = (..., *BAZEL)`),
-so there is no format to parse and no resolver to get wrong, and a mistyped set name is an
-import-time `NameError` rather than a silently empty group. Being plain Python also keeps
+so there is no format to parse and no resolver to get wrong. A set referenced by name inside the
+module is an import-time `NameError` if misspelled, rather than a silently empty group; a set named
+on `classify_changed_paths.py`'s command line is checked by its `select`, which refuses an unknown
+name instead of emitting `name=false` forever. Being plain Python also keeps
 `classify_changed_paths.py` dependency-free under a bare `python3`, which matters in the job that
 feeds a required check. The constants carry their own rationale, so neither this file nor the
 workflows restate which paths are in a set.

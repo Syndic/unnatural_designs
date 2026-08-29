@@ -1,8 +1,8 @@
 """Tests for classify_changed_paths.py.
 
-Scoped to the script: the pure functions (is_branch_creation, classify, format_outputs) carry all
-the non-I/O logic, and the git diff and $GITHUB_OUTPUT wiring is exercised end-to-end by the
-caller workflows on real PRs.
+Scoped to the script: the pure functions (is_branch_creation, select, classify, format_outputs)
+carry all the non-I/O logic, and the git diff and $GITHUB_OUTPUT wiring is exercised end-to-end by
+the caller workflows on real PRs.
 
 Deliberately nothing about *which* paths are in a set. That used to live here, read back out of the
 workflows' `--rule` arguments so the two copies could be held together — a job this suite should
@@ -17,7 +17,9 @@ from meta.scripts.classify_changed_paths import (
     classify,
     format_outputs,
     is_branch_creation,
+    select,
 )
+from meta.scripts.path_classification_pattern_sets import SETS
 
 # Synthetic on purpose: see the module docstring. Three sets, one overlapping path, so an
 # independence bug shows up as a wrong pairing rather than a wrong single flag. `beta` carries two
@@ -69,6 +71,42 @@ class TestClassify(unittest.TestCase):
         # pattern, not to this function.
         self.assertEqual(classify(["deep/a/x"], {"alpha": (r"^a/",)}), {"alpha": False})
         self.assertEqual(classify(["deep/a/x"], {"alpha": (r"a/",)}), {"alpha": True})
+
+
+class TestSelect(unittest.TestCase):
+    """`select` is the fail-closed guard on `--emit`, so its refusal is the thing under test.
+
+    Unlike the rest of this suite it uses the real `SETS`, because what it does is resolve a
+    caller's name against them. It reads the shared sets but asserts nothing about their contents;
+    that is `test_path_classification_pattern_sets.py`'s job.
+    """
+
+    def test_returns_the_named_sets_in_the_order_asked_for(self):
+        # The order reaches $GITHUB_OUTPUT, which keeps a run's log readable against the workflow
+        # that produced it.
+        self.assertEqual(list(select(["changed", "base"])), ["changed", "base"])
+
+    def test_the_patterns_are_the_shared_ones(self):
+        self.assertEqual(select(["base"])["base"], SETS["base"])
+
+    def test_an_unknown_name_is_refused(self):
+        # Not an empty set. A caller naming a set that does not exist would otherwise emit
+        # `name=false` on every run and gate its steps off forever — the base image would quietly
+        # stop being published and every check would stay green. Simplifying this to a
+        # `SETS.get(name, ())` would pass every other test in the repo.
+        with self.assertRaises(SystemExit):
+            select(["base", "nope"])
+
+    def test_the_refusal_names_what_was_missing(self):
+        # The message is the whole diagnosis: the caller is a workflow, so nobody is at a REPL to
+        # go looking.
+        with self.assertRaises(SystemExit) as caught:
+            select(["nope", "base", "alsonope"])
+        self.assertIn("nope", str(caught.exception))
+        self.assertIn("alsonope", str(caught.exception))
+
+    def test_no_names_selects_nothing(self):
+        self.assertEqual(select([]), {})
 
 
 class TestFormatOutputs(unittest.TestCase):
