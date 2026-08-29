@@ -4,11 +4,11 @@ Scoped to the script: the pure functions (is_branch_creation, classify, format_o
 the non-I/O logic, and the git diff and $GITHUB_OUTPUT wiring is exercised end-to-end by the
 caller workflows on real PRs.
 
-Deliberately nothing about *which* paths are in a rule set. That used to live here, read back out
-of the workflows' `--rule` arguments so the two copies could be held together — a job this suite
-should never have had. The rules are defined once in `.github/path-rules.toml` now, and
-`test_path_rules.py` covers them. `classify` is a regex loop and does not care where its patterns
-came from, so the fixtures below are synthetic.
+Deliberately nothing about *which* paths are in a set. That used to live here, read back out of the
+workflows' `--rule` arguments so the two copies could be held together — a job this suite should
+never have had. The sets are defined once in `path_classification_pattern_sets.py` now, and
+`test_path_classification_pattern_sets.py` covers them. `classify` is a regex loop and does not care
+where its patterns came from, so the fixtures below are synthetic.
 """
 
 import unittest
@@ -19,9 +19,10 @@ from meta.scripts.classify_changed_paths import (
     is_branch_creation,
 )
 
-# Synthetic on purpose: see the module docstring. Two groups, one overlapping path, so an
-# independence bug shows up as a wrong pairing rather than a wrong single flag.
-_RULES = {"alpha": r"^a/", "beta": r"^b/|^shared$", "gamma": r"^shared$"}
+# Synthetic on purpose: see the module docstring. Three sets, one overlapping path, so an
+# independence bug shows up as a wrong pairing rather than a wrong single flag. `beta` carries two
+# patterns, since a set holding more than one is the normal case.
+_SETS = {"alpha": (r"^a/",), "beta": (r"^b/", r"^shared$"), "gamma": (r"^shared$",)}
 
 
 class TestIsBranchCreation(unittest.TestCase):
@@ -43,33 +44,31 @@ class TestIsBranchCreation(unittest.TestCase):
 
 
 class TestClassify(unittest.TestCase):
-    def test_every_group_is_reported_not_just_the_hits(self):
-        # The callers read `steps.<id>.outputs.<name>`, so a group that did not fire has to be
+    def test_every_set_is_reported_not_just_the_hits(self):
+        # The callers read `steps.<id>.outputs.<name>`, so a set that did not fire has to be
         # present and false rather than absent.
-        self.assertEqual(classify(["a/x"], _RULES), {"alpha": True, "beta": False, "gamma": False})
+        self.assertEqual(classify(["a/x"], _SETS), {"alpha": True, "beta": False, "gamma": False})
 
-    def test_groups_are_independent(self):
-        self.assertEqual(
-            classify(["shared"], _RULES), {"alpha": False, "beta": True, "gamma": True}
-        )
+    def test_sets_are_independent(self):
+        self.assertEqual(classify(["shared"], _SETS), {"alpha": False, "beta": True, "gamma": True})
 
     def test_any_matching_file_is_enough(self):
         self.assertEqual(
-            classify(["README.md", "b/y"], _RULES),
+            classify(["README.md", "b/y"], _SETS),
             {"alpha": False, "beta": True, "gamma": False},
         )
 
     def test_no_files(self):
-        self.assertEqual(classify([], _RULES), {"alpha": False, "beta": False, "gamma": False})
+        self.assertEqual(classify([], _SETS), {"alpha": False, "beta": False, "gamma": False})
 
-    def test_no_rules(self):
+    def test_no_sets(self):
         self.assertEqual(classify(["a/x"], {}), {})
 
     def test_patterns_self_anchor(self):
         # `re.search`, so an unanchored pattern matches anywhere; the anchoring belongs to the
-        # rule, not to this function.
-        self.assertEqual(classify(["deep/a/x"], {"alpha": r"^a/"}), {"alpha": False})
-        self.assertEqual(classify(["deep/a/x"], {"alpha": r"a/"}), {"alpha": True})
+        # pattern, not to this function.
+        self.assertEqual(classify(["deep/a/x"], {"alpha": (r"^a/",)}), {"alpha": False})
+        self.assertEqual(classify(["deep/a/x"], {"alpha": (r"a/",)}), {"alpha": True})
 
 
 class TestFormatOutputs(unittest.TestCase):

@@ -77,13 +77,14 @@ module here with a third-party dependency — `check_modules.py` and `check_pyth
 its two consumers, which is why both run under `uv run --frozen` in CI while the others use a
 bare `python3`.
 
-`_path_rules.py` is the third such helper: it loads `.github/path-rules.toml`, the single
-definition of every named path set this repo classifies changed files into, and flattens the
-`include` composition between sets. `tomllib` is stdlib, so unlike `_workflows.py` it adds no
-dependency — which is what lets `classify_changed_paths.py` keep running under a bare `python3` in
-the job that feeds a required check. `test_path_rules.py` covers both the loader and the real rule
-sets; the definitions carry their own rationale, so neither this file nor the workflows restate
-which paths are in a set.
+`path_classification_pattern_sets.py` is the single definition of every named pattern set this
+repo classifies paths against. Unlike the two helpers above it has no leading underscore and no
+logic at all — the sets are module-level constants composed by set union (`BASE = (..., *BAZEL)`),
+so there is no format to parse and no resolver to get wrong, and a mistyped set name is an
+import-time `NameError` rather than a silently empty group. Being plain Python also keeps
+`classify_changed_paths.py` dependency-free under a bare `python3`, which matters in the job that
+feeds a required check. The constants carry their own rationale, so neither this file nor the
+workflows restate which paths are in a set.
 
 `classify_changed_paths.py` and `base_image_pin_hook.py` are its consumers. The first turns a
 three-dot diff into `name=true|false` step outputs for `devcontainer.yml` and

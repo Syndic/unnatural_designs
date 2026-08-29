@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Classify a PR/push's changed files into named boolean outputs for GitHub Actions.
 
-Diff the changes a branch introduced, test each changed path against a named rule set, and emit
-one `<name>=true|false` per set to `$GITHUB_OUTPUT` so later steps can gate on it. The rule sets
-live in `.github/path-rules.toml`; callers name the ones they want. Used by
+Diff the changes a branch introduced, test each changed path against a named pattern set, and emit
+one `<name>=true|false` per set to `$GITHUB_OUTPUT` so later steps can gate on it. The sets live in
+`path_classification_pattern_sets.py`; callers name the ones they want. Used by
 renovate-derived-files.yml and devcontainer.yml.
 
 Three decisions live here so every caller inherits them:
@@ -13,16 +13,16 @@ Three decisions live here so every caller inherits them:
     misclassify a PR the moment `main` picked up an unrelated change.
   - **Branch-creation short-circuit.** A branch-creating push has an all-zero base SHA that no
     diff can resolve; treat it as "everything changed" rather than silently skipping.
-  - **The rules are shared, not passed in.** They used to arrive as `--rule name=regex`
+  - **The sets are shared, not passed in.** They used to arrive as `--rule name=regex`
     arguments, which meant each caller wrote its own copy and the sets that had to agree agreed
-    only by review. The rules file is now the single definition and callers select from it.
+    only by review. The module is now the single definition and callers select from it.
 
 Pure functions carry the logic and the tests exercise them without git or the Actions
 environment — the same split as ratify_renovate_proposals.py.
 
 Usage:
   python3 meta/scripts/classify_changed_paths.py --base <ref-or-sha> \\
-    --rules-file .github/path-rules.toml --emit <name> [--emit <name> ...]
+    --emit <name> [--emit <name> ...]
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ from pathlib import Path
 # py_binary, where rules_python already makes the import resolvable.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from meta.scripts._path_rules import load_rules, select
+from meta.scripts.path_classification_pattern_sets import SETS
 
 # git's null object: an all-zero object id, delivered as `github.event.before` on the push
 # that first creates a branch. Any length of zeros counts (abbreviated or full 40/64 hex).
@@ -54,9 +54,22 @@ def is_branch_creation(base: str) -> bool:
     return bool(_NULL_OID_RE.match(base))
 
 
-def classify(files: list[str], rules: dict[str, str]) -> dict[str, bool]:
-    """Map each rule name to whether any changed file matches its regex (patterns self-anchor)."""
-    return {name: any(re.search(pattern, f) for f in files) for name, pattern in rules.items()}
+def classify(files: list[str], sets: dict[str, tuple[str, ...]]) -> dict[str, bool]:
+    """Map each set name to whether any changed file matches one of its patterns."""
+    return {
+        name: any(re.search(pattern, f) for pattern in patterns for f in files)
+        for name, patterns in sets.items()
+    }
+
+
+def select(names: list[str]) -> dict[str, tuple[str, ...]]:
+    """The named sets, in the order asked for. An unknown name is an error, not an empty set:
+    a caller naming a set that does not exist would otherwise emit `name=false` on every run and
+    gate its steps off forever."""
+    missing = sorted(n for n in names if n not in SETS)
+    if missing:
+        raise SystemExit(f"no such pattern set(s): {', '.join(missing)}")
+    return {name: SETS[name] for name in names}
 
 
 def format_outputs(result: dict[str, bool]) -> str:
@@ -95,31 +108,26 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base", required=True, help="Base ref or SHA to diff HEAD against.")
     parser.add_argument(
-        "--rules-file",
-        required=True,
-        help="Path to the shared rule-set definitions (.github/path-rules.toml).",
-    )
-    parser.add_argument(
         "--emit",
         action="append",
         default=[],
         required=True,
         metavar="NAME",
-        help="A rule set to classify into; repeatable. Emits NAME=true if any changed path "
+        help="A pattern set to classify into; repeatable. Emits NAME=true if any changed path "
         "matches it.",
     )
     args = parser.parse_args(argv)
 
-    rules = select(load_rules(args.rules_file), args.emit)
+    sets = select(args.emit)
 
     if is_branch_creation(args.base):
-        print(f"Base {args.base} is the null oid (branch creation); all groups treated as changed.")
-        result = dict.fromkeys(rules, True)
+        print(f"Base {args.base} is the null oid (branch creation); all sets treated as changed.")
+        result = dict.fromkeys(sets, True)
     else:
         files = _git_changed_files(args.base)
         print(f"Changed vs {args.base}:")
         print("".join(f"  {f}\n" for f in files) or "  (none)\n", end="")
-        result = classify(files, rules)
+        result = classify(files, sets)
 
     output = format_outputs(result)
     print("Classification:")

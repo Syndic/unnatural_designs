@@ -36,9 +36,9 @@ repos:
         # modifying files. The lock really was stale; the attribution is what misleads.
         #
         # No `files:` filter, deliberately: which paths are inputs to the image is defined in
-        # .github/path-rules.toml, which a pre-commit regex cannot read. The hook takes the
-        # staged filenames and gates on the shared set itself, doing nothing on a commit that
-        # touches none of them.
+        # meta/scripts/path_classification_pattern_sets.py, which a pre-commit regex cannot
+        # read. The hook takes the staged filenames and gates on the shared set itself, doing
+        # nothing on a commit that touches none of them.
         entry: python3 meta/scripts/base_image_pin_hook.py
         # Without this pre-commit partitions the filename list — at more than four staged files,
         # not just at the arg-length limit — and runs the partitions in a thread pool. Two

@@ -10,7 +10,7 @@ gazelle(name = "gazelle")
 # and it drifts: the list this replaces had gone stale on both counts, naming a test that no longer
 # reads a workflow and omitting one that does. (One coupling did leave: the two workflows'
 # classification rules used to be held against each other here, and are now defined once in
-# .github/path-rules.toml, so there is nothing left to hold.)
+# meta/scripts/path_classification_pattern_sets.py, so there is nothing left to hold.)
 exports_files([
     ".github/workflows/ci.yml",
     ".github/workflows/devcontainer.yml",
@@ -21,10 +21,6 @@ exports_files([
     # Renovate's config, read by //meta/scripts:test_renovate_grouping — one grouping rule is
     # correct only while it sits after the catch-all, and a reorder breaks it with no error.
     "renovate.json",
-    # The shared path-classification rule sets. Unlike everything else in this block it is not
-    # only test data: the classifier and the base-image-pin hook read it at run time, so it is a
-    # data dep of those binaries as well as of the test that covers the sets themselves.
-    ".github/path-rules.toml",
 ])
 
 # Every workflow, as one dep: //meta/scripts:test_check_modules asserts the matrix-shape guard

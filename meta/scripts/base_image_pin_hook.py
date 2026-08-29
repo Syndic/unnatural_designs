@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""pre-commit entry for `base-image-pin`: gate on the shared rule set, then re-derive the pin.
+"""pre-commit entry for `base-image-pin`: gate on the shared BASE set, then re-derive the pin.
 
 The hook used to carry its own `files:` regex naming the base image's inputs — a third copy of a
-set that also lives in two workflows' classification rules, with nothing failing when they
-disagreed. pre-commit's `files:` cannot read a shared definition, so the hook now takes no filter
-at all and asks `.github/path-rules.toml` here instead.
+set that also drives both workflows' path classification, with nothing failing when they disagreed.
+pre-commit's `files:` cannot read a shared definition, so the hook now takes no filter at all and
+matches against the shared `BASE` set here instead.
 
 The cost of that shape, accepted deliberately: pre-commit invokes this on every commit, and may
 still split a long filename list across several invocations, each deciding independently. Both
@@ -31,32 +31,23 @@ from pathlib import Path
 # py_binary, where rules_python already makes the import resolvable.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from meta.scripts._path_rules import load_rules
+from meta.scripts.path_classification_pattern_sets import BASE
 from meta.scripts.sync_base_image_pin import main as sync_pin
-
-_WORKSPACE = Path(__file__).resolve().parents[2]
-_DEFAULT_RULES = _WORKSPACE / ".github" / "path-rules.toml"
-
-# The set of everything the image is assembled from. Named rather than spelled out: that is the
-# entire point of the shared file.
-_RULE = "base"
 
 _IMAGE_TARGET = "//meta/devcontainer-base:image"
 
 
-def matching(files: list[str], pattern: str) -> list[str]:
+def matching(files: list[str], patterns: tuple[str, ...] = BASE) -> list[str]:
     """The staged paths that are inputs to the base image, in the order given."""
-    return [f for f in files if re.search(pattern, f)]
+    return [f for f in files if any(re.search(p, f) for p in patterns)]
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("files", nargs="*", help="Staged paths, as pre-commit passes them.")
-    parser.add_argument("--rules-file", type=Path, default=_DEFAULT_RULES)
     args = parser.parse_args(argv)
 
-    pattern = load_rules(args.rules_file)[_RULE]
-    hits = matching(args.files, pattern)
+    hits = matching(args.files)
     if not hits:
         return 0
 

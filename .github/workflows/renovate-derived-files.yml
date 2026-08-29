@@ -121,8 +121,8 @@ jobs:
 
       # Classify what this PR changed into `python` / `bazel` / `go` / `devcontainer` outputs.
       # The three-dot diff lives in the script; which paths are in each set, and why, lives in
-      # .github/path-rules.toml. `bazel` is shared with the devcontainer workflow's base-image
-      # set, which is what keeps re-deriving the pin and publishing the image in step.
+      # meta/scripts/path_classification_pattern_sets.py. `bazel` is shared with the devcontainer
+      # workflow's base-image set, which keeps re-deriving the pin and publishing the image in step.
       - name: Classify changed manifests
         id: changed
         env:
@@ -130,7 +130,6 @@ jobs:
         run: |
           python3 meta/scripts/classify_changed_paths.py \
             --base "origin/${BASE_REF}" \
-            --rules-file .github/path-rules.toml \
             --emit python \
             --emit bazel \
             --emit go \

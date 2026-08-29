@@ -14,23 +14,20 @@ py_test(
     deps = [":_workspace_lib"],
 )
 
-# The shared path-classification rule sets, and the loader that flattens their composition.
-# `tomllib` is stdlib, so this stays dependency-free like _workspace.py — which matters because
-# the classifier runs before any uv setup in the job that feeds a required check.
+# The named pattern sets every consumer classifies paths against. Plain module-level constants
+# composed by set union, so there is no format to parse and no resolver to get wrong; a mistyped
+# set name is an import-time NameError rather than a silently empty group.
 py_library(
-    name = "_path_rules_lib",
-    srcs = ["_path_rules.py"],
+    name = "path_classification_pattern_sets_lib",
+    srcs = ["path_classification_pattern_sets.py"],
 )
 
 py_test(
-    name = "test_path_rules",
+    name = "test_path_classification_pattern_sets",
     size = "small",
-    srcs = ["test_path_rules.py"],
-    # The real rules file: this test covers the sets themselves, not just the loader, so a
-    # synthetic fixture would assert nothing about what the workflows and the hook actually use.
-    data = ["//:.github/path-rules.toml"],
-    main = "test_path_rules.py",
-    deps = [":_path_rules_lib"],
+    srcs = ["test_path_classification_pattern_sets.py"],
+    main = "test_path_classification_pattern_sets.py",
+    deps = [":path_classification_pattern_sets_lib"],
 )
 
 # The one library here that needs a third-party dep. Kept separate from _workspace_lib so the
@@ -208,15 +205,14 @@ py_test(
 py_library(
     name = "classify_changed_paths_lib",
     srcs = ["classify_changed_paths.py"],
-    deps = [":_path_rules_lib"],
+    deps = [":path_classification_pattern_sets_lib"],
 )
 
 py_binary(
     name = "classify_changed_paths",
     srcs = ["classify_changed_paths.py"],
-    data = ["//:.github/path-rules.toml"],
     main = "classify_changed_paths.py",
-    deps = [":_path_rules_lib"],
+    deps = [":path_classification_pattern_sets_lib"],
 )
 
 # pre-commit entry for `base-image-pin`. Gates on the same shared set the publish job uses, which
@@ -225,7 +221,7 @@ py_library(
     name = "base_image_pin_hook_lib",
     srcs = ["base_image_pin_hook.py"],
     deps = [
-        ":_path_rules_lib",
+        ":path_classification_pattern_sets_lib",
         ":sync_base_image_pin_lib",
     ],
 )
@@ -233,10 +229,9 @@ py_library(
 py_binary(
     name = "base_image_pin_hook",
     srcs = ["base_image_pin_hook.py"],
-    data = ["//:.github/path-rules.toml"],
     main = "base_image_pin_hook.py",
     deps = [
-        ":_path_rules_lib",
+        ":path_classification_pattern_sets_lib",
         ":sync_base_image_pin_lib",
     ],
 )
@@ -245,7 +240,6 @@ py_test(
     name = "test_base_image_pin_hook",
     size = "small",
     srcs = ["test_base_image_pin_hook.py"],
-    data = ["//:.github/path-rules.toml"],
     main = "test_base_image_pin_hook.py",
     deps = [":base_image_pin_hook_lib"],
 )

@@ -100,20 +100,26 @@ Monday. The accepted consequence is that a stale matrix shows `ci.yml` red while
 reports green — the merge is still blocked, but security.yml's green answers a narrower question
 than it looks like it does.
 
-## Changed-path rule sets live in one file
+## Path-classification pattern sets live in one module
 
-`.github/path-rules.toml` defines every named path set the repo classifies changes into, and
-`meta/scripts/_path_rules.py` flattens their composition. Consumers name a set; nobody restates a
-pattern. The rationale for each set lives beside it in that file — this section carries only what
-is invisible from there:
+`meta/scripts/path_classification_pattern_sets.py` defines every named pattern set the repo
+classifies paths against. They are module-level constants composed by set union, so composition is
+the language's rather than something this repo implements. Consumers name a set; nobody restates a
+pattern. The rationale for each set lives beside it — this section carries only what is invisible
+from there:
 
-- **The set that matters is `base`, and it has two consumers that must agree.** `devcontainer.yml`
+- **The set that matters is `BASE`, and it has two consumers that must agree.** `devcontainer.yml`
   gates publishing a new base image on it; `renovate-derived-files.yml` re-derives
-  `.devcontainer/Dockerfile`'s pin from the `bazel` set inside it. A path in the second but not the
+  `.devcontainer/Dockerfile`'s pin from the `BAZEL` set inside it. A path in the second but not the
   first writes a digest no job publishes — a red PR with no way to green it. They used to be two
   regexes plus two long comments asking a reader to keep them in step, and they had already
-  diverged on anchoring. Composition (`changed` includes `base` includes `bazel`) is what makes
-  them agree now.
+  diverged on anchoring. Composition (`CHANGED` splats `BASE` splats `BAZEL`) is what makes them
+  agree now.
+- **`CHANGED` covers the module that defines it, deliberately.** The sets used to live in
+  `devcontainer.yml`, which that workflow's own pattern matches, so editing them always forced a
+  consumer build. Moving them out would have dropped that silently: a set edit that classifies
+  nothing still imports, so every gated step would skip and the required check would go green
+  having built nothing.
 - **pre-commit cannot read the file, so the `base-image-pin` hook carries no `files:` filter.** It
   runs on every commit and gates internally in `meta/scripts/base_image_pin_hook.py`. It carries
   `require_serial: true`, which is load-bearing rather than tidiness: pre-commit partitions the
@@ -122,8 +128,8 @@ is invisible from there:
   rewrite concurrently, where a read can catch the other's truncating write mid-flight. Serial
   makes any split sequential, and both halves of the hook's work are idempotent under repetition,
   so a repeat costs a process spawn against a warm Bazel cache.
-- **`//meta/scripts:test_classify_changed_paths` deliberately does not test the rules.** It covers
-  the classifier only. `:test_path_rules` covers the sets, against the real file. The suites used to
+- **`//meta/scripts:test_classify_changed_paths` deliberately does not test the sets.** It covers
+  the classifier only. `:test_path_classification_pattern_sets` covers the sets. The suites used to
   be one, reading `--rule` arguments back out of the workflows to hold two copies together — a job
   that exists only while there are two copies.
 

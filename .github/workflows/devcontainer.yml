@@ -51,11 +51,10 @@ jobs:
           fi
           # Which paths feed which set — and why MODULE.bazel and .bazelversion are in the
           # base-image set, and what including them costs — is defined once in
-          # .github/path-rules.toml. `base` is a subset of `changed` by construction there,
-          # which is what the BASE_IMAGE override below depends on.
+          # meta/scripts/path_classification_pattern_sets.py. `base` is a subset of `changed` by
+          # construction there, which is what the BASE_IMAGE override below depends on.
           python3 meta/scripts/classify_changed_paths.py \
             --base "$base" \
-            --rules-file .github/path-rules.toml \
             --emit changed \
             --emit base
 

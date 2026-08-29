@@ -6,34 +6,28 @@ paying for a Bazel invocation. The work itself is `sync_base_image_pin.py`, test
 """
 
 import unittest
-from pathlib import Path
 from unittest import mock
 
-from meta.scripts._path_rules import load_rules
-from meta.scripts.base_image_pin_hook import _RULE, main, matching
-
-# Not .resolve(): the rules file is a cross-package data dep living in the runfiles tree.
-_RULES_FILE = Path(__file__).parent.parent.parent / ".github" / "path-rules.toml"
-_BASE = load_rules(_RULES_FILE)[_RULE]
+from meta.scripts.base_image_pin_hook import main, matching
 
 
 class TestMatching(unittest.TestCase):
     def test_picks_out_base_image_inputs(self):
         self.assertEqual(
-            matching(["README.md", "MODULE.bazel", "meta/scripts/x.py"], _BASE), ["MODULE.bazel"]
+            matching(["README.md", "MODULE.bazel", "meta/scripts/x.py"]), ["MODULE.bazel"]
         )
 
     def test_preserves_the_order_given(self):
         self.assertEqual(
-            matching([".bazelversion", "MODULE.bazel"], _BASE), [".bazelversion", "MODULE.bazel"]
+            matching([".bazelversion", "MODULE.bazel"]), [".bazelversion", "MODULE.bazel"]
         )
 
     def test_no_inputs_is_empty(self):
-        self.assertEqual(matching(["README.md", "docs/x.md"], _BASE), [])
+        self.assertEqual(matching(["README.md", "docs/x.md"]), [])
 
     def test_no_files_at_all_is_empty(self):
         # pre-commit can invoke a hook with an empty list; that is not a reason to build.
-        self.assertEqual(matching([], _BASE), [])
+        self.assertEqual(matching([]), [])
 
 
 class TestMain(unittest.TestCase):
@@ -44,7 +38,7 @@ class TestMain(unittest.TestCase):
             mock.patch("meta.scripts.base_image_pin_hook.subprocess.run") as run,
             mock.patch("meta.scripts.base_image_pin_hook.sync_pin") as sync,
         ):
-            rc = main(["README.md", "--rules-file", str(_RULES_FILE)])
+            rc = main(["README.md"])
         self.assertEqual(rc, 0)
         run.assert_not_called()
         sync.assert_not_called()
@@ -54,7 +48,7 @@ class TestMain(unittest.TestCase):
             mock.patch("meta.scripts.base_image_pin_hook.subprocess.run") as run,
             mock.patch("meta.scripts.base_image_pin_hook.sync_pin", return_value=0) as sync,
         ):
-            rc = main(["MODULE.bazel", "--rules-file", str(_RULES_FILE)])
+            rc = main(["MODULE.bazel"])
         self.assertEqual(rc, 0)
         run.assert_called_once()
         self.assertEqual(run.call_args.args[0][:2], ["bazel", "build"])
@@ -66,14 +60,14 @@ class TestMain(unittest.TestCase):
             mock.patch("meta.scripts.base_image_pin_hook.subprocess.run"),
             mock.patch("meta.scripts.base_image_pin_hook.sync_pin", return_value=2),
         ):
-            self.assertEqual(main(["MODULE.bazel", "--rules-file", str(_RULES_FILE)]), 2)
+            self.assertEqual(main(["MODULE.bazel"]), 2)
 
     def test_one_matching_path_among_many_is_enough(self):
         with (
             mock.patch("meta.scripts.base_image_pin_hook.subprocess.run"),
             mock.patch("meta.scripts.base_image_pin_hook.sync_pin", return_value=0) as sync,
         ):
-            rc = main(["README.md", ".bazelversion", "docs/x.md", "--rules-file", str(_RULES_FILE)])
+            rc = main(["README.md", ".bazelversion", "docs/x.md"])
         self.assertEqual(rc, 0)
         sync.assert_called_once()
 
