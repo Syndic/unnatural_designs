@@ -134,6 +134,12 @@ class TestDevcontainerSets(unittest.TestCase):
     def test_own_workflow_rebuilds(self):
         self.assertEqual(fires(".github/workflows/devcontainer.yml"), {"changed"})
 
+    def test_the_rules_file_rebuilds(self):
+        # `changed` has to cover the file that defines it. A rules edit that classifies nothing
+        # still parses, so without this every gated step skips and the required check goes green
+        # having built nothing — and nothing fails afterwards either.
+        self.assertEqual(fires(".github/path-rules.toml"), {"changed"})
+
     def test_sibling_workflow_does_not(self):
         self.assertEqual(fires(".github/workflows/ci.yml"), set())
 

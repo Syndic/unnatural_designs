@@ -115,9 +115,13 @@ is invisible from there:
   diverged on anchoring. Composition (`changed` includes `base` includes `bazel`) is what makes
   them agree now.
 - **pre-commit cannot read the file, so the `base-image-pin` hook carries no `files:` filter.** It
-  runs on every commit and gates internally in `meta/scripts/base_image_pin_hook.py`. pre-commit may
-  split the filename list across several invocations; both halves of the hook's work are idempotent
-  and the second invocation hits a warm Bazel cache, so that costs a process spawn.
+  runs on every commit and gates internally in `meta/scripts/base_image_pin_hook.py`. It carries
+  `require_serial: true`, which is load-bearing rather than tidiness: pre-commit partitions the
+  filename list at more than four staged files — not just at the arg-length limit — and runs the
+  partitions in a thread pool, so two partitions each holding a base input would reach the pin
+  rewrite concurrently, where a read can catch the other's truncating write mid-flight. Serial
+  makes any split sequential, and both halves of the hook's work are idempotent under repetition,
+  so a repeat costs a process spawn against a warm Bazel cache.
 - **`//meta/scripts:test_classify_changed_paths` deliberately does not test the rules.** It covers
   the classifier only. `:test_path_rules` covers the sets, against the real file. The suites used to
   be one, reading `--rule` arguments back out of the workflows to hold two copies together — a job

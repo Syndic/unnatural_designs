@@ -7,9 +7,11 @@ disagreed. pre-commit's `files:` cannot read a shared definition, so the hook no
 at all and asks `.github/path-rules.toml` here instead.
 
 The cost of that shape, accepted deliberately: pre-commit invokes this on every commit, and may
-split a long filename list across several invocations, each deciding independently. Both actions
-this runs are idempotent and the second invocation hits a warm Bazel cache, so a repeat costs a
-process spawn rather than a rebuild.
+still split a long filename list across several invocations, each deciding independently. Both
+actions this runs are idempotent and a repeat hits a warm Bazel cache, so it costs a process spawn
+rather than a rebuild. That is only true while those invocations are *sequential*, which is what
+the hook's `require_serial` buys — pre-commit otherwise runs partitions in a thread pool, and two
+concurrent pin rewrites can interleave a read with a truncating write.
 
 Usage (pre-commit supplies the filenames):
 

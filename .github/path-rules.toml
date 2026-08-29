@@ -58,7 +58,17 @@ patterns = ['^meta/devcontainer-base/']
 # builds against. Including `base` is also what gates an automerged bump on a real consumer build,
 # which is what the publish job requires.
 include = ["base"]
-patterns = ['^\.devcontainer/', '^\.github/workflows/devcontainer\.yml$']
+# This file is in the set on purpose. The rules used to live in devcontainer.yml, which the
+# workflow's own pattern covers, so an edit to them always forced a consumer build in the PR that
+# made it. Moving them here would have dropped that: a rules edit that classifies nothing still
+# parses, so every gated step would skip and the required check would go green having built
+# nothing — and stay wrong afterwards with nothing failing. `base` needs no equivalent, since
+# editing the rules cannot move the image's bytes.
+patterns = [
+    '^\.devcontainer/',
+    '^\.github/workflows/devcontainer\.yml$',
+    '^\.github/path-rules\.toml$',
+]
 
 [rules.python]
 # Python manifests Renovate can move. Whether a Python change ALSO needs a Bazel lock refresh is
