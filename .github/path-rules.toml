@@ -63,7 +63,8 @@ include = ["base"]
 # made it. Moving them here would have dropped that: a rules edit that classifies nothing still
 # parses, so every gated step would skip and the required check would go green having built
 # nothing — and stay wrong afterwards with nothing failing. `base` needs no equivalent, since
-# editing the rules cannot move the image's bytes.
+# editing the rules cannot move the image's bytes. `//meta/scripts:test_path_rules` keeps this
+# pattern here, so a deletion turns red rather than quiet.
 patterns = [
     '^\.devcontainer/',
     '^\.github/workflows/devcontainer\.yml$',
