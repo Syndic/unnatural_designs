@@ -4,13 +4,7 @@ load("@gazelle//:def.bzl", "gazelle")
 gazelle(name = "gazelle")
 
 # Workflows read as *test data*, not built: several tests assert couplings that hold across files
-# and stay green while drifting, so each reads the real file rather than a fixture. Which test
-# asserts what is left to the `data` edge that reaches for it — `git grep '//:\.github/workflows/'
-# -- '*.bazel'` answers it — because an enumeration here is a copy of something already declared,
-# and it drifts: the list this replaces had gone stale on both counts, naming a test that no longer
-# reads a workflow and omitting one that does. (One coupling did leave: the two workflows'
-# classification rules used to be held against each other here, and are now defined once in
-# meta/scripts/path_classification_pattern_sets.py, so there is nothing left to hold.)
+# and stay green while drifting, so each reads the real file rather than a fixture.
 exports_files([
     ".github/workflows/ci.yml",
     ".github/workflows/devcontainer.yml",
