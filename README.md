@@ -320,7 +320,9 @@ difference matters when adding one:
   `with:`/`env:` value. Each expects a `# renovate: datasource=<ds> depName=<name>` comment on the
   line **immediately above** the value, and the value must be quoted in the workflow case
   (`key: "1.2.3"`). The key name is not constrained, so both `version:` and `TY_VERSION:` are
-  tracked.
+  tracked. The first two are scoped to `.devcontainer/`'s own `Dockerfile` and `post-create.sh`
+  rather than matching those filenames at any depth, so a marker added to a Dockerfile elsewhere is
+  silently untracked until the pattern is widened to reach it.
 - **Structural** — the two `MODULE.bazel` patterns, which carry `datasourceTemplate`/`depNameTemplate`
   in the config and match the pin site directly (`go_sdk.download(… version = "…")`, and any
   `python_version = "…"`). There is no marker comment to grep for, so these are easy to forget when
