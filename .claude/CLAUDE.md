@@ -104,9 +104,11 @@ than it looks like it does.
 
 `meta/scripts/path_classification_pattern_sets.py` defines every named pattern set the repo
 classifies paths against. They are module-level constants composed by set union, so composition is
-the language's rather than something this repo implements. Consumers name a set; nobody restates a
-pattern. The rationale for each set lives beside it — this section carries only what is invisible
-from there:
+the language's rather than something this repo implements. Consumers of the classifier name a set
+rather than restating a pattern. Two other pre-commit hooks — `uv-lock-fresh` and `bazel-mod-tidy` —
+still carry their own overlapping `files:` regexes, deliberately: neither has a second consumer to
+agree with, so neither earns the cost of self-gating, which is a run on every commit. The rationale
+for each set lives beside it — this section carries only what is invisible from there:
 
 - **`BASE` is the publish gate; the pin is re-derived by whichever of three callers matches the
   source of the change.** `devcontainer.yml` gates publishing a new base image on `BASE`. For the
@@ -135,9 +137,11 @@ from there:
   makes any split sequential, and both halves of the hook's work are idempotent under repetition,
   so a repeat costs a process spawn against a warm Bazel cache.
 - **`//meta/scripts:test_classify_changed_paths` deliberately does not test the sets.** It covers
-  the classifier only. `:test_path_classification_pattern_sets` covers the sets. The suites used to
-  be one, reading `--rule` arguments back out of the workflows to hold two copies together — a job
-  that exists only while there are two copies.
+  the classifier only — `TestSelect` reads `SETS` because resolving a caller's name against them is
+  what `select` does, but asserts nothing about their contents.
+  `:test_path_classification_pattern_sets` covers the sets. The suites used to be one, reading
+  `--rule` arguments back out of the workflows to hold two copies together — a job that exists only
+  while there are two copies.
 
 ## Superseding CI runs
 
