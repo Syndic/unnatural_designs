@@ -15,9 +15,8 @@ from meta.scripts.classify_changed_paths import (
 )
 from meta.scripts.path_classification_pattern_sets import SETS
 
-# Synthetic on purpose: see the module docstring. Three sets, one overlapping path, so an
-# independence bug shows up as a wrong pairing rather than a wrong single flag. `beta` carries two
-# patterns, since a set holding more than one is the normal case.
+# Three sets, one overlapping path, so an independence bug shows up as a wrong pairing rather than
+# a wrong single flag. `beta` carries two patterns, since a set holding more than one is the normal case.
 _SETS = {"alpha": (r"^a/",), "beta": (r"^b/", r"^shared$"), "gamma": (r"^shared$",)}
 
 
