@@ -49,15 +49,13 @@ rebase, merge, branch switch — refuse with "your local changes would be overwr
 tree. Plain commits never hit this (no checkout involved), which is why the breakage first surfaced
 on an in-container rebase.
 
-The library therefore sets `core.checkstat = minimal` and `core.trustctime = false` in the
-repo-local config. That config lives in the common dir, so one write covers both sides and every
-worktree — which is also why it can be written from the container side at all. `minimal` reduces
-the stat check to whole-second mtime + file size, the two fields the bind mount preserves, making
-the index portable in both directions; `trustctime = false` guards against ctime-only divergence
-from metadata changes (chmod/chown) one side doesn't observe. Known trade-off: a same-size edit
-landing in the same second as the last index refresh can evade stat detection; git's racy-index
-protection (entries at least as new as the index itself get content-checked) covers the realistic
-window.
+The library therefore narrows git's stat comparison, in the repo-local config, to the fields a
+bind mount actually preserves — whole-second mtime and file size — and stops it trusting ctime,
+which diverges when one side observes a metadata change the other doesn't. That config lives in
+the common dir, so one write covers both sides and every worktree, which is also why it can be
+written from the container side at all. Known trade-off: a same-size edit landing in the same
+second as the last index refresh can evade stat detection; git's racy-index protection covers the
+realistic window.
 
 ## Why the application is at runtime, not baked
 
@@ -157,15 +155,15 @@ Every line of that is load-bearing, and the shapes it rules out fail quietly:
 - **The reference carries a tag *and* a digest**, for the same reason `oci.pull` does below: the
   digest pins the build, the tag is what Renovate compares against.
 
-This repo is the first consumer, so its `.devcontainer/` is the worked example, and
-`.devcontainer/test_devcontainer_config.py` asserts the couplings above from the files themselves.
+This repo is the first consumer, so its `.devcontainer/` is the worked example, and it asserts
+every coupling above from the files themselves — worth copying, since each wrong shape fails at
+container-build time or not at all.
 
 **Inside this repo the pin is a derived file, not a dependency.** The digest is a pure function of
 the source — reproducible layers, and `oci_push` publishes the exact index Bazel built — so the
-value a merge will publish is knowable in the PR that changes the image. `sync_base_image_pin.py`
-writes it, `//.devcontainer:test_base_image_pin` fails when it drifts, and
-`renovate-derived-files.yml` re-derives it when a `MODULE.bazel` bump moves the upstream base.
-Renovate is told to leave that dep alone; a bump PR would only ever restate what the tree already
+value a merge will publish is knowable in the PR that changes the image. So the pin is written
+from the build, checked for staleness, and re-derived whenever the upstream base moves — and
+Renovate is told to leave it alone, since a bump PR would only ever restate what the tree already
 determines, one publish later.
 
 That does not transfer to a consumer outside this repo. `Syndic/.dotfiles` doesn't build the image,
@@ -322,8 +320,8 @@ Because `pkg_tar` pins timestamps, rebuilds are byte-identical and the image dig
 so the same source produces the same digest on any machine. A `docker build` never did: it bakes
 fresh timestamps into the image config, which is why an equivalent rebuild still looked different.
 
-CI builds this whenever `meta/devcontainer-base/` **or `MODULE.bazel`** changes — the latter is
-where this image's own base is pinned — and runs the dispatcher inside it on **both**
+CI rebuilds this whenever the [devcontainer workflow](https://github.com/Syndic/unnatural_designs/blob/main/.github/workflows/devcontainer.yml)
+detects that one of the image's inputs changed, and runs the dispatcher inside it on **both**
 architectures: native `ubuntu-latest` and `ubuntu-24.04-arm` runners, so no QEMU is involved. Both
 are smoke-tested because `oci_load` can only materialise one image per Docker tag; on an amd64
 runner alone, the arm64 manifest would ship having only ever been assembled, and arm64 is what
@@ -339,8 +337,8 @@ The image's *own* base is a dependency, and Renovate bumps it: its `bazel-module
 digest — a digest alone would be pinned forever with nothing to compare against. (Not to be
 confused with the consumer pin above, which is derived here.)
 
-- **The bump has to trigger the base jobs.** That is why `MODULE.bazel` is in the path
-  classification; without it the bump moves the pin and triggers nothing.
+- **The bump has to trigger a rebuild and a republish**, or it moves the pin and reaches no
+  image at all.
 - **It is deliberately not folded into the `all non-major dependencies` group.** Grouped, a base
   bump would be blocked whenever anything else in that group was red — exactly when you want the
   base moving on its own.

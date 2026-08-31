@@ -100,6 +100,49 @@ Monday. The accepted consequence is that a stale matrix shows `ci.yml` red while
 reports green — the merge is still blocked, but security.yml's green answers a narrower question
 than it looks like it does.
 
+## Path-classification pattern sets live in one module
+
+`meta/scripts/path_classification_pattern_sets.py` defines every named pattern set the repo
+classifies paths against. They are module-level constants composed by set union, so composition is
+the language's rather than something this repo implements. Consumers of the classifier name a set
+rather than restating a pattern. Two other pre-commit hooks — `uv-lock-fresh` and `bazel-mod-tidy` —
+still carry their own overlapping `files:` regexes, deliberately: neither has a second consumer to
+agree with, so neither earns the cost of self-gating, which is a run on every commit. The rationale
+for each set lives beside it — this section carries only what is invisible from there:
+
+- **`BASE` is the publish gate; the pin is re-derived by whichever of three callers matches the
+  source of the change.** `devcontainer.yml` gates publishing a new base image on `BASE`. For the
+  pin: the `base-image-pin` pre-commit hook gates on `BASE`, so a human edit to the image's own
+  source re-pins in the same commit; `renovate-derived-files.yml` gates on `BAZEL`, because the
+  manifests are the only part of `BASE` Renovate can move — its `paths:` trigger does not include
+  the image source, and the pin itself is `enabled: false` in `renovate.json`; and
+  `//.devcontainer:test_base_image_pin` fails a commit that ran neither. So `BASE ⊃ BAZEL` is not a
+  gap on the publish-without-repinning side — the extra members are exactly the paths only a human
+  edit reaches, and the hook covers them. What the containment buys is the other direction: a path
+  that re-derives the pin must also trigger a publish, or the bump writes a digest no job pushes.
+  The two used to be separate regexes plus two long comments asking a reader to keep them in step,
+  and they had already diverged on anchoring; `CHANGED` splats `BASE` splats `BAZEL` is what makes
+  them agree now.
+- **`CHANGED` covers the module that defines it, deliberately.** The sets used to live in
+  `devcontainer.yml`, which that workflow's own pattern matches, so editing them always forced a
+  consumer build. Moving them out would have dropped that silently: a set edit that classifies
+  nothing still imports, so every gated step would skip and the required check would go green
+  having built nothing.
+- **pre-commit cannot read the file, so the `base-image-pin` hook carries no `files:` filter.** It
+  runs on every commit and gates internally in `meta/scripts/base_image_pin_hook.py`. It carries
+  `require_serial: true`, which is load-bearing rather than tidiness: pre-commit partitions the
+  filename list at more than four staged files — not just at the arg-length limit — and runs the
+  partitions in a thread pool, so two partitions each holding a base input would reach the pin
+  rewrite concurrently, where a read can catch the other's truncating write mid-flight. Serial
+  makes any split sequential, and both halves of the hook's work are idempotent under repetition,
+  so a repeat costs a process spawn against a warm Bazel cache.
+- **`//meta/scripts:test_classify_changed_paths` deliberately does not test the sets.** It covers
+  the classifier only — `TestSelect` reads `SETS` because resolving a caller's name against them is
+  what `select` does, but asserts nothing about their contents.
+  `:test_path_classification_pattern_sets` covers the sets. The suites used to be one, reading
+  `--rule` arguments back out of the workflows to hold two copies together — a job that exists only
+  while there are two copies.
+
 ## Superseding CI runs
 
 Every workflow except `renovate-derived-files.yml` carries the same block, and the shape of the
@@ -265,12 +308,12 @@ the `Renovate helper`. Load-bearing facts:
 - **`.bazelversion` invalidates the lock too.** `MODULE.bazel.lock`'s `lockFileVersion` (and the
   shape of its recorded extensions) tracks the bazel release, so a Renovate bazel bump leaves the
   committed lock stale. Builds don't notice — `--lockfile_mode=update` rewrites in memory and stays
-  green — so the staleness surfaces either as a blocked local commit (`base-image-pin` selects
-  `.bazelversion` itself and rewrites the lock as a side effect of its `bazel build`;
-  `bazel mod tidy` does the same, but only on a `go.mod`/`go.work`/`go.sum` change) or as ci.yml's
-  `MODULE.bazel.lock freshness` job, which is the backstop for commits that ran no hook. The
-  workflow therefore triggers on `.bazelversion` and folds it into the same `bazel` classification
-  as `MODULE.bazel`: one output, one `bazel mod deps` refresh. bazelisk reads the checked-out
+  green — so the staleness surfaces either as a blocked local commit (`.bazelversion` is in the
+  shared `base` set `base-image-pin` gates on, so the hook rewrites the lock as a side effect of
+  its `bazel build`; `bazel mod tidy` does the same, but only on a `go.mod`/`go.work`/`go.sum`
+  change) or as ci.yml's `MODULE.bazel.lock freshness` job, which is the backstop for commits that
+  ran no hook. The workflow therefore triggers on `.bazelversion` and folds it into the same
+  `bazel` classification as `MODULE.bazel`: one output, one `bazel mod deps` refresh. bazelisk reads the checked-out
   `.bazelversion`, so the regenerated lock is in the bumped version's format.
 - **Go tidy/sync rides the same commit.** Renovate's `go get` bumps `go.mod`/`go.sum` but never
   runs `go mod tidy` (opt-in) or `go work sync` (Renovate does it only when vendoring, which this

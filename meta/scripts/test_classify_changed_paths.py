@@ -1,101 +1,24 @@
 """Tests for classify_changed_paths.py.
 
-The pure functions (parse_rule, is_branch_creation, classify, format_outputs) carry all the
-non-I/O logic; tests focus there. The git diff and $GITHUB_OUTPUT wiring is exercised
-end-to-end by the caller workflows on real PRs.
-
-The two `RULES_*` fixtures are read out of the workflows themselves rather than restated here.
-A hand-copy is green whichever side drifts, and both sides move in the same PRs; each rule's
-own reasoning lives at the `--rule` line in its workflow, which is the only place it can't go
-stale.
+Scoped to the script: the pure functions (is_branch_creation, select, classify, format_outputs)
+carry all the non-I/O logic, and the git diff and $GITHUB_OUTPUT wiring is exercised end-to-end by
+the caller workflows on real PRs.
 """
 
-import re
-import tempfile
 import unittest
-from pathlib import Path
 
 from meta.scripts.classify_changed_paths import (
     classify,
     format_outputs,
     is_branch_creation,
-    parse_rule,
+    select,
 )
+from meta.scripts.path_classification_pattern_sets import SETS
 
-# Not .resolve(): the workflows are cross-package data deps, so they live in the runfiles tree
-# beside this file rather than at the source path a resolved symlink would lead back to.
-_WORKFLOWS = Path(__file__).parent.parent.parent / ".github" / "workflows"
-
-
-def rules_from_workflow(path: Path) -> dict[str, str]:
-    """Extract the `--rule 'name=regex'` arguments a workflow passes to the classifier."""
-    specs = re.findall(r"--rule\s+'([^']*)'", path.read_text(encoding="utf-8"))
-    if not specs:
-        raise AssertionError(f"no --rule arguments found in {path}")
-    # Split here rather than via parse_rule: a fixture that leans on the function under test
-    # would go quiet in exactly the case parse_rule's own tests are meant to catch.
-    return {spec.partition("=")[0]: spec.partition("=")[2] for spec in specs}
-
-
-RULES_RENOVATE = rules_from_workflow(_WORKFLOWS / "renovate-derived-files.yml")
-RULES_DEVCONTAINER = rules_from_workflow(_WORKFLOWS / "devcontainer.yml")
-
-
-def expect_devcontainer(**fired):
-    """Full RULES_DEVCONTAINER classification: every group False except the ones named."""
-    result = dict.fromkeys(RULES_DEVCONTAINER, False)
-    result.update(fired)
-    return result
-
-
-def expect(**fired):
-    """Full RULES_RENOVATE classification: every group False except the ones named."""
-    result = dict.fromkeys(RULES_RENOVATE, False)
-    result.update(fired)
-    return result
-
-
-class TestRuleExtraction(unittest.TestCase):
-    """Guards the fixtures themselves: a silently empty extraction would make everything below
-    assert against nothing."""
-
-    def test_devcontainer_rule_names(self):
-        self.assertEqual(sorted(RULES_DEVCONTAINER), ["base", "changed"])
-
-    def test_renovate_rule_names(self):
-        self.assertEqual(sorted(RULES_RENOVATE), ["bazel", "devcontainer", "go", "python"])
-
-    def test_a_workflow_without_rules_raises(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            empty = Path(tmp) / "workflow.yml"
-            empty.write_text("jobs: {}\n", encoding="utf-8")
-            with self.assertRaises(AssertionError):
-                rules_from_workflow(empty)
-
-    def test_regexes_survive_extraction_intact(self):
-        # The `--rule` arguments are single-quoted in the workflow, so nothing in a regex needs
-        # unescaping — pin that, since a quoting change would land here as a subtly wrong rule.
-        self.assertEqual(
-            RULES_DEVCONTAINER["base"],
-            r"^meta/devcontainer-base/|^MODULE\.bazel$|^\.bazelversion$",
-        )
-
-
-class TestParseRule(unittest.TestCase):
-    def test_basic(self):
-        self.assertEqual(parse_rule("python=foo.*bar"), ("python", "foo.*bar"))
-
-    def test_regex_containing_equals(self):
-        # Split on the FIRST '=', so a regex with '=' in it survives.
-        self.assertEqual(parse_rule("k=a=b"), ("k", "a=b"))
-
-    def test_missing_separator(self):
-        with self.assertRaises(ValueError):
-            parse_rule("noequals")
-
-    def test_empty_name(self):
-        with self.assertRaises(ValueError):
-            parse_rule("=pattern")
+# Three sets, one overlapping path, so an independence bug shows up as a wrong pairing rather than
+# a wrong single flag. `beta` carries two patterns, since a set holding more than one is the normal
+# case.
+_SETS = {"alpha": (r"^a/",), "beta": (r"^b/", r"^shared$"), "gamma": (r"^shared$",)}
 
 
 class TestIsBranchCreation(unittest.TestCase):
@@ -116,195 +39,70 @@ class TestIsBranchCreation(unittest.TestCase):
         self.assertFalse(is_branch_creation(""))
 
 
-class TestClassifyRenovate(unittest.TestCase):
-    def _run(self, files):
-        return classify(files, RULES_RENOVATE)
+class TestClassify(unittest.TestCase):
+    def test_every_set_is_reported_not_just_the_hits(self):
+        # The callers read `steps.<id>.outputs.<name>`, so a set that did not fire has to be
+        # present and false rather than absent.
+        self.assertEqual(classify(["a/x"], _SETS), {"alpha": True, "beta": False, "gamma": False})
 
-    def test_module_bazel_only(self):
-        self.assertEqual(self._run(["MODULE.bazel"]), expect(bazel=True))
+    def test_sets_are_independent(self):
+        self.assertEqual(classify(["shared"], _SETS), {"alpha": False, "beta": True, "gamma": True})
 
-    def test_nested_module_bazel(self):
-        # `$`-anchored, not whole-line: a nested MODULE.bazel still counts.
-        self.assertEqual(self._run(["sub/mod/MODULE.bazel"]), expect(bazel=True))
-
-    def test_bazelversion_triggers_bazel_refresh(self):
-        # A bazel version bump changes the lock's `lockFileVersion`, so it needs the same
-        # `bazel mod deps` refresh as a MODULE.bazel change — same output, one gate. The
-        # full-dict compare also pins that such a PR skips uv setup, the Go tidy, and the
-        # devcontainer refresh entirely.
-        self.assertEqual(self._run([".bazelversion"]), expect(bazel=True))
-
-    def test_decoy_bazelversion_suffix(self):
-        # `$`-anchored: a sibling like .bazelversion.bak must not trigger a refresh.
-        self.assertEqual(self._run([".bazelversion.bak"]), expect())
-
-    def test_module_bazel_lock_is_not_a_manifest(self):
-        # The derived lock must NOT trigger a regen (nothing to regenerate from it).
-        self.assertEqual(self._run(["MODULE.bazel.lock"]), expect())
-
-    def test_requirements_lock_is_python_not_bazel(self):
-        # Classification is independent: whether a Python change refreshes the Bazel lock
-        # is decided later, on whether requirements_lock.txt actually moved.
-        self.assertEqual(self._run(["requirements_lock.txt"]), expect(python=True))
-
-    def test_nested_pyproject(self):
-        self.assertEqual(self._run(["apps/foo/pyproject.toml"]), expect(python=True))
-
-    def test_nested_go_mod(self):
-        # A Renovate Go bump edits a per-module go.mod; the `(^|/)` prefix catches it at depth.
-        self.assertEqual(self._run(["tools/net/go.mod"]), expect(go=True))
-
-    def test_go_work(self):
-        # go.work carries the go directive + workspace member list.
-        self.assertEqual(self._run(["go.work"]), expect(go=True))
-
-    def test_go_sum_is_derived_not_a_trigger(self):
-        # go.sum is regenerated by tidy; it must not be the sole reason the workflow fires
-        # (a Renovate bump always moves go.mod alongside it, which does trigger).
-        self.assertEqual(self._run(["tools/net/go.sum"]), expect())
-
-    def test_go_work_sum_is_derived_not_a_trigger(self):
-        # `go\.work$` is end-anchored, so go.work.sum (the derived workspace sum) does not match.
-        self.assertEqual(self._run(["go.work.sum"]), expect())
-
-    def test_combined(self):
-        self.assertEqual(self._run(["MODULE.bazel", "uv.lock"]), expect(python=True, bazel=True))
-
-    def test_combined_go_python_bazel(self):
-        # A grouped Renovate PR can touch all three ecosystems at once; every flag fires and
-        # all derived files ride the workflow's single commit.
+    def test_any_matching_file_is_enough(self):
         self.assertEqual(
-            self._run(["MODULE.bazel", "uv.lock", "tools/net/go.mod"]),
-            expect(python=True, bazel=True, go=True),
+            classify(["README.md", "b/y"], _SETS),
+            {"alpha": False, "beta": True, "gamma": False},
         )
 
-    def test_unrelated_only(self):
-        self.assertEqual(self._run(["README.md"]), expect())
+    def test_no_files(self):
+        self.assertEqual(classify([], _SETS), {"alpha": False, "beta": False, "gamma": False})
 
-    def test_empty(self):
-        self.assertEqual(self._run([]), expect())
+    def test_no_sets(self):
+        self.assertEqual(classify(["a/x"], {}), {})
 
-    def test_decoy_module_bazel_template(self):
-        self.assertEqual(self._run(["infra/MODULE.bazel.tmpl"]), expect())
-
-    def test_decoy_uv_lock_backup(self):
-        self.assertEqual(self._run(["uv.lock.bak"]), expect())
-
-    def test_decoy_go_mod_backup(self):
-        # Trailing suffix after go.mod must not match the `$`-anchored rule.
-        self.assertEqual(self._run(["tools/net/go.mod.bak"]), expect())
-
-    def test_devcontainer_json(self):
-        # A Renovate feature bump edits devcontainer.json; the lock is keyed by the reference
-        # string, so every entry restales and `devcontainer upgrade` has to re-resolve it.
-        self.assertEqual(self._run([".devcontainer/devcontainer.json"]), expect(devcontainer=True))
-
-    def test_devcontainer_lock_is_derived_not_a_trigger(self):
-        # Same posture as MODULE.bazel.lock: the derived file must not trigger its own regen.
-        self.assertEqual(self._run([".devcontainer/devcontainer-lock.json"]), expect())
-
-    def test_other_devcontainer_files_are_not_a_trigger(self):
-        # The Dockerfile and the lifecycle scripts feed the image build, not the feature lock;
-        # devcontainer.yml covers those. Only devcontainer.json moves the references.
-        self.assertEqual(self._run([".devcontainer/Dockerfile"]), expect())
-        self.assertEqual(self._run([".devcontainer/post-create.sh"]), expect())
-
-    def test_nested_devcontainer_json_is_not_matched(self):
-        # `^`-anchored, unlike the Go/Python rules: this repo has exactly one devcontainer, and
-        # a vendored copy under some subdirectory is not ours to re-resolve.
-        self.assertEqual(self._run(["vendor/.devcontainer/devcontainer.json"]), expect())
-
-    def test_combined_with_devcontainer(self):
-        # A grouped Renovate PR can move a feature alongside Go/Python/Bazel; all four flags
-        # fire and every derived file rides the single commit.
-        self.assertEqual(
-            self._run(
-                ["MODULE.bazel", "uv.lock", "tools/net/go.mod", ".devcontainer/devcontainer.json"]
-            ),
-            expect(python=True, bazel=True, go=True, devcontainer=True),
-        )
+    def test_patterns_self_anchor(self):
+        # `re.search`, so an unanchored pattern matches anywhere; the anchoring belongs to the
+        # pattern, not to this function.
+        self.assertEqual(classify(["deep/a/x"], {"alpha": (r"^a/",)}), {"alpha": False})
+        self.assertEqual(classify(["deep/a/x"], {"alpha": (r"a/",)}), {"alpha": True})
 
 
-class TestClassifyDevcontainer(unittest.TestCase):
-    def _run(self, files):
-        return classify(files, RULES_DEVCONTAINER)
+class TestSelect(unittest.TestCase):
+    """`select` is the fail-closed guard on `--emit`, so its refusal is the thing under test.
 
-    def test_devcontainer_dir(self):
-        # Builds the devcontainer but not the base image: nothing shared changed.
-        self.assertEqual(self._run([".devcontainer/Dockerfile"]), expect_devcontainer(changed=True))
+    Unlike the rest of this suite it uses the real `SETS`, because what it does is resolve a
+    caller's name against them. It reads the shared sets but asserts nothing about their contents;
+    that is `test_path_classification_pattern_sets.py`'s job.
+    """
 
-    def test_workflow_file(self):
-        self.assertEqual(
-            self._run([".github/workflows/devcontainer.yml"]), expect_devcontainer(changed=True)
-        )
+    def test_returns_the_named_sets_in_the_order_asked_for(self):
+        # The order reaches $GITHUB_OUTPUT, which keeps a run's log readable against the workflow
+        # that produced it.
+        self.assertEqual(list(select(["changed", "base"])), ["changed", "base"])
 
-    def test_other_workflow_not_matched(self):
-        # The `$` on the second alternative keeps a sibling workflow from matching.
-        self.assertEqual(self._run([".github/workflows/ci.yml"]), expect_devcontainer())
+    def test_the_patterns_are_the_shared_ones(self):
+        self.assertEqual(select(["base"])["base"], SETS["base"])
 
-    def test_unrelated(self):
-        self.assertEqual(self._run(["README.md"]), expect_devcontainer())
+    def test_an_unknown_name_is_refused(self):
+        # Not an empty set. A caller naming a set that does not exist would otherwise emit
+        # `name=false` on every run and gate its steps off forever — the base image would quietly
+        # stop being published and every check would stay green. Simplifying this to a
+        # `SETS.get(name, ())` would pass every other test in the repo.
+        with self.assertRaises(SystemExit):
+            select(["base", "nope"])
 
-    def test_base_image_fires_both(self):
-        # A base change fires both. `changed` additionally gates the login and image-ref steps
-        # the base build depends on, plus the consumer build this repo's FROM makes the real
-        # validation of a base change. The job itself has no `if` and always runs, so this is
-        # about the steps inside it, not about the job skipping.
-        self.assertEqual(
-            self._run(["meta/devcontainer-base/scripts/lib.sh"]),
-            expect_devcontainer(changed=True, base=True),
-        )
+    def test_the_refusal_names_every_missing_set_not_just_the_first(self):
+        # The message is the whole diagnosis: the caller is a workflow, so nobody is at a REPL to
+        # go looking. Fixture names must not be substrings of one another — an earlier pair
+        # ("nope"/"alsonope") let a first-only message satisfy both assertions, so this test passed
+        # on exactly the regression it exists to catch.
+        with self.assertRaises(SystemExit) as caught:
+            select(["ghost", "base", "phantom"])
+        self.assertIn("ghost", str(caught.exception))
+        self.assertIn("phantom", str(caught.exception))
 
-    def test_bazelversion_fires_both(self):
-        # renovate-derived-files.yml re-derives the base-image pin on a .bazelversion change,
-        # so this workflow has to be willing to rebuild and publish what that pin will name.
-        # Deriving without publishing is the one combination that cannot be recovered from.
-        self.assertEqual(self._run([".bazelversion"]), expect_devcontainer(changed=True, base=True))
-
-    def test_decoy_bazelversion_suffix(self):
-        # `$`-anchored, matching the renovate-derived-files rule's own decoy test.
-        self.assertEqual(self._run([".bazelversion.bak"]), expect_devcontainer())
-
-    def test_module_bazel_fires_both(self):
-        # MODULE.bazel pins the base image's own base (the devcontainers_base_debian oci.pull),
-        # and that bump automerges. Missing it here would move the pin without rebuilding,
-        # smoke-testing or republishing anything — the bump would reach no image at all.
-        self.assertEqual(self._run(["MODULE.bazel"]), expect_devcontainer(changed=True, base=True))
-
-    def test_module_bazel_lock_is_derived_not_a_trigger(self):
-        # The lock records no oci extension state (every pull is digest-pinned, hence
-        # reproducible), so it never carries a base change of its own.
-        self.assertEqual(self._run(["MODULE.bazel.lock"]), expect_devcontainer())
-
-    def test_nested_module_bazel_is_not_matched(self):
-        # `^`-anchored: only the root module declares the image's base.
-        self.assertEqual(self._run(["vendor/MODULE.bazel"]), expect_devcontainer())
-
-    def test_base_is_a_subset_of_changed(self):
-        # The BASE_IMAGE override only reaches the build when both fire — the load step is
-        # gated on `base` and the consumer build on `changed`. A path that set `base` alone
-        # would load an image nothing then builds against.
-        for path in (
-            "meta/devcontainer-base/scripts/lib.sh",
-            "meta/devcontainer-base/BUILD.bazel",
-            "MODULE.bazel",
-            ".bazelversion",
-        ):
-            with self.subTest(path=path):
-                result = self._run([path])
-                self.assertTrue(result["base"])
-                self.assertTrue(result["changed"])
-
-    def test_base_image_readme_also_counts(self):
-        # The README is the canonical rationale home; cheap to rebuild, and keeping the rule
-        # a plain prefix avoids a per-file allowlist drifting from the directory.
-        self.assertEqual(
-            self._run(["meta/devcontainer-base/README.md"]),
-            expect_devcontainer(changed=True, base=True),
-        )
-
-    def test_sibling_meta_dir_not_matched(self):
-        self.assertEqual(self._run(["meta/scripts/check_modules.py"]), expect_devcontainer())
+    def test_no_names_selects_nothing(self):
+        self.assertEqual(select([]), {})
 
 
 class TestFormatOutputs(unittest.TestCase):
@@ -312,6 +110,11 @@ class TestFormatOutputs(unittest.TestCase):
         self.assertEqual(
             format_outputs({"python": True, "bazel": False}), "python=true\nbazel=false\n"
         )
+
+    def test_order_follows_the_mapping(self):
+        # The caller's `--emit` order reaches $GITHUB_OUTPUT unchanged, which keeps a run's log
+        # readable against the workflow that produced it.
+        self.assertEqual(format_outputs({"b": False, "a": False}), "b=false\na=false\n")
 
     def test_empty(self):
         self.assertEqual(format_outputs({}), "")

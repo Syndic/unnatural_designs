@@ -3,15 +3,11 @@ load("@gazelle//:def.bzl", "gazelle")
 # gazelle:prefix github.com/Syndic/unnatural_designs
 gazelle(name = "gazelle")
 
-# Workflows read as *test data*, not built: three tests assert couplings that hold across files —
-# the classification rules these workflows pass to classify_changed_paths.py, the env var
-# devcontainer.yml sets for devcontainer.json's BASE_IMAGE override, and the Go toolchain step
-# security.yml's CodeQL job needs ahead of extraction. Each stays green while drifting, so the
-# tests read the real file.
+# Workflows read as *test data*, not built: several tests assert couplings that hold across files
+# and stay green while drifting, so each reads the real file rather than a fixture.
 exports_files([
     ".github/workflows/ci.yml",
     ".github/workflows/devcontainer.yml",
-    ".github/workflows/renovate-derived-files.yml",
     ".github/workflows/security.yml",
     # The canonical Python language level, read by //meta/scripts:test_check_python_version so
     # its sweep over the repo's real YAML compares against the same value CI does.

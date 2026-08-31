@@ -35,14 +35,14 @@
     },
     {
       "customType": "regex",
-      "managerFilePatterns": [ "/(^|/)Dockerfile$/" ],
+      "managerFilePatterns": [ "/^\\.devcontainer/Dockerfile$/" ],
       "matchStrings": [
         "#\\s*renovate:\\s*datasource=(?<datasource>[a-z-]+?)\\s+depName=(?<depName>\\S+?)\\s*\\nARG\\s+\\w+=(?<currentValue>\\S+)"
       ]
     },
     {
       "customType": "regex",
-      "managerFilePatterns": [ "/(^|/)post-create\\.sh$/" ],
+      "managerFilePatterns": [ "/^\\.devcontainer/post-create\\.sh$/" ],
       "matchStrings": [
         "#\\s*renovate:\\s*datasource=(?<datasource>[a-z-]+?)\\s+depName=(?<depName>\\S+?)\\s*\\n\\w+=(?<currentValue>\\S+)"
       ]

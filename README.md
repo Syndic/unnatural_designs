@@ -233,7 +233,7 @@ against [`.pre-commit-config.yaml`](.pre-commit-config.yaml).
 | ------------------- | -------------------------------------------- |
 | `bazel-mod-tidy`    | `go.mod`, `go.work`, `go.sum`                |
 | `uv-lock-fresh`     | `pyproject.toml`, `uv.lock`, `requirements_lock.txt` |
-| `base-image-pin`    | `meta/devcontainer-base/`, `MODULE.bazel`, `.bazelversion` |
+| `base-image-pin`    | every commit; acts on the base-image inputs in [`path_classification_pattern_sets.py`](meta/scripts/path_classification_pattern_sets.py) |
 | `ruff-check`        | `*.py` files                                 |
 | `ruff-format`       | `*.py` files                                 |
 | `gazelle`           | `*.go` files                                 |
