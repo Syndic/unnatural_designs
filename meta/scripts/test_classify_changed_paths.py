@@ -3,12 +3,6 @@
 Scoped to the script: the pure functions (is_branch_creation, select, classify, format_outputs)
 carry all the non-I/O logic, and the git diff and $GITHUB_OUTPUT wiring is exercised end-to-end by
 the caller workflows on real PRs.
-
-Deliberately nothing about *which* paths are in a set. That used to live here, read back out of the
-workflows' `--rule` arguments so the two copies could be held together — a job this suite should
-never have had. The sets are defined once in `path_classification_pattern_sets.py` now, and
-`test_path_classification_pattern_sets.py` covers them. `classify` is a regex loop and does not care
-where its patterns came from, so the fixtures below are synthetic.
 """
 
 import unittest
