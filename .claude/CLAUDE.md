@@ -108,13 +108,19 @@ the language's rather than something this repo implements. Consumers name a set;
 pattern. The rationale for each set lives beside it — this section carries only what is invisible
 from there:
 
-- **The set that matters is `BASE`, and it has two consumers that must agree.** `devcontainer.yml`
-  gates publishing a new base image on it; `renovate-derived-files.yml` re-derives
-  `.devcontainer/Dockerfile`'s pin from the `BAZEL` set inside it. A path in the second but not the
-  first writes a digest no job publishes — a red PR with no way to green it. They used to be two
-  regexes plus two long comments asking a reader to keep them in step, and they had already
-  diverged on anchoring. Composition (`CHANGED` splats `BASE` splats `BAZEL`) is what makes them
-  agree now.
+- **`BASE` is the publish gate; the pin is re-derived by whichever of three callers matches the
+  source of the change.** `devcontainer.yml` gates publishing a new base image on `BASE`. For the
+  pin: the `base-image-pin` pre-commit hook gates on `BASE`, so a human edit to the image's own
+  source re-pins in the same commit; `renovate-derived-files.yml` gates on `BAZEL`, because the
+  manifests are the only part of `BASE` Renovate can move — its `paths:` trigger does not include
+  the image source, and the pin itself is `enabled: false` in `renovate.json`; and
+  `//.devcontainer:test_base_image_pin` fails a commit that ran neither. So `BASE ⊃ BAZEL` is not a
+  gap on the publish-without-repinning side — the extra members are exactly the paths only a human
+  edit reaches, and the hook covers them. What the containment buys is the other direction: a path
+  that re-derives the pin must also trigger a publish, or the bump writes a digest no job pushes.
+  The two used to be separate regexes plus two long comments asking a reader to keep them in step,
+  and they had already diverged on anchoring; `CHANGED` splats `BASE` splats `BAZEL` is what makes
+  them agree now.
 - **`CHANGED` covers the module that defines it, deliberately.** The sets used to live in
   `devcontainer.yml`, which that workflow's own pattern matches, so editing them always forced a
   consumer build. Moving them out would have dropped that silently: a set edit that classifies
