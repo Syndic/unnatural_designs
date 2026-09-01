@@ -11,6 +11,7 @@ space and the footer does not; both spellings are real.
 
 import contextlib
 import io
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -179,10 +180,13 @@ class TestCheckMode(unittest.TestCase):
         script = verify_step_script()
         for state in sorted(emitted):
             with self.subTest(arm=state):
-                self.assertIn(f"{state})", script)
+                # Anchored to the start of a line, so it matches an arm rather than the text of
+                # one: a substring check would let a future comment inside this step that happens
+                # to contain "ticked)" stand in for the arm it names.
+                self.assertRegex(script, rf"(?m)^\s*{re.escape(state)}\)")
         # The catch-all is what turns an unrecognised state into a loud failure naming this repo,
         # rather than a silent fall-through to the timeout that blames Mend.
-        self.assertIn("*)", script)
+        self.assertRegex(script, r"(?m)^\s*\*\)")
 
 
 class TestTickManualJob(unittest.TestCase):
