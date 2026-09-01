@@ -276,7 +276,7 @@ jobs:
         if: steps.changed.outputs.devcontainer == 'true' && steps.ratify.outputs.conflicts == ''
         env:
           # renovate: datasource=npm depName=@devcontainers/cli
-          DEVCONTAINER_CLI_VERSION: "0.88.0"
+          DEVCONTAINER_CLI_VERSION: "0.89.0"
         run: npm install -g --ignore-scripts "@devcontainers/cli@${DEVCONTAINER_CLI_VERSION}"
 
       - name: Re-resolve the devcontainer feature lock

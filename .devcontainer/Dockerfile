@@ -21,7 +21,7 @@ ARG SHELLCHECK_VERSION=v0.11.0
 # later layers can layer `uv tool install ruff ty pre-commit` on top of it.
 # Pinned tag bumped by Renovate's docker manager (matches the pattern used in
 # ~/.dotfiles/.devcontainer/Dockerfile).
-COPY --from=ghcr.io/astral-sh/uv:0.12.7 /uv /uvx /usr/local/bin/
+COPY --from=ghcr.io/astral-sh/uv:0.12.9 /uv /uvx /usr/local/bin/
 
 # ruff: format + lint. Installed via `uv tool install` so the binary lives in
 # /usr/local/bin and `ruff` is on PATH for the pre-commit hooks and the VS Code
@@ -35,7 +35,7 @@ ARG RUFF_VERSION=0.16.5
 # binary lands on PATH for CI, pre-commit, and the `astral-sh.ty` editor
 # extension. UV_TOOL_{BIN_DIR,DIR} are shared across all uv tool installs.
 # renovate: datasource=pypi depName=ty
-ARG TY_VERSION=0.0.75
+ARG TY_VERSION=0.0.77
 # pre-commit: the hook runner. Installed via `uv tool install` (not pip) so
 # we have a single Python package manager in the devcontainer; the binary
 # lands at /usr/local/bin/pre-commit, so post-create.sh and any contributor

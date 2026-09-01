@@ -174,7 +174,7 @@ jobs:
       - name: Check the feature lock is in sync
         env:
           # renovate: datasource=npm depName=@devcontainers/cli
-          DEVCONTAINER_CLI_VERSION: "0.88.0"
+          DEVCONTAINER_CLI_VERSION: "0.89.0"
         run: |
           set -euo pipefail
           npm install -g --ignore-scripts "@devcontainers/cli@${DEVCONTAINER_CLI_VERSION}"
