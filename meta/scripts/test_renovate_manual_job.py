@@ -35,16 +35,19 @@ from meta.scripts.renovate_manual_job import (
 _WORKFLOW = (
     Path(__file__).parent.parent.parent / ".github/workflows/renovate-run-after-automerge.yml"
 )
-_VERIFY_STEP = "Verify Renovate acted on the request"
+# Both poll loops branch on `--check`'s output, so both are held to the same arms. The wait step
+# exists so an already-ticked box is waited out rather than failed; the verify step is what proves
+# Mend acted. Different purposes, identical vocabulary.
+_POLL_STEPS = ("Wait for a clear checkbox", "Verify Renovate acted on the request")
 
 
-def verify_step_script() -> str:
-    """The shell body of the poll step whose `case` arms this file pins."""
+def step_script(name: str) -> str:
+    """The shell body of the named step, whose `case` arms this file pins."""
     workflow = yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8"))
     for step in workflow["jobs"]["request-run"]["steps"]:
-        if step.get("name") == _VERIFY_STEP:
+        if step.get("name") == name:
             return step["run"]
-    raise AssertionError(f"no step named {_VERIFY_STEP!r} in {_WORKFLOW}")
+    raise AssertionError(f"no step named {name!r} in {_WORKFLOW}")
 
 
 MANUAL_JOB_LINE = (
@@ -177,16 +180,18 @@ class TestCheckMode(unittest.TestCase):
         }
         self.assertEqual(emitted, {STATE_CLEAR, STATE_TICKED, STATE_ABSENT})
 
-        script = verify_step_script()
-        for state in sorted(emitted):
-            with self.subTest(arm=state):
-                # Anchored to the start of a line, so it matches an arm rather than the text of
-                # one: a substring check would let a future comment inside this step that happens
-                # to contain "ticked)" stand in for the arm it names.
-                self.assertRegex(script, rf"(?m)^\s*{re.escape(state)}\)")
-        # The catch-all is what turns an unrecognised state into a loud failure naming this repo,
-        # rather than a silent fall-through to the timeout that blames Mend.
-        self.assertRegex(script, r"(?m)^\s*\*\)")
+        for step in _POLL_STEPS:
+            script = step_script(step)
+            for state in sorted(emitted):
+                with self.subTest(step=step, arm=state):
+                    # Anchored to the start of a line, so it matches an arm rather than the text
+                    # of one: a substring check would let a future comment inside the step that
+                    # happens to contain "ticked)" stand in for the arm it names.
+                    self.assertRegex(script, rf"(?m)^\s*{re.escape(state)}\)")
+            # The catch-all is what turns an unrecognised state into a loud failure naming this
+            # repo, rather than a silent fall-through to a timeout that blames Mend.
+            with self.subTest(step=step, arm="*"):
+                self.assertRegex(script, r"(?m)^\s*\*\)")
 
 
 class TestTickManualJob(unittest.TestCase):

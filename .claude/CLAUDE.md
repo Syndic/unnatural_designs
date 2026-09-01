@@ -441,6 +441,14 @@ fails if it never comes. Timing is measured, not guessed: ~37 s on 2026-08-01, a
 still rewrites the dashboard when it has nothing else to do. The ten-minute timeout is a wide
 margin over both.
 
+**A box already ticked when the probe wakes is waited out, not failed.** Someone ticking it by hand
+a minute before the cron is a working system, and reporting a failure there would be a false alarm
+against exactly the thing the probe exists to reassure us about. So it holds until the box is free
+and then takes its own turn, on the same interval and budget as the verify loop. What still fails
+is a box that *never* clears, which is the stuck state worth knowing about. This does not soften
+the rule that makes the probe meaningful: it only ever verifies a transition it caused, because it
+waits for a clear box rather than adopting someone else's request as evidence.
+
 **Why it is not in `ci.yml` or `security.yml`.** By the axis in "Which workflow a check belongs
 in" this is not a tree-only check, so `ci.yml` is wrong; and `security.yml` would fit the letter of
 the rule while making that workflow's green mean something muddier than it does today. The probe

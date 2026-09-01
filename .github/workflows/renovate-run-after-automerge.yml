@@ -91,6 +91,69 @@ jobs:
           # back into the body and accumulate one byte per run.
           gh api "repos/${REPO}/issues/${issue}" | jq -j .body > body.md
 
+      # A box already ticked when the probe wakes up is usually just unlucky timing: someone ticked
+      # it by hand a minute before the cron, and Renovate will clear it shortly. That is a working
+      # system, and failing on it would be a false alarm against the very thing this probe exists to
+      # reassure us about. So wait our turn instead. A box that *never* clears is the stuck state
+      # worth failing on, and the timeout below is where that verdict gets made rather than here.
+      #
+      # Skipped on `pull_request`: after a real automerge a pending request already achieves the
+      # goal, so there is nothing to wait for.
+      #
+      # Deliberately mirrors the verify loop at the end of this job — same interval, same budget,
+      # same transient-failure handling, same read-counting. Change one and change the other.
+      - name: Wait for a clear checkbox
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ISSUE: ${{ steps.dashboard.outputs.issue }}
+        run: |
+          set -euo pipefail
+          reads=0
+          for _ in $(seq 1 30); do
+            # Straight to a file, never through `$(…)`: command substitution strips trailing
+            # newlines, and body.md is PATCHed back verbatim.
+            gh api "repos/${REPO}/issues/${ISSUE}" | jq -j .body > body.next.md || {
+              echo "Poll attempt failed (transient?); retrying."
+              sleep 20
+              continue
+            }
+            reads=$((reads + 1))
+            state=$(python3 meta/scripts/renovate_manual_job.py --check < body.next.md)
+            case "${state}" in
+              clear)
+                mv body.next.md body.md
+                echo "Checkbox is clear; taking our own turn."
+                exit 0
+                ;;
+              ticked)
+                # Someone else's request is in flight. Expected, and the reason this step exists.
+                ;;
+              absent)
+                echo "::error::The '<!-- manual job -->' checkbox is missing from the dashboard."
+                exit 1
+                ;;
+              *)
+                echo "::error::Unrecognised --check state '${state}' — this repo's script, not Mend."
+                exit 1
+                ;;
+            esac
+            sleep 20
+          done
+          if [ "${reads}" -eq 0 ]; then
+            echo "Every poll failed, so the checkbox was never read even once. That points at this"
+            echo "job's access — a revoked token, a permissions change, a network partition —"
+            echo "rather than at anything about the checkbox."
+            echo "::error::Could not read the dashboard on any poll; suspect API access."
+            exit 1
+          fi
+          echo "The checkbox stayed ticked for ten minutes, so a request made before this run began"
+          echo "was never consumed. That is the stuck state this probe looks for: read the job log"
+          echo "at developer.mend.io to see whether Renovate is running at all."
+          echo "::error::Checkbox stuck ticked for 10 minutes — an earlier request went unconsumed."
+          exit 1
+
       - name: Tick the manual-job checkbox
         id: tick
         run: python3 meta/scripts/renovate_manual_job.py < body.md > body.new.md
@@ -109,16 +172,17 @@ jobs:
         run: |
           echo "::notice::Checkbox already ticked; a Renovate run is pending, which is what this workflow wanted."
 
-      # On the probe's own triggers the same result is a dead end rather than a shortcut: we sent
-      # nothing, so whoever clears the box next tells us nothing about Mend still acting on
-      # `github-actions[bot]`. Watching someone else's request get consumed and calling that a pass
-      # is precisely the fail-open shape this probe exists to remove, so refuse to guess.
+      # On the probe's own triggers this is now only reachable by losing a race with the step
+      # above — the box was clear when we checked and ticked between then and the read here. Still
+      # a failure rather than a shrug: we sent nothing, so whoever clears the box next tells us
+      # nothing about Mend still acting on `github-actions[bot]`, and calling that a pass is the
+      # fail-open shape this probe exists to remove. Rare enough that a re-run is the fix.
       - name: Fail if the probe could not send its own request
         if: steps.tick.outputs.status == 'already-ticked' && github.event_name != 'pull_request'
         run: |
-          echo "The checkbox was already ticked, so this run made no edit and nothing to verify."
-          echo "Someone ticked it by hand, or an earlier request was never consumed. Re-run once"
-          echo "the box is clear; if it never clears, that is the rot this probe looks for."
+          echo "The checkbox was ticked between the wait step clearing it and this read, so this"
+          echo "run made no edit and has nothing to verify. That is a lost race rather than a"
+          echo "fault: re-run, and the wait step will hold until the box is free again."
           echo "::error::Probe could not send its own request — checkbox was already ticked."
           exit 1
 

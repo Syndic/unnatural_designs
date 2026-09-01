@@ -516,7 +516,8 @@ the checkbox's existence, and Mend's willingness to act on an edit from `github-
 all outside this repo, and none of them changes a file here when it stops being true. A monthly
 scheduled run therefore exercises the real path — ticking the box and waiting for Renovate to clear
 it, failing if it never does — rather than a dry run that could pass while the live path was broken.
-It costs one extra Renovate job a month.
+A request already in flight when it wakes is waited out rather than failed, so unlucky timing is not
+mistaken for rot. It costs one extra Renovate job a month.
 
 That checkbox is Mend's own, not OSS Renovate's, and on the Community tier it is the only way to
 request a run — there is no public trigger API. Renovate unticks it during the run it starts, so
