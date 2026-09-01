@@ -100,8 +100,11 @@ jobs:
       # Skipped on `pull_request`: after a real automerge a pending request already achieves the
       # goal, so there is nothing to wait for.
       #
-      # Deliberately mirrors the verify loop at the end of this job — same interval, same budget,
-      # same transient-failure handling, same read-counting. Change one and change the other.
+      # Shares the verify loop's interval, budget and read-counting, and deliberately differs from
+      # it twice — so do not "align" the two. This reads before sleeping, because its common case
+      # is a clear box and should cost nothing, where verify sleeps first because Renovate needs
+      # ~37s. And the retry guard here covers only the fetch: a `--check` over a local file cannot
+      # fail transiently, so letting it stop the step is the honest response.
       - name: Wait for a clear checkbox
         if: github.event_name != 'pull_request'
         env:
