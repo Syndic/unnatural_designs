@@ -9,7 +9,11 @@ guarantee is tested against the layout that actually ships. Note the sibling row
 space and the footer does not; both spellings are real.
 """
 
+import contextlib
+import io
+import sys
 import unittest
+from unittest import mock
 
 from meta.scripts.renovate_manual_job import (
     ABSENT,
@@ -18,6 +22,7 @@ from meta.scripts.renovate_manual_job import (
     STATE_CLEAR,
     STATE_TICKED,
     TICKED,
+    main,
     manual_job_state,
     tick_manual_job,
 )
@@ -96,6 +101,60 @@ class TestManualJobState(unittest.TestCase):
             with self.subTest(state=state):
                 self.assertEqual(manual_job_state(body), state)
                 self.assertEqual(tick_manual_job(body)[1], status)
+
+
+class TestCheckMode(unittest.TestCase):
+    """`--check` is the CLI renovate-run-after-automerge.yml's polling loop actually invokes.
+
+    The state tests above call `manual_job_state` directly, which leaves the wiring between it and
+    the workflow untested: a stray `print` in the `--check` arm, or routing the answer through
+    `$GITHUB_OUTPUT` instead of stdout, would keep every other test green while the loop read a
+    state it has no arm for and ran out its ten-minute clock blaming Mend. So assert the exact
+    bytes on stdout, not merely that the right word appears somewhere in them.
+    """
+
+    def _check(self, body):
+        out = io.StringIO()
+        with mock.patch.object(sys, "stdin", io.StringIO(body)), contextlib.redirect_stdout(out):
+            code = main(["--check"])
+        return code, out.getvalue()
+
+    def test_clear(self):
+        self.assertEqual(self._check(DASHBOARD), (0, "clear\n"))
+
+    def test_ticked(self):
+        ticked, _ = tick_manual_job(DASHBOARD)
+        self.assertEqual(self._check(ticked), (0, "ticked\n"))
+
+    def test_absent(self):
+        self.assertEqual(self._check(DASHBOARD.replace(MANUAL_JOB_LINE, "")), (0, "absent\n"))
+
+    def test_empty_body(self):
+        self.assertEqual(self._check(""), (0, "absent\n"))
+
+    def test_emits_only_the_state(self):
+        # The workflow captures stdout wholesale; anything else on it becomes the state string.
+        _, out = self._check(DASHBOARD)
+        self.assertEqual(out.splitlines(), ["clear"])
+
+    def test_check_does_not_write_the_body(self):
+        # `--check` returns before the transform, so a caller cannot mistake it for a tick.
+        _, out = self._check(DASHBOARD)
+        self.assertNotIn("<!-- manual job -->", out)
+
+    def test_every_state_has_a_workflow_arm(self):
+        # The loop branches on clear/ticked/absent and fails loudly on anything else; a state the
+        # CLI can emit but the case cannot name would be that loud failure instead of a verdict.
+        emitted = {
+            self._check(body)[1].strip()
+            for body in (
+                DASHBOARD,
+                tick_manual_job(DASHBOARD)[0],
+                DASHBOARD.replace(MANUAL_JOB_LINE, ""),
+                "",
+            )
+        }
+        self.assertEqual(emitted, {STATE_CLEAR, STATE_TICKED, STATE_ABSENT})
 
 
 class TestTickManualJob(unittest.TestCase):

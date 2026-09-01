@@ -505,10 +505,11 @@ until the next scheduled run, a window measured at a 6.7 hour median.
 | [`renovate-run-after-automerge.yml`](.github/workflows/renovate-run-after-automerge.yml) | a PR closed as merged by `renovate[bot]`, `workflow_dispatch`, or a monthly schedule | ticks the "manual job" checkbox on the Dependency Dashboard, which requests a Renovate run |
 
 No `packageRule` currently sets `automerge`, so the `pull_request` half of that trigger is dormant
-and the workflow is reached by `workflow_dispatch` alone. It stays wired because the gap belongs to
-automerge itself rather than to any one rule: re-enable automerge anywhere and it starts closing
-that gap again with no edit. Re-enabling — which rule deserves it, and what to watch the first time
-it fires — is tracked in [#286](https://github.com/Syndic/unnatural_designs/issues/286).
+and the workflow is reached by `workflow_dispatch` and the monthly probe below. It stays wired
+because the gap belongs to automerge itself rather than to any one rule: re-enable automerge
+anywhere and it starts closing that gap again with no edit. Re-enabling — which rule deserves it,
+and what to watch the first time it fires — is tracked in
+[#286](https://github.com/Syndic/unnatural_designs/issues/286).
 
 Because it is dormant, nothing would otherwise notice it breaking: the dashboard's discoverability,
 the checkbox's existence, and Mend's willingness to act on an edit from `github-actions[bot]` are

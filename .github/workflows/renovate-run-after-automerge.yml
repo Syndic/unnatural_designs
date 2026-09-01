@@ -103,12 +103,24 @@ jobs:
           echo "::error::Dashboard has no '<!-- manual job -->' checkbox — Mend may have changed it."
           exit 1
 
-      # Expected when a request is already pending, but a box stuck ticked would make every later
-      # automerge a silent no-op — so surface it in the run summary rather than only the step log.
+      # After a real automerge a pending request already achieves the goal, so note it and move on.
       - name: Note an already-pending request
-        if: steps.tick.outputs.status == 'already-ticked'
+        if: steps.tick.outputs.status == 'already-ticked' && github.event_name == 'pull_request'
         run: |
-          echo "::notice::Checkbox already ticked; a Renovate run is pending. If this repeats across automerges, the earlier request never reached Mend."
+          echo "::notice::Checkbox already ticked; a Renovate run is pending, which is what this workflow wanted."
+
+      # On the probe's own triggers the same result is a dead end rather than a shortcut: we sent
+      # nothing, so whoever clears the box next tells us nothing about Mend still acting on
+      # `github-actions[bot]`. Watching someone else's request get consumed and calling that a pass
+      # is precisely the fail-open shape this probe exists to remove, so refuse to guess.
+      - name: Fail if the probe could not send its own request
+        if: steps.tick.outputs.status == 'already-ticked' && github.event_name != 'pull_request'
+        run: |
+          echo "The checkbox was already ticked, so this run made no edit and nothing to verify."
+          echo "Someone ticked it by hand, or an earlier request was never consumed. Re-run once"
+          echo "the box is clear; if it never clears, that is the rot this probe looks for."
+          echo "::error::Probe could not send its own request — checkbox was already ticked."
+          exit 1
 
       # jq -Rs builds the JSON string, so a body containing quotes or backslashes survives intact.
       - name: Request a Renovate run
@@ -129,13 +141,16 @@ jobs:
       # starts. Measured at ~37s twice: 2026-08-01, and 2026-08-28 with no open Renovate PRs at
       # all, so ten minutes is a wide margin rather than a guess.
       #
-      # An `already-ticked` result reaches here too, and should: a box still ticked from a previous
-      # request is exactly the stuck state worth failing on.
+      # Gated on `ticked` so this only ever judges a transition *we* caused; `already-ticked` fails
+      # in the step above rather than borrowing someone else's request as evidence. A Renovate run
+      # we did not trigger can still clear our box inside the window (~2.5% of probes at the
+      # measured 6.7 h schedule median), which reads as a pass — accepted, because the alternative
+      # is asking Mend which webhook started a run, and it does not say.
       #
       # Skipped on `pull_request`: after a real automerge the request either works or the stale PRs
       # make it obvious, and holding a runner for ten minutes to re-learn that buys nothing.
       - name: Verify Renovate acted on the request
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && steps.tick.outputs.status == 'ticked'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
@@ -144,16 +159,32 @@ jobs:
           set -euo pipefail
           for _ in $(seq 1 30); do
             sleep 20
+            # `|| continue` because one 502 out of thirty calls should not end the poll: under
+            # `set -e` a failed substitution exits the step immediately, skipping every diagnostic
+            # below it. Still fail-closed — a persistent failure just runs out the clock.
             state=$(gh api "repos/${REPO}/issues/${ISSUE}" | jq -j .body \
-              | python3 meta/scripts/renovate_manual_job.py --check)
+              | python3 meta/scripts/renovate_manual_job.py --check) || {
+              echo "Poll attempt failed (transient?); retrying."
+              continue
+            }
             case "${state}" in
               clear)
                 echo "Renovate cleared the checkbox; the request was received and acted on."
                 exit 0
                 ;;
+              ticked)
+                # Not yet consumed. The expected state for the first poll or two.
+                ;;
               absent)
                 echo "The checkbox disappeared while polling, so Mend has changed the dashboard."
                 echo "::error::The '<!-- manual job -->' checkbox vanished mid-poll."
+                exit 1
+                ;;
+              *)
+                # A state this loop does not know. Blaming Mend for it would send the reader to
+                # developer.mend.io for a defect that is ours, so say whose it is.
+                echo "renovate_manual_job.py --check printed an unrecognised state: '${state}'."
+                echo "::error::Unrecognised --check state '${state}' — this repo's script, not Mend."
                 exit 1
                 ;;
             esac
