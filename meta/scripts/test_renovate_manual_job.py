@@ -13,8 +13,10 @@ import contextlib
 import io
 import sys
 import unittest
+from pathlib import Path
 from unittest import mock
 
+import yaml
 from meta.scripts.renovate_manual_job import (
     ABSENT,
     ALREADY_TICKED,
@@ -26,6 +28,23 @@ from meta.scripts.renovate_manual_job import (
     manual_job_state,
     tick_manual_job,
 )
+
+# Not .resolve(): the workflow is a cross-package data dep, so it lives in the runfiles tree
+# beside this file rather than at the source path a resolved symlink would lead back to.
+_WORKFLOW = (
+    Path(__file__).parent.parent.parent / ".github/workflows/renovate-run-after-automerge.yml"
+)
+_VERIFY_STEP = "Verify Renovate acted on the request"
+
+
+def verify_step_script() -> str:
+    """The shell body of the poll step whose `case` arms this file pins."""
+    workflow = yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8"))
+    for step in workflow["jobs"]["request-run"]["steps"]:
+        if step.get("name") == _VERIFY_STEP:
+            return step["run"]
+    raise AssertionError(f"no step named {_VERIFY_STEP!r} in {_WORKFLOW}")
+
 
 MANUAL_JOB_LINE = (
     "- [ ] <!-- manual job -->Check this box to trigger a request for Renovate "
@@ -143,8 +162,9 @@ class TestCheckMode(unittest.TestCase):
         self.assertNotIn("<!-- manual job -->", out)
 
     def test_every_state_has_a_workflow_arm(self):
-        # The loop branches on clear/ticked/absent and fails loudly on anything else; a state the
-        # CLI can emit but the case cannot name would be that loud failure instead of a verdict.
+        # Named for the workflow, so it reads the workflow. The CLI's emitted set and the poll
+        # loop's `case` arms are two halves of one contract; asserting only the Python half would
+        # leave a deleted arm green here and a ten-minute timeout in production.
         emitted = {
             self._check(body)[1].strip()
             for body in (
@@ -155,6 +175,14 @@ class TestCheckMode(unittest.TestCase):
             )
         }
         self.assertEqual(emitted, {STATE_CLEAR, STATE_TICKED, STATE_ABSENT})
+
+        script = verify_step_script()
+        for state in sorted(emitted):
+            with self.subTest(arm=state):
+                self.assertIn(f"{state})", script)
+        # The catch-all is what turns an unrecognised state into a loud failure naming this repo,
+        # rather than a silent fall-through to the timeout that blames Mend.
+        self.assertIn("*)", script)
 
 
 class TestTickManualJob(unittest.TestCase):

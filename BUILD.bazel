@@ -8,6 +8,7 @@ gazelle(name = "gazelle")
 exports_files([
     ".github/workflows/ci.yml",
     ".github/workflows/devcontainer.yml",
+    ".github/workflows/renovate-run-after-automerge.yml",
     ".github/workflows/security.yml",
     # The canonical Python language level, read by //meta/scripts:test_check_python_version so
     # its sweep over the repo's real YAML compares against the same value CI does.

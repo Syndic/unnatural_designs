@@ -157,6 +157,8 @@ jobs:
           ISSUE: ${{ steps.dashboard.outputs.issue }}
         run: |
           set -euo pipefail
+          # Counted so the timeout below can tell "Mend never answered" from "we never asked".
+          reads=0
           for _ in $(seq 1 30); do
             sleep 20
             # `|| continue` because one 502 out of thirty calls should not end the poll: under
@@ -167,6 +169,7 @@ jobs:
               echo "Poll attempt failed (transient?); retrying."
               continue
             }
+            reads=$((reads + 1))
             case "${state}" in
               clear)
                 echo "Renovate cleared the checkbox; the request was received and acted on."
@@ -189,6 +192,13 @@ jobs:
                 ;;
             esac
           done
+          if [ "${reads}" -eq 0 ]; then
+            echo "Every poll failed, so the checkbox was never read even once. That points at this"
+            echo "job's access — a revoked token, a permissions change, a network partition —"
+            echo "rather than at Mend, which we never got far enough to ask."
+            echo "::error::Could not read the dashboard on any poll; suspect API access, not Mend."
+            exit 1
+          fi
           echo "The edit landed but the checkbox never cleared. Either Mend stopped enqueueing"
           echo "jobs for this sender, or its queue is badly backed up. Read the job log at"
           echo "developer.mend.io before assuming this workflow is at fault."
