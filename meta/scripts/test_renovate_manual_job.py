@@ -9,14 +9,46 @@ guarantee is tested against the layout that actually ships. Note the sibling row
 space and the footer does not; both spellings are real.
 """
 
+import contextlib
+import io
+import re
+import sys
 import unittest
+from pathlib import Path
+from unittest import mock
 
+import yaml
 from meta.scripts.renovate_manual_job import (
     ABSENT,
     ALREADY_TICKED,
+    STATE_ABSENT,
+    STATE_CLEAR,
+    STATE_TICKED,
     TICKED,
+    main,
+    manual_job_state,
     tick_manual_job,
 )
+
+# Not .resolve(): the workflow is a cross-package data dep, so it lives in the runfiles tree
+# beside this file rather than at the source path a resolved symlink would lead back to.
+_WORKFLOW = (
+    Path(__file__).parent.parent.parent / ".github/workflows/renovate-run-after-automerge.yml"
+)
+# Both poll loops branch on `--check`'s output, so both are held to the same arms. The wait step
+# exists so an already-ticked box is waited out rather than failed; the verify step is what proves
+# Mend acted. Different purposes, identical vocabulary.
+_POLL_STEPS = ("Wait for a clear checkbox", "Verify Renovate acted on the request")
+
+
+def step_script(name: str) -> str:
+    """The shell body of the named step, whose `case` arms this file pins."""
+    workflow = yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8"))
+    for step in workflow["jobs"]["request-run"]["steps"]:
+        if step.get("name") == name:
+            return step["run"]
+    raise AssertionError(f"no step named {name!r} in {_WORKFLOW}")
+
 
 MANUAL_JOB_LINE = (
     "- [ ] <!-- manual job -->Check this box to trigger a request for Renovate "
@@ -48,6 +80,118 @@ class TestStatusContract(unittest.TestCase):
         # constants elsewhere would let a rename pass every test while the workflow's
         # missing-checkbox guard silently stopped firing.
         self.assertEqual((TICKED, ALREADY_TICKED, ABSENT), ("ticked", "already-ticked", "absent"))
+
+    def test_state_values_are_the_probe_contract(self):
+        # The scheduled probe's polling loop branches on these literals coming out of `--check`.
+        self.assertEqual((STATE_CLEAR, STATE_TICKED, STATE_ABSENT), ("clear", "ticked", "absent"))
+
+
+class TestManualJobState(unittest.TestCase):
+    """`manual_job_state` backs the scheduled probe's wait-for-Renovate-to-clear-it loop."""
+
+    def test_clear_when_unticked(self):
+        self.assertEqual(manual_job_state(DASHBOARD), STATE_CLEAR)
+
+    def test_ticked_after_our_own_edit(self):
+        # The exact transition the probe watches: we tick, then poll until Renovate clears it.
+        ticked, _ = tick_manual_job(DASHBOARD)
+        self.assertEqual(manual_job_state(ticked), STATE_TICKED)
+
+    def test_ticked_uppercase(self):
+        self.assertEqual(
+            manual_job_state(DASHBOARD.replace("- [ ] <!-- manual job", "- [X] <!-- manual job")),
+            STATE_TICKED,
+        )
+
+    def test_absent_without_the_marker(self):
+        self.assertEqual(manual_job_state(DASHBOARD.replace(MANUAL_JOB_LINE, "")), STATE_ABSENT)
+
+    def test_absent_on_empty_body(self):
+        self.assertEqual(manual_job_state(""), STATE_ABSENT)
+
+    def test_agrees_with_the_transform(self):
+        # The drift guard. A probe that recognised a shape the transform no longer writes would
+        # report `clear` forever and pass while the mechanism was broken, so pin the two together.
+        cases = {
+            DASHBOARD: (STATE_CLEAR, TICKED),
+            DASHBOARD.replace("- [ ] <!-- manual job", "- [x] <!-- manual job"): (
+                STATE_TICKED,
+                ALREADY_TICKED,
+            ),
+            DASHBOARD.replace(MANUAL_JOB_LINE, ""): (STATE_ABSENT, ABSENT),
+        }
+        for body, (state, status) in cases.items():
+            with self.subTest(state=state):
+                self.assertEqual(manual_job_state(body), state)
+                self.assertEqual(tick_manual_job(body)[1], status)
+
+
+class TestCheckMode(unittest.TestCase):
+    """`--check` is the CLI renovate-run-after-automerge.yml's polling loop actually invokes.
+
+    The state tests above call `manual_job_state` directly, which leaves the wiring between it and
+    the workflow untested: a stray `print` in the `--check` arm, or routing the answer through
+    `$GITHUB_OUTPUT` instead of stdout, would keep every other test green while the loop read a
+    state it has no arm for and ran out its ten-minute clock blaming Mend. So assert the exact
+    bytes on stdout, not merely that the right word appears somewhere in them.
+    """
+
+    def _check(self, body):
+        out = io.StringIO()
+        with mock.patch.object(sys, "stdin", io.StringIO(body)), contextlib.redirect_stdout(out):
+            code = main(["--check"])
+        return code, out.getvalue()
+
+    def test_clear(self):
+        self.assertEqual(self._check(DASHBOARD), (0, "clear\n"))
+
+    def test_ticked(self):
+        ticked, _ = tick_manual_job(DASHBOARD)
+        self.assertEqual(self._check(ticked), (0, "ticked\n"))
+
+    def test_absent(self):
+        self.assertEqual(self._check(DASHBOARD.replace(MANUAL_JOB_LINE, "")), (0, "absent\n"))
+
+    def test_empty_body(self):
+        self.assertEqual(self._check(""), (0, "absent\n"))
+
+    def test_emits_only_the_state(self):
+        # The workflow captures stdout wholesale; anything else on it becomes the state string.
+        _, out = self._check(DASHBOARD)
+        self.assertEqual(out.splitlines(), ["clear"])
+
+    def test_check_does_not_write_the_body(self):
+        # `--check` returns before the transform, so a caller cannot mistake it for a tick.
+        _, out = self._check(DASHBOARD)
+        self.assertNotIn("<!-- manual job -->", out)
+
+    def test_every_state_has_a_workflow_arm(self):
+        # Named for the workflow, so it reads the workflow. The CLI's emitted set and the poll
+        # loop's `case` arms are two halves of one contract; asserting only the Python half would
+        # leave a deleted arm green here and a ten-minute timeout in production.
+        emitted = {
+            self._check(body)[1].strip()
+            for body in (
+                DASHBOARD,
+                tick_manual_job(DASHBOARD)[0],
+                DASHBOARD.replace(MANUAL_JOB_LINE, ""),
+                "",
+            )
+        }
+        self.assertEqual(emitted, {STATE_CLEAR, STATE_TICKED, STATE_ABSENT})
+
+        for step in _POLL_STEPS:
+            script = step_script(step)
+            for state in sorted(emitted):
+                with self.subTest(step=step, arm=state):
+                    # Anchored to the start of a line, so it matches an arm rather than the text
+                    # of one: a substring check would let a future comment inside the step that
+                    # happens to contain "ticked)" stand in for the arm it names.
+                    self.assertRegex(script, rf"(?m)^\s*{re.escape(state)}\)")
+            # The catch-all is what turns an unrecognised state into a loud failure naming this
+            # repo, rather than a silent fall-through to a timeout that blames Mend.
+            with self.subTest(step=step, arm="*"):
+                self.assertRegex(script, r"(?m)^\s*\*\)")
 
 
 class TestTickManualJob(unittest.TestCase):

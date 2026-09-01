@@ -385,8 +385,14 @@ py_test(
     name = "test_renovate_manual_job",
     size = "small",
     srcs = ["test_renovate_manual_job.py"],
+    # The real workflow: the CLI's emitted states and the poll loop's `case` arms are two halves
+    # of one contract, and a fixture could not catch an arm being deleted from the live file.
+    data = ["//:.github/workflows/renovate-run-after-automerge.yml"],
     main = "test_renovate_manual_job.py",
-    deps = [":renovate_manual_job_lib"],
+    deps = [
+        ":renovate_manual_job_lib",
+        requirement("pyyaml"),
+    ],
 )
 
 py_library(
