@@ -73,7 +73,7 @@ repos:
 
       - id: check-secrets-dir
         name: check secrets directory
-        language: python
+        language: system
         entry: python meta/scripts/check_secrets_dir.py
         pass_filenames: true
         files: ^secrets/

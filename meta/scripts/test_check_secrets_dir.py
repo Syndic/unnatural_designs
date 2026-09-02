@@ -1,8 +1,5 @@
 """Tests for check_secrets_dir.py."""
 
-import os
-import subprocess
-import sys
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -97,9 +94,7 @@ class TestTrackedFiles(unittest.TestCase):
     """The git invocation itself. Pinned because *tracked* is the load-bearing word."""
 
     def setUp(self):
-        # Patched on `_workspace` itself: check_secrets_dir imports the helper inside
-        # tracked_files(), so there is no module-scope name to patch.
-        root = patch("meta.scripts._workspace.workspace_root", return_value=Path("/repo"))
+        root = patch("meta.scripts.check_secrets_dir.workspace_root", return_value=Path("/repo"))
         root.start()
         self.addCleanup(root.stop)
 
@@ -126,31 +121,6 @@ class TestTrackedFiles(unittest.TestCase):
     def test_blank_output_yields_no_files(self):
         with self._ls_files("\n"):
             self.assertEqual(tracked_files(), [])
-
-
-class TestFilenamePathStaysPortable(unittest.TestCase):
-    """The pre-commit hook is the repo's only `language: python` hook, so it runs on an
-    interpreter nobody pins. `_workspace` is 3.14-only (PEP 758), so the filename path must not
-    reach it -- seven sibling guards import it at module scope, which makes a transitive pull
-    the likely regression rather than an exotic one."""
-
-    def test_importing_the_module_does_not_pull_in_the_workspace_helper(self):
-        # Observes the effect rather than the syntax: importing any sibling guard re-couples
-        # just as surely as importing `_workspace` directly, and names it nowhere in this file.
-        # Runs in a subprocess because this test module has already imported `_workspace`
-        # itself, so an in-process `sys.modules` check would always see it.
-        probe = (
-            "import sys, meta.scripts.check_secrets_dir; "
-            "print('meta.scripts._workspace' in sys.modules)"
-        )
-        result = subprocess.run(
-            [sys.executable, "-c", probe],
-            capture_output=True,
-            text=True,
-            check=True,
-            env={**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)},
-        )
-        self.assertEqual(result.stdout.strip(), "False")
 
 
 if __name__ == "__main__":
