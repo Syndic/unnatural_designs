@@ -649,7 +649,6 @@ class TestMain(unittest.TestCase):
 
         with (
             tempfile.TemporaryDirectory() as tmp,
-            mock.patch.object(check_modules, "workspace_root", return_value=Path(tmp)),
             mock.patch.object(check_modules, "check_module_configs", side_effect=fake_configs),
             mock.patch.object(
                 check_modules,
@@ -680,7 +679,7 @@ class TestMain(unittest.TestCase):
             ),
             mock.patch("sys.stdout", new_callable=io.StringIO) as stdout,
         ):
-            rc = check_modules.main()
+            rc = check_modules.check(Path(tmp))
         return rc, stdout.getvalue()
 
     def test_all_clean_prints_success(self):
@@ -743,6 +742,24 @@ class TestMain(unittest.TestCase):
             check_modules.main()
         # Exactly one call — the Go-branch in the LANGUAGES loop, no Python double-run.
         self.assertEqual(len(matrix_calls), 1)
+
+
+class TestMainExitStatus(unittest.TestCase):
+    """main() reports pass/fail, never the finding count -- see _workspace.exit_status."""
+
+    def test_a_truncating_count_still_fails(self):
+        with (
+            mock.patch.object(check_modules, "workspace_root", return_value=Path("/fake")),
+            mock.patch.object(check_modules, "check", return_value=256),
+        ):
+            self.assertEqual(check_modules.main(), 1)
+
+    def test_no_findings_still_passes(self):
+        with (
+            mock.patch.object(check_modules, "workspace_root", return_value=Path("/fake")),
+            mock.patch.object(check_modules, "check", return_value=0),
+        ):
+            self.assertEqual(check_modules.main(), 0)
 
 
 if __name__ == "__main__":

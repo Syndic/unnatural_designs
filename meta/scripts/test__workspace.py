@@ -9,7 +9,28 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from meta.scripts._workspace import col_range, find_files, is_skipped
+from meta.scripts._workspace import col_range, exit_status, find_files, is_skipped
+
+
+class TestExitStatus(unittest.TestCase):
+    """The boundary that keeps a finding count out of the process status."""
+
+    def test_no_findings_is_success(self):
+        self.assertEqual(exit_status(0), 0)
+
+    def test_one_finding_is_failure(self):
+        self.assertEqual(exit_status(1), 1)
+
+    def test_the_truncating_count_is_still_failure(self):
+        # sys.exit(256) leaves the shell with status 0, which is the case this exists for.
+        self.assertEqual(exit_status(256), 1)
+
+    def test_shell_reserved_counts_are_still_failure(self):
+        # 126 not-executable, 127 not-found, 128+n signalled, 255 out-of-range: a count landing
+        # on any of these would impersonate a different failure rather than report its own.
+        for n in (126, 127, 128, 137, 255):
+            with self.subTest(count=n):
+                self.assertEqual(exit_status(n), 1)
 
 
 class TestIsSkipped(unittest.TestCase):

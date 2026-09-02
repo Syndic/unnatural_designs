@@ -56,6 +56,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from meta.scripts._workflows import unrecognised_matrix_keys, workflow_matrix_lists
 from meta.scripts._workspace import (
     col_range,
+    exit_status,
     find_go_modules,
     find_python_projects,
     workspace_root,
@@ -390,8 +391,7 @@ def check_uv_lock_fresh(root: Path) -> int:
 # ── Driver ────────────────────────────────────────────────────────────────────
 
 
-def main() -> int:
-    root = workspace_root()
+def check(root: Path) -> int:
 
     errors = 0
     for language in LANGUAGES:
@@ -415,6 +415,10 @@ def main() -> int:
     if errors == 0:
         print("All modules and workspace invariants are consistent.")
     return errors
+
+
+def main() -> int:
+    return exit_status(check(workspace_root()))
 
 
 if __name__ == "__main__":

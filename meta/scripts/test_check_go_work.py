@@ -129,14 +129,13 @@ class TestMain(unittest.TestCase):
         else:
             reg_locs = {Path(p): 1 for p in registered}
         with (
-            mock.patch.object(check_go_work, "workspace_root", return_value=Path("/fake")),
             mock.patch.object(
                 check_go_work, "find_go_modules", return_value={Path(p) for p in found}
             ),
             mock.patch.object(check_go_work, "registered_modules", return_value=reg_locs),
             mock.patch("sys.stdout", new_callable=io.StringIO) as stdout,
         ):
-            rc = check_go_work.main()
+            rc = check_go_work.check(Path("/fake"))
         return rc, stdout.getvalue()
 
     def test_consistent(self):
@@ -176,6 +175,24 @@ class TestMain(unittest.TestCase):
         alpha = out.index("./tools/alpha")
         zebra = out.index("./tools/zebra")
         self.assertLess(alpha, zebra)
+
+
+class TestMainExitStatus(unittest.TestCase):
+    """main() reports pass/fail, never the finding count -- see _workspace.exit_status."""
+
+    def test_a_truncating_count_still_fails(self):
+        with (
+            mock.patch.object(check_go_work, "workspace_root", return_value=Path("/fake")),
+            mock.patch.object(check_go_work, "check", return_value=256),
+        ):
+            self.assertEqual(check_go_work.main(), 1)
+
+    def test_no_findings_still_passes(self):
+        with (
+            mock.patch.object(check_go_work, "workspace_root", return_value=Path("/fake")),
+            mock.patch.object(check_go_work, "check", return_value=0),
+        ):
+            self.assertEqual(check_go_work.main(), 0)
 
 
 if __name__ == "__main__":

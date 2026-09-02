@@ -35,6 +35,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from meta.scripts._workspace import (
+    exit_status,
     find_files,
     registered_modules,
     workspace_root,
@@ -147,7 +148,7 @@ def check(root: Path) -> int:
 
 
 def main() -> int:
-    return check(workspace_root())
+    return exit_status(check(workspace_root()))
 
 
 if __name__ == "__main__":

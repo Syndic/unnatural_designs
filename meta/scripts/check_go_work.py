@@ -18,14 +18,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from meta.scripts._workspace import (
     col_range,
+    exit_status,
     find_go_modules,
     registered_modules,
     workspace_root,
 )
 
 
-def main() -> int:
-    root = workspace_root()
+def check(root: Path) -> int:
     registered_locs = registered_modules(root)
     registered = set(registered_locs)
     found = find_go_modules(root)
@@ -50,6 +50,10 @@ def main() -> int:
         print("go.work is consistent with all go.mod files.")
 
     return errors
+
+
+def main() -> int:
+    return exit_status(check(workspace_root()))
 
 
 if __name__ == "__main__":
