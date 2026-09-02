@@ -281,12 +281,14 @@ py_test(
 py_library(
     name = "check_secrets_dir_lib",
     srcs = ["check_secrets_dir.py"],
+    deps = [":_workspace_lib"],
 )
 
 py_binary(
     name = "check_secrets_dir",
     srcs = ["check_secrets_dir.py"],
     main = "check_secrets_dir.py",
+    deps = [":_workspace_lib"],
 )
 
 py_test(
@@ -294,7 +296,10 @@ py_test(
     size = "small",
     srcs = ["test_check_secrets_dir.py"],
     main = "test_check_secrets_dir.py",
-    deps = [":check_secrets_dir_lib"],
+    deps = [
+        ":_workspace_lib",
+        ":check_secrets_dir_lib",
+    ],
 )
 
 py_library(
