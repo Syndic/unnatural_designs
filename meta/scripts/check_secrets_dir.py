@@ -18,8 +18,6 @@ from pathlib import Path
 # pre-commit), the workspace root is not on sys.path, so `from meta.scripts.X` would fail.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from meta.scripts._workspace import workspace_root
-
 _SECRETS_DIR = "secrets"
 
 _ALLOWED = frozenset([Path("secrets/secrets.md")])
@@ -31,6 +29,11 @@ def tracked_files() -> list[Path]:
     Tracked rather than on-disk: `.gitignore` carries `secrets/*`, so the directory holds a
     developer's real secrets locally and a filesystem walk would report those as violations.
     """
+    # Imported here rather than at module scope: the filename path below must stay runnable on
+    # any Python 3, and `_workspace` uses 3.14-only syntax (PEP 758). Hoisting this would make
+    # the pre-commit hook require 3.14, which its isolated venv does not promise.
+    from meta.scripts._workspace import workspace_root
+
     result = subprocess.run(
         ["git", "ls-files", "--", _SECRETS_DIR],
         capture_output=True,
@@ -50,7 +53,10 @@ def run(files: list[Path]) -> int:
 
 def main() -> int:
     args = sys.argv[1:]
-    return run([Path(a) for a in args] if args else tracked_files())
+    files = [Path(a) for a in args] if args else tracked_files()
+    # Pass/fail rather than the count: sys.exit() truncates mod 256, so a count-valued status
+    # would exit 0 on exactly 256 violations -- the fail-open case this gate exists to close.
+    return 1 if run(files) else 0
 
 
 if __name__ == "__main__":
