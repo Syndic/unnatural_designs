@@ -226,7 +226,7 @@ Hooks that fix the problem they detect (`bazel-mod-tidy`, `uv-lock-fresh`, `base
 `ruff-check`, `ruff-format`, `gazelle`) or prevent unsafe content from entering the repo
 (`check-secrets-dir`) run here. Verification-only checks live in the editor instead (see **Editor
 integration** below) so they can surface findings without blocking a commit when you want to switch
-contexts. `//meta/scripts:test_precommit_docs` keeps this list and the table below honest
+contexts. `//meta/scripts:test_precommit_config` keeps this list and the table below honest
 against [`.pre-commit-config.yaml`](.pre-commit-config.yaml).
 
 | Hook                | Triggers on                                  |

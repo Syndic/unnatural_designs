@@ -94,10 +94,11 @@ three-dot diff into `name=true|false` step outputs for `devcontainer.yml` and
 because pre-commit's `files:` cannot read a shared definition — so the hook takes no filter, gates
 on the shared set itself, and does nothing on a commit touching none of it.
 
-`test_precommit_docs.py` has no script half. It asserts that README's pre-commit hook table, and
-the paragraph that classifies each hook, still agree with `.pre-commit-config.yaml` — a coupling
-between two checked-in files rather than a check over the tree, so the assertion is the whole gate
-and it rides `bazel test //...` instead of costing a CI job.
+`test_precommit_config.py` has no script half. It asserts that README's pre-commit hook table, and
+the paragraph that classifies each hook, still agree with `.pre-commit-config.yaml`, and that every
+hook under `repo: local` stays `language: system` — pre-commit resolves any other language itself,
+ignoring the interpreter this repo pins. Neither is a check over the tree, so the assertions are the
+whole gate and they ride `bazel test //...` instead of costing a CI job.
 
 `test_codeql_toolchain.py` has no script half either. It asserts that `security.yml`'s CodeQL job
 installs the toolchain `go.work` names before extraction starts — the `actions/setup-go` step ahead

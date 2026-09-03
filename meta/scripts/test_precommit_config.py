@@ -1,4 +1,5 @@
-"""Guards README's pre-commit documentation against .pre-commit-config.yaml.
+"""Holds `.pre-commit-config.yaml` to two properties: that README describes it, and that its
+hooks run on the container's pinned interpreter.
 
 The hook table and the paragraph above it both name hooks by id, and nothing else couples
 them to the config — so a hook added, removed, or renamed leaves the prose stale with every
@@ -6,14 +7,18 @@ check still green. That is not hypothetical: the table sat two hooks behind the 
 the paragraph's list of fixing hooks omitted one of them, for as long as nobody thought to
 compare the two files.
 
-Scope is membership, order, and classification — not the "Triggers on" column. That column
-paraphrases each hook's `files` regex for a reader; asserting a gloss against a regex would
-either restate the regex in the README or accept anything.
+Scope of the docs half is membership, order, and classification — not the "Triggers on" column.
+That column paraphrases each hook's `files` regex for a reader; asserting a gloss against a
+regex would either restate the regex in the README or accept anything.
+
+The interpreter half is unrelated to the prose; its reasoning is at HookLanguageTest.
 """
 
 import re
 import unittest
 from pathlib import Path
+
+import yaml
 
 # Not .resolve(): both files are cross-package data deps and live in the runfiles tree beside
 # this one, which a resolved symlink would lead back out of.
@@ -21,7 +26,6 @@ _ROOT = Path(__file__).parent.parent.parent
 _CONFIG = _ROOT / ".pre-commit-config.yaml"
 _README = _ROOT / "README.md"
 
-_HOOK_ID_RE = re.compile(r"^\s+- id: (\S+)\s*$", re.M)
 _TABLE_ROW_RE = re.compile(r"^\| `([^`]+)`\s*\|", re.M)
 
 # Fenced blocks first: the install snippet's ``` fences are backticks too, and leaving them in
@@ -42,9 +46,19 @@ _HOOK_SHAPED_RE = re.compile(r"\A[a-z][a-z0-9-]*\Z")
 _NOT_A_HOOK = frozenset({"pre-commit"})
 
 
+def local_hooks() -> list[dict]:
+    """Hook mappings under `repo: local`, in file order.
+
+    Scoped to local because a remote repo's hooks are upstream-owned: this repo neither writes
+    their `language` nor documents them in the table.
+    """
+    config = yaml.safe_load(_CONFIG.read_text(encoding="utf-8"))
+    return [hook for repo in config["repos"] if repo["repo"] == "local" for hook in repo["hooks"]]
+
+
 def config_hook_ids() -> list[str]:
     """Hook ids in .pre-commit-config.yaml, in file order."""
-    return _HOOK_ID_RE.findall(_CONFIG.read_text(encoding="utf-8"))
+    return [hook["id"] for hook in local_hooks()]
 
 
 def readme_intro_and_table() -> tuple[str, str]:
@@ -81,12 +95,36 @@ class HookShapedNamesTest(unittest.TestCase):
         self.assertEqual(hook_shaped_names("```\nx\n```\n\n`shellcheck` is gone."), {"shellcheck"})
 
 
+class HookLanguageTest(unittest.TestCase):
+    """`language: system` provisions nothing and runs `entry` against PATH, so a hook gets the
+    interpreter the container pins. `language: python` instead builds a virtualenv and chooses
+    its interpreter by searching PATH for a version-suffixed name, which `.python-version` is
+    invisible to — so such a hook honours none of the repo's four Python pins, and any script
+    importing `_workspace` breaks on the ≤3.13 it may land on.
+    """
+
+    def setUp(self):
+        self.hooks = local_hooks()
+        # Nothing to disagree with is not agreement: an empty list would pass the assertion below.
+        self.assertTrue(self.hooks, "no hooks found under `repo: local`")
+
+    def test_every_local_hook_runs_on_the_system_interpreter(self):
+        wrong = {h["id"]: h.get("language") for h in self.hooks if h.get("language") != "system"}
+        self.assertEqual(
+            wrong,
+            {},
+            "these hooks would not run on the interpreter this repo pins; pre-commit resolves "
+            "any `language` other than `system` itself, ignoring .python-version",
+        )
+
+
 class PrecommitDocsTest(unittest.TestCase):
     def setUp(self):
         self.hooks = config_hook_ids()
         self.intro, self.table = readme_intro_and_table()
-        # A parser that silently matched nothing would make every assertion below vacuous.
-        self.assertTrue(self.hooks, "parsed no hook ids out of .pre-commit-config.yaml")
+        # Still load-bearing after the parse: `repo: local` need not be the first or only repos
+        # entry, and a config without one would make every assertion below vacuous.
+        self.assertTrue(self.hooks, "no hooks found under `repo: local`")
         self.assertTrue(_TABLE_ROW_RE.findall(self.table), "parsed no rows out of the hook table")
         self.assertTrue(hook_shaped_names(self.intro), "parsed no hook names out of the prose")
 
