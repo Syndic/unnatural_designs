@@ -187,7 +187,7 @@ Three GitHub Actions workflows run on every push and pull request to `main`.
 | MODULE.bazel.lock freshness  | Always - verifies `bazel mod tidy` leaves MODULE.bazel and its lock unchanged                      |
 | Module completeness check    | Always - verifies Go module matrix/config and Python workspace/lock invariants                     |
 | go.work check                | Always - verifies all Go modules are registered in `go.work`                                       |
-| Secrets check                | Always - verifies the `secrets/` directory contains no committed files                             |
+| Secrets check                | Always - verifies the `secrets/` directory contains no committed files other than `secrets.md`     |
 | No-cgo policy check          | Always - rejects `import "C"` and transitive deps that compile C/C++/cgo/SWIG                      |
 | golangci-lint                | After module check passes - runs per Go module                                                     |
 | ruff                         | Always - `ruff format --check` and `ruff check` over all Python                                    |
