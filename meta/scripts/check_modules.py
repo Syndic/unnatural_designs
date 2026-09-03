@@ -392,7 +392,6 @@ def check_uv_lock_fresh(root: Path) -> int:
 
 
 def check(root: Path) -> int:
-
     errors = 0
     for language in LANGUAGES:
         modules = language.discover(root)

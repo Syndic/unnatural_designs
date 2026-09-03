@@ -121,7 +121,7 @@ class TestConsistency(unittest.TestCase):
             )
 
 
-class TestMain(unittest.TestCase):
+class TestCheck(unittest.TestCase):
     def _run(self, *, found, registered):
         """registered may be a list of paths (each defaulting to line 1) or {path: line} dict."""
         if isinstance(registered, dict):
@@ -193,6 +193,18 @@ class TestMainExitStatus(unittest.TestCase):
             mock.patch.object(check_go_work, "check", return_value=0),
         ):
             self.assertEqual(check_go_work.main(), 0)
+
+    def test_main_delegates_to_check_at_workspace_root(self):
+        # Without this, `check(Path.cwd())` in main() passes the whole suite.
+        with (
+            mock.patch.object(
+                check_go_work, "workspace_root", return_value=Path("/fake/root")
+            ) as wr,
+            mock.patch.object(check_go_work, "check", return_value=0) as inner,
+        ):
+            self.assertEqual(check_go_work.main(), 0)
+        wr.assert_called_once_with()
+        inner.assert_called_once_with(Path("/fake/root"))
 
 
 if __name__ == "__main__":

@@ -625,16 +625,17 @@ class TestCheckUvLockCurrent(unittest.TestCase):
         self.assertEqual(rc, 0)
 
 
-# ── TestMain ───────────────────────────────────────────────────────────────────
+# ── TestCheck ──────────────────────────────────────────────────────────────────
 # Driver-level wiring. Mocks each per-language and per-invariant check function to
-# return preset error counts; asserts main aggregates correctly and prints the
+# return preset error counts; asserts check() aggregates correctly and prints the
 # success message only when every check returns 0. Catches "added a check but
-# forgot to wire it into main" regressions.
+# forgot to wire it into check()" regressions -- main() only collapses the count
+# to a status, so an invariant wired into main() instead would never run.
 
 
-class TestMain(unittest.TestCase):
+class TestCheck(unittest.TestCase):
     def _run(self, **return_values: int) -> tuple[int, str]:
-        """Run check_modules.main() with mocks for every check function.
+        """Run check_modules.check() with mocks for every check function.
 
         return_values keys: 'configs_go', 'configs_python', 'matrices', 'py_root',
         'py_members', 'uv_lock', 'uv_current'. Missing keys default to 0.
@@ -760,6 +761,18 @@ class TestMainExitStatus(unittest.TestCase):
             mock.patch.object(check_modules, "check", return_value=0),
         ):
             self.assertEqual(check_modules.main(), 0)
+
+    def test_main_delegates_to_check_at_workspace_root(self):
+        # Without this, `check(Path.cwd())` in main() passes the whole suite.
+        with (
+            mock.patch.object(
+                check_modules, "workspace_root", return_value=Path("/fake/root")
+            ) as wr,
+            mock.patch.object(check_modules, "check", return_value=0) as inner,
+        ):
+            self.assertEqual(check_modules.main(), 0)
+        wr.assert_called_once_with()
+        inner.assert_called_once_with(Path("/fake/root"))
 
 
 if __name__ == "__main__":
