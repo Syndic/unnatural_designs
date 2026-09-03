@@ -258,5 +258,23 @@ class TestMain(unittest.TestCase):
             self.assertEqual(check_no_cgo.main(), 1)
 
 
+class TestMainExitStatus(unittest.TestCase):
+    """main() reports pass/fail, never the finding count -- see _workspace.exit_status."""
+
+    def test_a_truncating_count_still_fails(self):
+        with (
+            mock.patch.object(check_no_cgo, "workspace_root", return_value=Path("/fake")),
+            mock.patch.object(check_no_cgo, "check", return_value=256),
+        ):
+            self.assertEqual(check_no_cgo.main(), 1)
+
+    def test_no_findings_still_passes(self):
+        with (
+            mock.patch.object(check_no_cgo, "workspace_root", return_value=Path("/fake")),
+            mock.patch.object(check_no_cgo, "check", return_value=0),
+        ):
+            self.assertEqual(check_no_cgo.main(), 0)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -20,7 +20,7 @@ from pathlib import Path
 # editor task), the workspace root is not on sys.path, so `from meta.scripts.X` would fail.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from meta.scripts._workspace import find_files, workspace_root
+from meta.scripts._workspace import exit_status, find_files, workspace_root
 
 # Four digits so a plain sort orders them; kebab slug so filenames stay greppable and
 # case-insensitive filesystems can't collide two ADRs onto one path.
@@ -116,7 +116,7 @@ def run(root: Path, next_only: bool) -> int:
 
 
 def main() -> int:
-    return run(workspace_root(), "--next" in sys.argv[1:])
+    return exit_status(run(workspace_root(), "--next" in sys.argv[1:]))
 
 
 if __name__ == "__main__":

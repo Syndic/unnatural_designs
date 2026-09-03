@@ -21,6 +21,19 @@ def workspace_root() -> Path:
     return Path(result.stdout.strip())
 
 
+def exit_status(errors: int) -> int:
+    """Collapse a finding count to a pass/fail process status.
+
+    A guard's exit status must never be the count itself. `sys.exit()` truncates it mod 256, so
+    exactly 256 findings report success, and the shell reserves 126 (found, not executable), 127
+    (not found) and 128+n (killed by signal n) — so any count from 126 up either misreports or
+    impersonates a different failure. Nothing consumes the number anyway: CI reads pass/fail and
+    the editor's problem matcher parses stdout. Guards keep the count as an ordinary return value
+    for their tests and pass it through here at the process boundary.
+    """
+    return 1 if errors else 0
+
+
 def is_skipped(path: Path) -> bool:
     """True if any component is .git, node_modules, .venv, .git-plumbing, or starts with bazel-.
 

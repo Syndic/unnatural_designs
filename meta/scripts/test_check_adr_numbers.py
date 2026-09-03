@@ -10,6 +10,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from unittest import mock
+
+from meta.scripts import check_adr_numbers
 from meta.scripts.check_adr_numbers import adr_files, next_number, run, violations
 
 
@@ -170,6 +173,48 @@ class TestRun(unittest.TestCase):
         code, out = self._capture(root, next_only=False)
         self.assertEqual(code, 0)
         self.assertIn("unique across 2", out)
+
+
+class TestMainExitStatus(unittest.TestCase):
+    """main() reports pass/fail, never the finding count -- see _workspace.exit_status."""
+
+    def test_a_truncating_count_still_fails(self):
+        with (
+            mock.patch.object(check_adr_numbers, "workspace_root", return_value=Path("/fake")),
+            mock.patch.object(check_adr_numbers, "run", return_value=256),
+            mock.patch.object(sys, "argv", ["check_adr_numbers.py"]),
+        ):
+            self.assertEqual(check_adr_numbers.main(), 1)
+
+    def test_no_findings_still_passes(self):
+        with (
+            mock.patch.object(check_adr_numbers, "workspace_root", return_value=Path("/fake")),
+            mock.patch.object(check_adr_numbers, "run", return_value=0),
+            mock.patch.object(sys, "argv", ["check_adr_numbers.py"]),
+        ):
+            self.assertEqual(check_adr_numbers.main(), 0)
+
+    def test_main_delegates_to_run_at_workspace_root(self):
+        # Without this, `run(Path.cwd(), ...)` in main() passes the whole suite.
+        with (
+            mock.patch.object(
+                check_adr_numbers, "workspace_root", return_value=Path("/fake/root")
+            ) as wr,
+            mock.patch.object(check_adr_numbers, "run", return_value=0) as run_,
+            mock.patch.object(sys, "argv", ["check_adr_numbers.py"]),
+        ):
+            self.assertEqual(check_adr_numbers.main(), 0)
+        wr.assert_called_once_with()
+        run_.assert_called_once_with(Path("/fake/root"), False)
+
+    def test_next_flag_reaches_run(self):
+        with (
+            mock.patch.object(check_adr_numbers, "workspace_root", return_value=Path("/fake")),
+            mock.patch.object(check_adr_numbers, "run", return_value=0) as run_,
+            mock.patch.object(sys, "argv", ["check_adr_numbers.py", "--next"]),
+        ):
+            self.assertEqual(check_adr_numbers.main(), 0)
+        run_.assert_called_once_with(Path("/fake"), True)
 
 
 if __name__ == "__main__":
