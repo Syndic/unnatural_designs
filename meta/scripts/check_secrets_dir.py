@@ -18,7 +18,7 @@ from pathlib import Path
 # pre-commit), the workspace root is not on sys.path, so `from meta.scripts.X` would fail.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from meta.scripts._workspace import workspace_root
+from meta.scripts._workspace import exit_status, workspace_root
 
 _SECRETS_DIR = "secrets"
 
@@ -51,9 +51,7 @@ def run(files: list[Path]) -> int:
 def main() -> int:
     args = sys.argv[1:]
     files = [Path(a) for a in args] if args else tracked_files()
-    # Pass/fail rather than the count: sys.exit() truncates mod 256, so a count-valued status
-    # would exit 0 on exactly 256 violations -- the fail-open case this gate exists to close.
-    return 1 if run(files) else 0
+    return exit_status(run(files))
 
 
 if __name__ == "__main__":

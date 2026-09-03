@@ -46,7 +46,7 @@ class TestViolationCount(unittest.TestCase):
 
 
 class TestExitStatus(unittest.TestCase):
-    """Pass/fail, never a count -- sys.exit() truncates a status mod 256."""
+    """main() reports pass/fail, never the finding count -- see _workspace.exit_status."""
 
     def test_clean_run_exits_zero(self):
         self.assertEqual(status(["secrets/secrets.md"]), 0)
@@ -58,8 +58,8 @@ class TestExitStatus(unittest.TestCase):
         self.assertEqual(status(["secrets/a.pem", "secrets/b.pem", "secrets/c.pem"]), 1)
 
     def test_exactly_256_violations_does_not_wrap_to_success(self):
-        # The fail-open case: `sys.exit(256)` leaves the shell with status 0, so a
-        # count-valued status would report success on 256 committed secrets.
+        # Pins that main() routes through the boundary; the boundary itself is covered by
+        # TestExitStatus in test__workspace.py.
         files = [f"secrets/f{i}.txt" for i in range(256)]
         self.assertEqual(count(files), 256)
         self.assertEqual(status(files), 1)
