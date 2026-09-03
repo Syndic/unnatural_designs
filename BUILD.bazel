@@ -58,8 +58,8 @@ filegroup(
 )
 
 # Same posture for prose that hand-copies something the tests can check it against: the hook table
-# against the config's ids (//meta/scripts:test_precommit_config), and both docs against the required
-# check name security.yml's fan-in carries (//meta/scripts:test_codeql_toolchain).
+# against the config's ids (//meta/scripts:test_precommit_config), and both docs against the
+# required check name security.yml's fan-in carries (//meta/scripts:test_codeql_toolchain).
 exports_files([
     ".claude/CLAUDE.md",
     ".pre-commit-config.yaml",

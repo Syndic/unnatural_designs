@@ -46,19 +46,22 @@ _HOOK_SHAPED_RE = re.compile(r"\A[a-z][a-z0-9-]*\Z")
 _NOT_A_HOOK = frozenset({"pre-commit"})
 
 
-def local_hooks() -> list[dict]:
-    """Hook mappings under `repo: local`, in file order.
+def _repos() -> list[dict]:
+    return yaml.safe_load(_CONFIG.read_text(encoding="utf-8"))["repos"]
 
-    Scoped to local because a remote repo's hooks are upstream-owned: this repo neither writes
-    their `language` nor documents them in the table.
-    """
-    config = yaml.safe_load(_CONFIG.read_text(encoding="utf-8"))
-    return [hook for repo in config["repos"] if repo["repo"] == "local" for hook in repo["hooks"]]
+
+# The two halves of this file read deliberately different scopes. Documentation covers every hook,
+# because the table is the reader's index of what runs on their commit and a remote hook runs there
+# too. `language` covers local hooks only, because a remote repo's hooks are upstream-owned and
+# this repo does not write their `language` to begin with.
+def local_hooks() -> list[dict]:
+    """Hook mappings under `repo: local`, in file order."""
+    return [hook for repo in _repos() if repo["repo"] == "local" for hook in repo["hooks"]]
 
 
 def config_hook_ids() -> list[str]:
-    """Hook ids in .pre-commit-config.yaml, in file order."""
-    return [hook["id"] for hook in local_hooks()]
+    """Hook ids in .pre-commit-config.yaml, in file order, across every repo entry."""
+    return [hook["id"] for repo in _repos() for hook in repo["hooks"]]
 
 
 def readme_intro_and_table() -> tuple[str, str]:
@@ -122,9 +125,9 @@ class PrecommitDocsTest(unittest.TestCase):
     def setUp(self):
         self.hooks = config_hook_ids()
         self.intro, self.table = readme_intro_and_table()
-        # Still load-bearing after the parse: `repo: local` need not be the first or only repos
-        # entry, and a config without one would make every assertion below vacuous.
-        self.assertTrue(self.hooks, "no hooks found under `repo: local`")
+        # Still load-bearing after the parse: a config whose repos carry no hooks at all would
+        # make every assertion below vacuous.
+        self.assertTrue(self.hooks, "parsed no hooks out of .pre-commit-config.yaml")
         self.assertTrue(_TABLE_ROW_RE.findall(self.table), "parsed no rows out of the hook table")
         self.assertTrue(hook_shaped_names(self.intro), "parsed no hook names out of the prose")
 
