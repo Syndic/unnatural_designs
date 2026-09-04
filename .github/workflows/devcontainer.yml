@@ -160,7 +160,7 @@ jobs:
       # actually matches — the counterpart to the `bazel-mod-tidy` and `uv-lock-fresh` pre-commit
       # hooks the other derived files get. It lives in CI rather than pre-commit because the
       # devcontainer CLI is a host/runner tool: it is deliberately absent from the image, so a
-      # `language: system` hook running inside the container could not invoke it.
+      # `language: unsupported` hook running inside the container could not invoke it.
       #
       # `upgrade --dry-run` prints the lockfile it *would* write to stdout instead of writing it,
       # byte-for-byte including the trailing newline, so a plain diff is the whole check. Runs

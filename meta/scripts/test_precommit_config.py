@@ -99,11 +99,17 @@ class HookShapedNamesTest(unittest.TestCase):
 
 
 class HookLanguageTest(unittest.TestCase):
-    """`language: system` provisions nothing and runs `entry` against PATH, so a hook gets the
-    interpreter the container pins. `language: python` instead builds a virtualenv and chooses
+    """`language: unsupported` provisions nothing and runs `entry` against PATH, so a hook gets
+    the interpreter the container pins. `language: python` instead builds a virtualenv and chooses
     its interpreter by searching PATH for a version-suffixed name, which `.python-version` is
     invisible to — so such a hook honours none of the repo's four Python pins, and any script
     importing `_workspace` breaks on the ≤3.13 it may land on.
+
+    `unsupported`, not the `system` every pre-commit example still writes: `system` is not a
+    language at all. `clientlib._translate_language` rewrites it to this one behind a shim
+    upstream annotates `# remove`, and there is no `languages/system.py` to rewrite it to.
+    Identical behaviour today, and the only spelling once the shim goes. This file reads the
+    YAML directly rather than through pre-commit's loader, so it sees which one was written.
     """
 
     def setUp(self):
@@ -111,13 +117,17 @@ class HookLanguageTest(unittest.TestCase):
         # Nothing to disagree with is not agreement: an empty list would pass the assertion below.
         self.assertTrue(self.hooks, "no hooks found under `repo: local`")
 
-    def test_every_local_hook_runs_on_the_system_interpreter(self):
-        wrong = {h["id"]: h.get("language") for h in self.hooks if h.get("language") != "system"}
+    def test_every_local_hook_runs_on_the_containers_interpreter(self):
+        wrong = {
+            h["id"]: h.get("language") for h in self.hooks if h.get("language") != "unsupported"
+        }
         self.assertEqual(
             wrong,
             {},
-            "these hooks would not run on the interpreter this repo pins; pre-commit resolves "
-            "any `language` other than `system` itself, ignoring .python-version",
+            "declare `language: unsupported` on these hooks. `system` is the deprecated alias "
+            "for it that pre-commit's own docs still use — same behaviour, but it survives only "
+            "while the translation shim does. Any other language makes pre-commit provision an "
+            "interpreter of its own, ignoring the one this repo pins in .python-version",
         )
 
 
