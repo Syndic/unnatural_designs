@@ -112,6 +112,14 @@ branch protection requires. Same reason it rides `bazel test //...`: the couplin
 checked-in files, and nothing fails while they drift — not until `go.work` outruns the runner
 image's Go, or a green required check turns out to have been skipped.
 
+`test_semgrep_budget.py` has no script half either. It holds `security.yml`'s Semgrep job to the
+per-rule `--timeout` it was measured to need, and holds `MODULE.bazel.lock` to a size that budget
+still covers. Over budget, semgrep drops the whole file rather than the rule, reports success and
+exits 0 — so the regression is a green job that scanned less than it says. It rides
+`bazel test //...` for the usual reason, and for a sharper one: `semgrep ci` diff-scans on pull
+requests, so the Semgrep job itself is green on any PR that does not touch the file at issue, and
+only push-to-main and the weekly schedule would ever notice.
+
 `smoke_py/` is a transient `py_test` that proves the end-to-end Python plumbing chain
 (`pyproject.toml` → `uv.lock` → `requirements_lock.txt` → `pip.parse` → `@unnatural_designs_pypi//...`) by importing
 `requests` and asserting it loads. Slated for deletion once gazelle_python is wired (see

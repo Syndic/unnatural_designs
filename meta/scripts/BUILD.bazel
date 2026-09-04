@@ -169,6 +169,21 @@ py_test(
     main = "test_pip_audit_coverage.py",
 )
 
+# Same shape again, and the sharpest case of it: what this guards regresses only on push-to-main
+# and the weekly schedule, because `semgrep ci` diff-scans on pull requests and never reaches the
+# file at issue. A green PR is not evidence here.
+py_test(
+    name = "test_semgrep_budget",
+    size = "small",
+    srcs = ["test_semgrep_budget.py"],
+    data = [
+        "//:.github/workflows/security.yml",
+        "//:MODULE.bazel.lock",
+    ],
+    main = "test_semgrep_budget.py",
+    deps = [requirement("pyyaml")],
+)
+
 py_library(
     name = "codeql_extraction_report_lib",
     srcs = ["codeql_extraction_report.py"],
