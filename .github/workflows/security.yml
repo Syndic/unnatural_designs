@@ -48,16 +48,6 @@ jobs:
         env:
           SEMGREP_RULES: p/golang p/python p/secrets
 
-      # TEMPORARY verification for #294, removed before merge. A pull_request run diff-scans
-      # (`Targets scanned: 1`), so the full-tree scan that push-to-main and the schedule run —
-      # the only one that reaches MODULE.bazel.lock — is not otherwise exercised on this PR.
-      - name: Verify the full scan drops nothing
-        run: |
-          semgrep scan --config p/golang --config p/python --config p/secrets --timeout 15 . > /tmp/full.txt 2>&1 || true
-          grep -E "Targets scanned:|semgrepignore patterns:" /tmp/full.txt || true
-          if grep -qiE "timeout error|Skipping MODULE.bazel.lock" /tmp/full.txt; then echo "FAIL: a file is still being dropped"; exit 1; fi
-          echo "OK: no timeout error, no skipped file"
-
   # CodeQL, the second SAST engine and the one code scanning's own UI reads. Advanced setup on
   # purpose — see .claude/CLAUDE.md "CodeQL runs as advanced setup" for what GitHub's managed
   # default setup could not do, and for the repo setting that has to stay off for this to run.
