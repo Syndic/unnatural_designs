@@ -30,7 +30,7 @@ COPY --from=ghcr.io/astral-sh/uv:0.12.9 /uv /uvx /usr/local/bin/
 # /root (mode 700) and the vscode user could not follow the bin/ symlink.
 # Renovate's regex manager tracks RUFF_VERSION via the comment above the ARG.
 # renovate: datasource=pypi depName=ruff
-ARG RUFF_VERSION=0.16.5
+ARG RUFF_VERSION=0.16.6
 # ty: static type checker. Same `uv tool install` pattern as ruff so the
 # binary lands on PATH for CI, pre-commit, and the `astral-sh.ty` editor
 # extension. UV_TOOL_{BIN_DIR,DIR} are shared across all uv tool installs.
