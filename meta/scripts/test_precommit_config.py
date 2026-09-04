@@ -46,22 +46,19 @@ _HOOK_SHAPED_RE = re.compile(r"\A[a-z][a-z0-9-]*\Z")
 _NOT_A_HOOK = frozenset({"pre-commit"})
 
 
-def _repos() -> list[dict]:
-    return yaml.safe_load(_CONFIG.read_text(encoding="utf-8"))["repos"]
+def hooks_in(text: str) -> list[dict]:
+    """Every hook mapping in a pre-commit config, in file order, whatever repo declares it."""
+    return [hook for repo in yaml.safe_load(text)["repos"] for hook in repo["hooks"]]
 
 
-# The two halves of this file read deliberately different scopes. Documentation covers every hook,
-# because the table is the reader's index of what runs on their commit and a remote hook runs there
-# too. `language` covers local hooks only, because a remote repo's hooks are upstream-owned and
-# this repo does not write their `language` to begin with.
-def local_hooks() -> list[dict]:
-    """Hook mappings under `repo: local`, in file order."""
-    return [hook for repo in _repos() if repo["repo"] == "local" for hook in repo["hooks"]]
+def config_hooks() -> list[dict]:
+    """Every hook in .pre-commit-config.yaml, in file order."""
+    return hooks_in(_CONFIG.read_text(encoding="utf-8"))
 
 
 def config_hook_ids() -> list[str]:
-    """Hook ids in .pre-commit-config.yaml, in file order, across every repo entry."""
-    return [hook["id"] for repo in _repos() for hook in repo["hooks"]]
+    """Hook ids in .pre-commit-config.yaml, in file order."""
+    return [hook["id"] for hook in config_hooks()]
 
 
 def readme_intro_and_table() -> tuple[str, str]:
@@ -98,12 +95,48 @@ class HookShapedNamesTest(unittest.TestCase):
         self.assertEqual(hook_shaped_names("```\nx\n```\n\n`shellcheck` is gone."), {"shellcheck"})
 
 
+class HooksInTest(unittest.TestCase):
+    """Both halves of this file are vacuous if the extractor silently returns nothing, so it is
+    tested directly rather than guarded on its output being non-empty. Same posture as
+    HookShapedNamesTest, and it says what the guard could not: which hooks, in which order.
+    """
+
+    _FIXTURE = """\
+repos:
+  - repo: local
+    hooks:
+      - id: first
+        language: unsupported
+      - id: second
+        language: unsupported
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: third
+"""
+
+    def test_collects_every_repos_hooks_in_file_order(self):
+        self.assertEqual([h["id"] for h in hooks_in(self._FIXTURE)], ["first", "second", "third"])
+
+    def test_a_remote_hook_carries_no_language_of_its_own(self):
+        """Why the language assertion reads `.get`: the key is optional outside `repo: local`."""
+        third = hooks_in(self._FIXTURE)[-1]
+        self.assertIsNone(third.get("language"))
+
+
 class HookLanguageTest(unittest.TestCase):
     """`language: unsupported` provisions nothing and runs `entry` against PATH, so a hook gets
-    the interpreter the container pins. `language: python` instead builds a virtualenv and chooses
-    its interpreter by searching PATH for a version-suffixed name, which `.python-version` is
-    invisible to — so such a hook honours none of the repo's four Python pins, and any script
-    importing `_workspace` breaks on the ≤3.13 it may land on.
+    the interpreter the container pins. Every other language makes pre-commit build an environment
+    and choose an interpreter itself — `python` searches PATH for a version-suffixed name, which
+    `.python-version` is invisible to, so such a hook honours none of the repo's four Python pins
+    and any script importing `_workspace` breaks on the ≤3.13 it may land on.
+
+    Every hook, with no qualifier on where it comes from. `repo:` names where a hook's
+    implementation lives, never what it checks, so it is the wrong axis for a property about
+    which interpreter runs: a hook provisioning its own env does that whether this repo wrote it
+    or vendored it. `language` is required on a local hook and optional on a remote one, so a
+    remote entry that inherits its manifest's language fails here — correctly, since inheriting
+    is precisely how a hook ends up off the container's interpreter.
 
     `unsupported`, not the `system` every pre-commit example still writes: `system` is not a
     language at all. `clientlib._translate_language` rewrites it to this one behind a shim
@@ -112,22 +145,20 @@ class HookLanguageTest(unittest.TestCase):
     YAML directly rather than through pre-commit's loader, so it sees which one was written.
     """
 
-    def setUp(self):
-        self.hooks = local_hooks()
-        # Nothing to disagree with is not agreement: an empty list would pass the assertion below.
-        self.assertTrue(self.hooks, "no hooks found under `repo: local`")
-
-    def test_every_local_hook_runs_on_the_containers_interpreter(self):
+    def test_every_hook_runs_on_the_containers_interpreter(self):
+        # No non-vacuity guard: "no hook declares a bad language" is correctly true of a config
+        # with no hooks, and HooksInTest covers the extractor that would have to break first.
         wrong = {
-            h["id"]: h.get("language") for h in self.hooks if h.get("language") != "unsupported"
+            h["id"]: h.get("language") for h in config_hooks() if h.get("language") != "unsupported"
         }
         self.assertEqual(
             wrong,
             {},
-            "declare `language: unsupported` on these hooks. `system` is the deprecated alias "
-            "for it that pre-commit's own docs still use — same behaviour, but it survives only "
-            "while the translation shim does. Any other language makes pre-commit provision an "
-            "interpreter of its own, ignoring the one this repo pins in .python-version",
+            "these hooks would not run on the interpreter this repo pins. A local hook should "
+            "declare `language: unsupported` — `system` is the deprecated alias for it that "
+            "pre-commit's own docs still use, and survives only while the translation shim does. "
+            "A remote hook shown here with `None` inherits a language from its own manifest and "
+            "has no place in this repo; vendor it as a local hook instead",
         )
 
 
@@ -135,9 +166,6 @@ class PrecommitDocsTest(unittest.TestCase):
     def setUp(self):
         self.hooks = config_hook_ids()
         self.intro, self.table = readme_intro_and_table()
-        # Still load-bearing after the parse: a config whose repos carry no hooks at all would
-        # make every assertion below vacuous.
-        self.assertTrue(self.hooks, "parsed no hooks out of .pre-commit-config.yaml")
         self.assertTrue(_TABLE_ROW_RE.findall(self.table), "parsed no rows out of the hook table")
         self.assertTrue(hook_shaped_names(self.intro), "parsed no hook names out of the prose")
 

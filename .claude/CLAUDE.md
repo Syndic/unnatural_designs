@@ -17,8 +17,9 @@ devcontainer exec --workspace-folder . <cmd>  # every tool invocation after
 
 A missing host tool is a signal to use the container, never to provision it on the host: no
 `pip`/`brew`/`go install`, no `uvx`/`npx` to dodge the container (host-version drift, and it won't
-satisfy the `language: system` pre-commit hooks anyway). Commits especially — hooks resolve tools
-from PATH and signing needs the bridged SSH agent; see the ".devcontainer signed commits" section.
+satisfy the `language: unsupported` pre-commit hooks anyway). Commits especially — hooks resolve
+tools from PATH and signing needs the bridged SSH agent; see the ".devcontainer signed commits"
+section.
 
 ## Documentation and test hygiene
 
@@ -496,7 +497,7 @@ file** in exactly the sense `MODULE.bazel.lock` is: `renovate-derived-files.yml`
 single commit, and `devcontainer.yml` fails the build if the committed copy doesn't match what
 `upgrade --dry-run` would write. That check is in CI rather than pre-commit — unlike `bazel mod tidy`
 or `uv lock`, the devcontainer CLI is a host/runner tool and is deliberately absent from the image,
-so a `language: system` hook running *inside* the container could not invoke it.
+so a `language: unsupported` hook running *inside* the container could not invoke it.
 
 To re-resolve the lock by hand: `devcontainer upgrade --workspace-folder .` (`--dry-run` prints
 instead of writing). Note that under exact pins `upgrade` can no longer *advance* anything — it only
