@@ -42,6 +42,14 @@ jobs:
         env:
           SEMGREP_RULES: p/golang p/python p/secrets
 
+      # TEMPORARY probe for #294, removed before this PR merges. Measures the one rule that
+      # exceeds its budget on MODULE.bazel.lock, on the runner, so `--timeout` is chosen from a
+      # real number rather than extrapolated from a developer machine.
+      - name: Probe rule timing on the runner
+        run: |
+          semgrep scan --config p/secrets --timeout 300 --time --json MODULE.bazel.lock > /tmp/t.json 2>/dev/null || true
+          python3 -c 'import json;t=json.load(open("/tmp/t.json"))["time"];r=[x if isinstance(x,str) else x.get("id") for x in t["rules"]];print("\n".join("RUNNER match_time: %.3fs on %s"%(m,g["path"]) for g in t["targets"] for i,m in zip(r,g.get("match_times") or []) if "username-and-password-in-uri" in (i or "") and (m or 0)>0))'
+
   # CodeQL, the second SAST engine and the one code scanning's own UI reads. Advanced setup on
   # purpose — see .claude/CLAUDE.md "CodeQL runs as advanced setup" for what GitHub's managed
   # default setup could not do, and for the repo setting that has to stay off for this to run.
