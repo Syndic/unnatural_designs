@@ -96,12 +96,13 @@ on the shared set itself, and does nothing on a commit touching none of it.
 
 `test_precommit_config.py` has no script half. It asserts that README's pre-commit hook table, and
 the paragraph that classifies each hook, still agree with `.pre-commit-config.yaml`, and that every
-hook in it declares `language: unsupported` — pre-commit provisions an interpreter of its own for
-every other language, ignoring the one this repo pins. `unsupported` rather than its deprecated
+hook in it resolves to `language: unsupported` — pre-commit provisions an interpreter of its own
+for every other language, ignoring the one this repo pins. `unsupported` rather than its deprecated
 alias `system`, which pre-commit rewrites on load and will eventually drop. Both cover every hook
 regardless of which repo declares it, since `repo:` names where a hook's implementation lives
-rather than what it checks. Neither is a check over the tree, so the assertions are the whole gate
-and they ride `bazel test //...` instead of costing a CI job.
+rather than what it checks; it decides only what an *absent* `language` means, which the schema
+defaults per repo kind. Neither is a check over the tree, so the assertions are the whole gate and
+they ride `bazel test //...` instead of costing a CI job.
 
 `test_codeql_toolchain.py` has no script half either. It asserts that `security.yml`'s CodeQL job
 installs the toolchain `go.work` names before extraction starts — the `actions/setup-go` step ahead

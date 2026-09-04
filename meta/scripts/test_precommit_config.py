@@ -46,19 +46,36 @@ _HOOK_SHAPED_RE = re.compile(r"\A[a-z][a-z0-9-]*\Z")
 _NOT_A_HOOK = frozenset({"pre-commit"})
 
 
-def hooks_in(text: str) -> list[dict]:
-    """Every hook mapping in a pre-commit config, in file order, whatever repo declares it."""
-    return [hook for repo in yaml.safe_load(text)["repos"] for hook in repo["hooks"]]
+def hooks_in(text: str) -> list[tuple[str, dict]]:
+    """Every (repo, hook) pair in a pre-commit config, in file order."""
+    return [
+        (repo["repo"], hook) for repo in yaml.safe_load(text)["repos"] for hook in repo["hooks"]
+    ]
 
 
-def config_hooks() -> list[dict]:
-    """Every hook in .pre-commit-config.yaml, in file order."""
+def config_hooks() -> list[tuple[str, dict]]:
+    """Every (repo, hook) pair in .pre-commit-config.yaml, in file order."""
     return hooks_in(_CONFIG.read_text(encoding="utf-8"))
 
 
 def config_hook_ids() -> list[str]:
     """Hook ids in .pre-commit-config.yaml, in file order."""
-    return [hook["id"] for hook in config_hooks()]
+    return [hook["id"] for _, hook in config_hooks()]
+
+
+def effective_language(repo: str, hook: dict) -> str | None:
+    """The language pre-commit will run `hook` under, or None where the config does not decide it.
+
+    An absent key means different things per repo kind, because pre-commit's schema gives it a
+    different default per repo kind. `META_HOOK_DICT` fixes a meta hook's language at
+    `unsupported` and accepts no other value, so an absent key there settles the question;
+    `LOCAL_HOOK_DICT` requires the key outright; and `CONFIG_HOOK_DICT` leaves it optional with
+    no default, so an absent key under a remote repo defers to a manifest this repo does not
+    control. Only that last case is undecided, and it is the one reported as None.
+    """
+    if "language" in hook:
+        return hook["language"]
+    return "unsupported" if repo == "meta" else None
 
 
 def readme_intro_and_table() -> tuple[str, str]:
@@ -113,15 +130,40 @@ repos:
     rev: v5.0.0
     hooks:
       - id: third
+  - repo: meta
+    hooks:
+      - id: fourth
 """
 
     def test_collects_every_repos_hooks_in_file_order(self):
-        self.assertEqual([h["id"] for h in hooks_in(self._FIXTURE)], ["first", "second", "third"])
+        self.assertEqual(
+            [hook["id"] for _, hook in hooks_in(self._FIXTURE)],
+            ["first", "second", "third", "fourth"],
+        )
 
-    def test_a_remote_hook_carries_no_language_of_its_own(self):
-        """Why the language assertion reads `.get`: the key is optional outside `repo: local`."""
-        third = hooks_in(self._FIXTURE)[-1]
-        self.assertIsNone(third.get("language"))
+    def test_reports_the_repo_each_hook_came_from(self):
+        """The language assertion needs it: an absent key means different things per repo kind."""
+        self.assertEqual(
+            [repo for repo, _ in hooks_in(self._FIXTURE)],
+            ["local", "local", "https://github.com/pre-commit/pre-commit-hooks", "meta"],
+        )
+
+
+class EffectiveLanguageTest(unittest.TestCase):
+    """The three repo kinds, since only one of them leaves an absent key undecided."""
+
+    def test_an_explicit_key_wins_wherever_it_appears(self):
+        self.assertEqual(effective_language("local", {"language": "python"}), "python")
+
+    def test_a_meta_hook_defaults_to_unsupported(self):
+        """Its schema fixes the value there and rejects every other, so absence decides it."""
+        self.assertEqual(
+            effective_language("meta", {"id": "check-useless-excludes"}), "unsupported"
+        )
+
+    def test_a_remote_hook_with_no_key_is_undecided(self):
+        """Its language lives in a manifest this repo does not read, so the config cannot say."""
+        self.assertIsNone(effective_language("https://github.com/x/y", {"id": "z"}))
 
 
 class HookLanguageTest(unittest.TestCase):
@@ -132,15 +174,18 @@ class HookLanguageTest(unittest.TestCase):
     and any script importing `_workspace` breaks on the ≤3.13 it may land on.
 
     Every hook, with no qualifier on where it comes from. `repo:` names where a hook's
-    implementation lives, never what it checks, so it is the wrong axis for a property about
-    which interpreter runs: a hook provisioning its own env does that whether this repo wrote it
-    or vendored it. `language` is required on a local hook and optional on a remote one, so a
-    remote entry that inherits its manifest's language fails here — correctly, since inheriting
-    is precisely how a hook ends up off the container's interpreter.
+    implementation lives, never what it checks, so it is the wrong axis for the property: a hook
+    provisioning its own env does that whether this repo wrote it or pulled it in. What `repo:`
+    does decide is what an *absent* key means, since the schema defaults it per repo kind — so
+    the assertion reads `effective_language` rather than the literal key. A remote entry that
+    would inherit its manifest's language still fails, correctly, since inheriting is precisely
+    how a hook ends up off the container's interpreter.
 
     `unsupported`, not the `system` every pre-commit example still writes: `system` is not a
     language at all. `clientlib._translate_language` rewrites it to this one behind a shim
     upstream annotates `# remove`, and there is no `languages/system.py` to rewrite it to.
+    `META_HOOK_DICT` is where upstream has already finished that migration — it accepts
+    `unsupported` and rejects `system` outright, with no shim in the way.
     Identical behaviour today, and the only spelling once the shim goes. This file reads the
     YAML directly rather than through pre-commit's loader, so it sees which one was written.
     """
@@ -149,7 +194,9 @@ class HookLanguageTest(unittest.TestCase):
         # No non-vacuity guard: "no hook declares a bad language" is correctly true of a config
         # with no hooks, and HooksInTest covers the extractor that would have to break first.
         wrong = {
-            h["id"]: h.get("language") for h in config_hooks() if h.get("language") != "unsupported"
+            hook["id"]: effective_language(repo, hook)
+            for repo, hook in config_hooks()
+            if effective_language(repo, hook) != "unsupported"
         }
         self.assertEqual(
             wrong,
