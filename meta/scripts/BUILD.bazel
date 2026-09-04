@@ -129,17 +129,18 @@ py_test(
     ],
 )
 
-# No script half: the coupling is between two checked-in files, so the assertion is the whole
-# gate. Rides `bazel test //...` rather than costing a CI job of its own.
+# No script half: nothing here reads the tree, so the assertions are the whole gate. Rides
+# `bazel test //...` rather than costing a CI job of its own.
 py_test(
-    name = "test_precommit_docs",
+    name = "test_precommit_config",
     size = "small",
-    srcs = ["test_precommit_docs.py"],
+    srcs = ["test_precommit_config.py"],
     data = [
         "//:.pre-commit-config.yaml",
         "//:README.md",
     ],
-    main = "test_precommit_docs.py",
+    main = "test_precommit_config.py",
+    deps = [requirement("pyyaml")],
 )
 
 # Same shape, and the same reason: the assertion is the whole gate. What it guards fails only

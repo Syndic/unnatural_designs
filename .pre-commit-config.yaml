@@ -3,14 +3,14 @@ repos:
     hooks:
       - id: bazel-mod-tidy
         name: bazel mod tidy
-        language: system
+        language: unsupported
         entry: bazel mod tidy
         pass_filenames: false
         files: go\.(mod|work|sum)$
 
       - id: uv-lock-fresh
         name: uv lock + export
-        language: system
+        language: unsupported
         # Re-runs the lock and the requirements_lock.txt export so a pyproject
         # edit can't land without the derived files. uv.lock is the source of
         # truth; requirements_lock.txt is what rules_python's pip.parse reads.
@@ -24,7 +24,7 @@ repos:
 
       - id: base-image-pin
         name: sync devcontainer base-image pin
-        language: system
+        language: unsupported
         # The Dockerfile's FROM digest is derived from the image this repo builds, so an edit
         # to the base or to the MODULE.bazel pull it sits on restales it in the same commit.
         # Rewrites rather than reports, like the two hooks above; //.devcontainer:test_base_image_pin
@@ -52,28 +52,28 @@ repos:
       # place; pre-commit re-flags modified files so the user re-stages.
       - id: ruff-check
         name: ruff check --fix
-        language: system
+        language: unsupported
         entry: ruff check --fix
         pass_filenames: false
         files: \.py$
 
       - id: ruff-format
         name: ruff format
-        language: system
+        language: unsupported
         entry: ruff format
         pass_filenames: false
         files: \.py$
 
       - id: gazelle
         name: gazelle
-        language: system
+        language: unsupported
         entry: bazel run //:gazelle
         pass_filenames: false
         files: \.go$
 
       - id: check-secrets-dir
         name: check secrets directory
-        language: system
+        language: unsupported
         entry: python meta/scripts/check_secrets_dir.py
         pass_filenames: true
         files: ^secrets/
