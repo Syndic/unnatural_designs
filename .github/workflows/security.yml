@@ -38,12 +38,12 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # `--timeout` is semgrep's per-rule, per-file budget, raised from its 5s default. One
-      # p/secrets rule needs 5.980s on MODULE.bazel.lock (measured on the runner, #294); over
-      # budget it skips the whole file and the job still exits 0, so the file left the secret
-      # scan with nothing saying so. Keep this the smallest value that clears the measurement:
-      # the budget is global, so a roomier one lets a future pathological rule burn that much
-      # longer per file before being skipped, and semgrep has no per-rule or per-file timeout.
+      # `--timeout` is semgrep's per-rule, per-file budget, raised from its 5s default because one
+      # p/secrets rule needs 5.980s on MODULE.bazel.lock (#294). Over budget semgrep drops the
+      # whole file and still exits 0. That costs real coverage rather than a second opinion: the
+      # rule catches `user:pass@host` URIs, which Trivy's secret rules do not match, and a
+      # generated lock file is where a private index or registry credential lands without anyone
+      # typing it. //meta/scripts:test_semgrep_budget holds this value and the size it assumes.
       - run: semgrep ci --timeout 15
         env:
           SEMGREP_RULES: p/golang p/python p/secrets
