@@ -13,12 +13,13 @@ because `semgrep ci` diff-scans there (`Targets scanned: 1`) and never reaches t
 timeout — push-to-main or the weekly schedule, which are the runs with no reviewer attached. So
 that one reports the regression and this one keeps it out of main.
 
-The second test is the same failure wearing a different hat. The budget was sized against a
-measurement of one file at one size, and the rule's cost scales about linearly with input:
-measured under the pinned image at 197 KB / 394 KB / 788 KB, the rule takes 2.956s / 6.714s /
-13.894s. `MODULE.bazel.lock` is generated, so it grows on ordinary dependency additions with
-nobody watching its size — and when it outgrows the budget the failure is the silent skip again,
-not a red job. Pinning the size makes that expiry loud while the budget still holds.
+The second test is the same failure wearing a different hat. The budget was sized against one file
+at one size, and the rule's cost grows with that size — faster than the file does, which is what
+makes the margin easy to overestimate. The measurements are at `_MAX_LOCK_BYTES` below, the one
+place a number here is load-bearing. `MODULE.bazel.lock` is generated, so it grows on ordinary
+dependency additions with nobody watching its size, and when it outgrows the budget the failure is
+the silent skip again, not a red job. Pinning the size makes that expiry loud while the budget
+still holds.
 """
 
 import unittest
