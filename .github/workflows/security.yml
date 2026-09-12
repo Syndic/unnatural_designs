@@ -38,9 +38,27 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - run: semgrep ci
+      # `--timeout` is semgrep's per-rule, per-file budget, raised from its 5s default because one
+      # p/secrets rule needs 5.980s on MODULE.bazel.lock (#294). Over budget semgrep drops the
+      # whole file and still exits 0. That costs real coverage rather than a second opinion: the
+      # rule catches `user:pass@host` URIs, which Trivy's secret rules do not match, and a
+      # generated lock file is where a private index or registry credential lands without anyone
+      # typing it. //meta/scripts:test_semgrep_budget holds this value and the size it assumes.
+      - run: semgrep ci --timeout 15 --json-output="${RUNNER_TEMP}/semgrep.json"
         env:
           SEMGREP_RULES: p/golang p/python p/secrets
+
+      # A completed scan is not a complete one. The budget above stops today's drop; this stops the
+      # silence, which is the part that recurs — a new rule pack or a larger generated file puts
+      # some other file in the same place, and semgrep still exits 0. `always()` because the JSON
+      # is written even when the scan exits 1 on findings, and a dropped file outlives the finding
+      # that got fixed.
+      - name: Report scan coverage
+        if: always()
+        run: |
+          python3 meta/scripts/semgrep_scan_report.py \
+            "${RUNNER_TEMP}/semgrep.json" \
+            --summary "${GITHUB_STEP_SUMMARY}"
 
   # CodeQL, the second SAST engine and the one code scanning's own UI reads. Advanced setup on
   # purpose — see .claude/CLAUDE.md "CodeQL runs as advanced setup" for what GitHub's managed
