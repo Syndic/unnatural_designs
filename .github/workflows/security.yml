@@ -60,6 +60,20 @@ jobs:
             "${RUNNER_TEMP}/semgrep.json" \
             --summary "${GITHUB_STEP_SUMMARY}"
 
+      # TEMPORARY verification for #294, removed before merge. The gate above has only ever been
+      # seen to fail in local reproduction; a control that has quietly stopped working is
+      # indistinguishable from one that works. This forces a drop on the runner itself and asserts
+      # the gate rejects it. Inverted, so the step passes when the gate does its job.
+      - name: Prove the coverage gate fails on a real drop
+        run: |
+          semgrep scan --config p/golang --config p/python --config p/secrets --timeout 1 \
+            --json --output="${RUNNER_TEMP}/forced.json" . >/dev/null 2>&1 || true
+          if python3 meta/scripts/semgrep_scan_report.py "${RUNNER_TEMP}/forced.json"; then
+            echo "FAIL: the gate passed a scan that dropped a file"
+            exit 1
+          fi
+          echo "OK: the gate failed a forced drop, as intended"
+
   # CodeQL, the second SAST engine and the one code scanning's own UI reads. Advanced setup on
   # purpose — see .claude/CLAUDE.md "CodeQL runs as advanced setup" for what GitHub's managed
   # default setup could not do, and for the repo setting that has to stay off for this to run.
