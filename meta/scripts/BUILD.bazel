@@ -169,6 +169,21 @@ py_test(
     main = "test_pip_audit_coverage.py",
 )
 
+# Same shape again, and the sharpest case of it: what this guards regresses only on push-to-main
+# and the weekly schedule, because `semgrep ci` diff-scans on pull requests and never reaches the
+# file at issue. A green PR is not evidence here.
+py_test(
+    name = "test_semgrep_budget",
+    size = "small",
+    srcs = ["test_semgrep_budget.py"],
+    data = [
+        "//:.github/workflows/security.yml",
+        "//:MODULE.bazel.lock",
+    ],
+    main = "test_semgrep_budget.py",
+    deps = [requirement("pyyaml")],
+)
+
 py_library(
     name = "codeql_extraction_report_lib",
     srcs = ["codeql_extraction_report.py"],
@@ -191,6 +206,29 @@ py_test(
         ":_workspace_lib",
         ":codeql_extraction_report_lib",
     ],
+)
+
+# Semgrep's counterpart to the CodeQL report next door, and deliberately not sharing code with it:
+# this one runs inside the `semgrep/semgrep` container, which is Python 3.12, so it can import
+# nothing from this tree — `_workspace.py` is a SyntaxError there. No `deps` is the constraint, not
+# an omission.
+py_library(
+    name = "semgrep_scan_report_lib",
+    srcs = ["semgrep_scan_report.py"],
+)
+
+py_binary(
+    name = "semgrep_scan_report",
+    srcs = ["semgrep_scan_report.py"],
+    main = "semgrep_scan_report.py",
+)
+
+py_test(
+    name = "test_semgrep_scan_report",
+    size = "small",
+    srcs = ["test_semgrep_scan_report.py"],
+    main = "test_semgrep_scan_report.py",
+    deps = [":semgrep_scan_report_lib"],
 )
 
 # Same shape as the three above: the assertion is the whole gate. What it guards fails silently —
