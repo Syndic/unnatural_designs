@@ -38,13 +38,35 @@ def _run(path):
     return code, buf.getvalue()
 
 
-# Real shapes, as semgrep 1.176.0 emits them.
+# Real shapes, as semgrep 1.176.0 emits them — including the `spans` key, which is what decides
+# whether a PartialParsing left coverage intact.
 _TIMEOUT = {"type": "Timeout", "level": "warn", "path": "MODULE.bazel.lock"}
-_PARTIAL = {
-    "type": ["PartialParsing", [{"path": "meta/scripts/_workspace.py"}]],
-    "level": "warn",
-    "path": "meta/scripts/_workspace.py",
-}
+
+
+def _partial(path, start_line, end_line):
+    """A `PartialParsing` whose unparsed span runs from `start_line` to `end_line`."""
+    return {
+        "type": ["PartialParsing", [{"path": path}]],
+        "level": "warn",
+        "path": path,
+        "message": f"Syntax error at line {path}:{start_line}",
+        "spans": [
+            {
+                "file": path,
+                "start": {"line": start_line, "col": 21, "offset": 0},
+                "end": {"line": end_line, "col": 32, "offset": 11},
+            }
+        ],
+    }
+
+
+# The measured PEP 758 site: the dropped span is the exception-class fragment on one line.
+_PARTIAL = _partial("meta/scripts/_workspace.py", 83, 83)
+
+# A different cause on the same type. An unclosed dict literal reported at line 3 swallowed lines
+# 3-7, taking a `subprocess(shell=True)` finding at line 7 with it — measured against the same file
+# without the typo, which reports it.
+_PARTIAL_LOSSY = _partial("lossy.py", 3, 7)
 
 
 class ErrorTypeTest(unittest.TestCase):
@@ -72,6 +94,25 @@ class GateTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("coverage intact", out)
 
+    def test_the_same_type_blocks_when_it_swallowed_a_region(self):
+        # The reason acceptance is per instance. This is byte-identical in `type` to the case
+        # above, and it lost a real finding; tolerating it by type reports "coverage intact" over
+        # exactly the fail-open state this gate exists to close.
+        code, out = _run(_report(_PARTIAL_LOSSY))
+        self.assertEqual(code, 1)
+        self.assertIn("lossy.py", out)
+
+    def test_a_partial_parse_without_spans_blocks(self):
+        # An instance this cannot measure is one it cannot clear.
+        code, _ = _run(_report({"type": ["PartialParsing", []], "path": "x.py"}))
+        self.assertEqual(code, 1)
+
+    def test_a_partial_parse_with_a_malformed_span_blocks(self):
+        entry = _partial("x.py", 1, 1)
+        entry["spans"] = [{"file": "x.py", "start": {}, "end": {}}]
+        code, _ = _run(_report(entry))
+        self.assertEqual(code, 1)
+
     def test_an_accepted_error_is_still_reported(self):
         _, out = _run(_report(_PARTIAL))
         self.assertIn("_workspace.py", out)
@@ -93,11 +134,21 @@ class GateTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("MODULE.bazel.lock", out)
 
-    def test_every_gave_up_type_blocks(self):
+    def test_every_gave_up_type_blocks_and_says_why(self):
+        # Blocking alone would pass for any string at all, since anything unaccepted blocks. The
+        # claim worth holding is that these are the strings semgrep actually serialises, so the
+        # explanation reaches the operator — `OutOfMemory` (the variant name) would block in
+        # silence, which is the failure this test exists to notice.
         for kind in report._GAVE_UP_ON_A_TARGET:
             with self.subTest(kind=kind):
-                code, _ = _run(_report({"type": kind, "path": "x"}))
+                code, out = _run(_report({"type": kind, "path": "x"}))
                 self.assertEqual(code, 1)
+                self.assertIn("gave up on this target", out)
+
+    def test_a_variant_name_is_not_mistaken_for_an_emitted_tag(self):
+        # `OutOfMemory` is `ErrorType.kind`; the JSON carries `to_json()`, which is "Out of memory".
+        _, out = _run(_report({"type": "OutOfMemory", "path": "x"}))
+        self.assertNotIn("gave up on this target", out)
 
 
 class CouldNotCheckTest(unittest.TestCase):

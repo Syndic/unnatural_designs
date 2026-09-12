@@ -37,10 +37,18 @@ _LOCK = _ROOT / "MODULE.bazel.lock"
 # much longer per file before being skipped.
 _MIN_TIMEOUT_SECONDS = 15
 
-# Predicted runner cost at this size is ~11.8s against the 15s budget, so the gate fires with the
-# budget still holding rather than after a scan has already been dropped. Do not raise it to quiet
-# a red run: the fix is a fresh runner measurement, and then the timeout, or neither.
-_MAX_LOCK_BYTES = 400_000
+# Measured, not extrapolated: on one host the rule costs 2.751s at today's 201,969 bytes, 4.279s at
+# 300,000 and 6.587s at 400,000 — against the runner anchor (5.980s for today's file) that is
+# ~5.6s / ~8.7s / ~13.3s there. So 400,000 would sit at 0.89x of the 15s budget: the gate still
+# green with the runner ~1.7s from dropping the file, which is not a warning. At 300,000 the runner
+# is ~8.7s, a 1.7x margin, so this fires with room left to re-measure in.
+#
+# Note the cost grows faster than the file — 2x the bytes cost 2.39x the time — so extrapolating
+# linearly from a single anchor understates it, and the shortfall is the whole margin.
+#
+# Do not raise it to quiet a red run: the fix is a fresh runner measurement, and then the timeout,
+# or neither.
+_MAX_LOCK_BYTES = 300_000
 
 
 def semgrep_run_step() -> str:
