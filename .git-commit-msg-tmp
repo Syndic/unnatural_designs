@@ -1,0 +1,37 @@
+feat(security): fail the Semgrep job when a file leaves the scan
+
+Raising the per-rule budget stopped MODULE.bazel.lock being dropped. It did not
+stop the silence, which is the part that recurs: over budget semgrep drops the
+whole file, records the reason, prints `CI scan completed successfully` and
+exits 0. A new rule pack, a larger generated file or a slower runner puts some
+other file in the same place, and nothing says so.
+
+`semgrep_scan_report.py` reads the JSON the scan now writes and fails the job
+when an error means a target was not fully read. Verified under the runner's
+conditions: with the budget exceeded the gate exits 1 and names the file, and
+with `--timeout 15` it exits 0.
+
+Three things it does differently from the obvious implementation:
+
+- **It keys on `errors[]`, not coverage.** `paths` carries only `scanned`, and a
+  file dropped for a timeout is still listed there, so porting the file-coverage
+  half of codeql_extraction_report.py would report green on this exact bug.
+- **`type` is a variant, not a string.** `Timeout` arrives bare, `PartialParsing`
+  as `["PartialParsing", [spans]]`; set membership over the raw value raises on
+  the list form.
+- **Unknown types block.** The accepted set is an allowlist with a reason per
+  entry, so a type this gate has never seen fails rather than passing unread. The
+  cost is that a semgrep release adding a benign type turns the job red once.
+
+`PartialParsing` is the one accepted entry: semgrep's Python grammar predates
+PEP 758, and measured, only that clause is dropped - rules still match before,
+after and inside the handler.
+
+It shares no code with the rest of meta/scripts, including
+`_workspace.exit_status()`. It runs inside the semgrep container, which is
+Python 3.12, and `_workspace.py` is a SyntaxError there for the PEP 758 reason
+above. That constraint is why the Bazel targets carry no deps.
+
+Refs #294, #304
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>

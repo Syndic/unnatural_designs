@@ -6,12 +6,12 @@ leaving the secret scan is indistinguishable from a file scanned clean, and is v
 someone reading a green job's log. That is #294: one `p/secrets` rule needs 5.980s on
 `MODULE.bazel.lock` against a 5s default, so the lock file left every full scan for months.
 
-Nothing else catches the flag being dropped. `bazel test //...` stays green, because the other two
-suites that load this workflow assert only on their own jobs. The Semgrep job itself stays green on
-a pull request, because `semgrep ci` diff-scans there (`Targets scanned: 1`) and never reaches the
-lock file. Only push-to-main and the weekly schedule run the full scan, and those are the runs with
-no reviewer attached — so the regression would land silently and sit there. The assertion is the
-whole gate.
+This is what catches the flag being dropped *before it lands*. The other two suites that load this
+workflow assert only on their own jobs, and the Semgrep job itself stays green on a pull request,
+because `semgrep ci` diff-scans there (`Targets scanned: 1`) and never reaches the lock file.
+`semgrep_scan_report.py` does catch the drop, but only once a full scan runs it into a real
+timeout — push-to-main or the weekly schedule, which are the runs with no reviewer attached. So
+that one reports the regression and this one keeps it out of main.
 
 The second test is the same failure wearing a different hat. The budget was sized against a
 measurement of one file at one size, and the rule's cost scales about linearly with input:

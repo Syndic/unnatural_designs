@@ -208,6 +208,29 @@ py_test(
     ],
 )
 
+# Semgrep's counterpart to the CodeQL report next door, and deliberately not sharing code with it:
+# this one runs inside the `semgrep/semgrep` container, which is Python 3.12, so it can import
+# nothing from this tree — `_workspace.py` is a SyntaxError there. No `deps` is the constraint, not
+# an omission.
+py_library(
+    name = "semgrep_scan_report_lib",
+    srcs = ["semgrep_scan_report.py"],
+)
+
+py_binary(
+    name = "semgrep_scan_report",
+    srcs = ["semgrep_scan_report.py"],
+    main = "semgrep_scan_report.py",
+)
+
+py_test(
+    name = "test_semgrep_scan_report",
+    size = "small",
+    srcs = ["test_semgrep_scan_report.py"],
+    main = "test_semgrep_scan_report.py",
+    deps = [":semgrep_scan_report_lib"],
+)
+
 # Same shape as the three above: the assertion is the whole gate. What it guards fails silently —
 # a reordered renovate.json just quietly re-batches Go minors, with nothing to report it.
 py_test(
