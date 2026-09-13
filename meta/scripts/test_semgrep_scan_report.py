@@ -40,7 +40,21 @@ def _run(path):
 
 # Real shapes, as semgrep 1.176.0 emits them — including the `spans` key, which is what decides
 # whether a PartialParsing left coverage intact.
-_TIMEOUT = {"type": "Timeout", "level": "warn", "path": "MODULE.bazel.lock"}
+# The rule that spends the budget on MODULE.bazel.lock (#294), spelled as semgrep spells it: the
+# pack path and the rule name, which repeat.
+_TIMEOUT_RULE = (
+    "generic.secrets.security.detected-username-and-password-in-uri."
+    "detected-username-and-password-in-uri"
+)
+
+# `rule_id` is part of the real shape, and a fixture without it cannot notice the report dropping
+# the one field that says what to do about the drop.
+_TIMEOUT = {
+    "type": "Timeout",
+    "level": "warn",
+    "path": "MODULE.bazel.lock",
+    "rule_id": _TIMEOUT_RULE,
+}
 
 
 def _partial(path, start_line, end_line):
@@ -87,6 +101,19 @@ class GateTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("MODULE.bazel.lock", out)
         self.assertIn("gave up on this target", out)
+
+    def test_a_dropped_target_names_the_rule_that_spent_the_budget(self):
+        # The file alone does not say what to do: raising the budget, excluding the rule and
+        # calling it pathological are different answers, and the rule is what picks between them.
+        _, out = _run(_report(_TIMEOUT))
+        self.assertIn(_TIMEOUT_RULE, out)
+
+    def test_an_error_owned_by_a_file_attributes_no_rule(self):
+        # A blocking `PartialParsing` carries no `rule_id`, which must read as no attribution
+        # rather than as an empty or `None` one.
+        _, out = _run(_report(_PARTIAL_LOSSY))
+        self.assertIn("lossy.py", out)
+        self.assertNotIn("rule:", out)
 
     def test_an_accepted_error_does_not_fail(self):
         # PEP 758's unparenthesized `except`, which this repo has decided to live with.

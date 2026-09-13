@@ -127,10 +127,19 @@ def blocking_errors(report):
 
 
 def _describe(entry):
+    """One line naming what was lost, where, and which rule cost it.
+
+    The rule is what makes the line actionable: the remedy for a timeout is rule-specific — raise
+    the budget, exclude the rule, or treat it as pathological — and nothing can choose between
+    those without knowing which rule spent the budget. Absent on errors belonging to a file rather
+    than a rule, such as `PartialParsing`.
+    """
     kind = error_type(entry) or "<no type>"
     path = entry.get("path") or "<no path>"
     note = " — semgrep gave up on this target" if kind in _GAVE_UP_ON_A_TARGET else ""
-    return f"{kind}: {path}{note}"
+    rule = entry.get("rule_id")
+    origin = f" (rule: {rule})" if rule else ""
+    return f"{kind}: {path}{note}{origin}"
 
 
 def main(argv=None):
