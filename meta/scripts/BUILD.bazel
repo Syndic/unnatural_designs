@@ -37,6 +37,14 @@ py_library(
     srcs = ["_workflow_text.py"],
 )
 
+py_test(
+    name = "test__workflow_text",
+    size = "small",
+    srcs = ["test__workflow_text.py"],
+    main = "test__workflow_text.py",
+    deps = [":_workflow_text_lib"],
+)
+
 # The one library here that needs a third-party dep. Kept separate from _workspace_lib so the
 # four check scripts that never read a workflow — go_work, adr_numbers, secrets_dir, no_cgo —
 # stay dependency-free, along with the CI job each of them runs in.

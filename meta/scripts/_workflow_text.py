@@ -37,5 +37,13 @@ def run_fan_in(block: str, needs_job: str, result: str) -> subprocess.CompletedP
     script = _RUN_SCRIPT_RE.search(block)
     if script is None:
         raise AssertionError("no `run: |` script in the fan-in job")
-    body = textwrap.dedent(script.group(1)).replace(f"${{{{ needs.{needs_job}.result }}}}", result)
-    return subprocess.run(["bash", "-c", body], capture_output=True, text=True)
+    body = textwrap.dedent(script.group(1))
+    expression = f"${{{{ needs.{needs_job}.result }}}}"
+    # A substitution that found nothing leaves `${{ ... }}` for bash, which errors on it and takes
+    # the branch that exits 0 — so a wrong `needs_job` would read as a fan-in that accepts
+    # anything. Nothing downstream can tell that apart from a real pass.
+    if expression not in body:
+        raise AssertionError(f"the fan-in's script does not read `{expression}`")
+    return subprocess.run(
+        ["bash", "-c", body.replace(expression, result)], capture_output=True, text=True
+    )

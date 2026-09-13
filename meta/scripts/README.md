@@ -77,7 +77,9 @@ module here with a third-party dependency — `check_modules.py` and `check_pyth
 its two consumers, which is why both run under `uv run --frozen` in CI while the others use a
 bare `python3`. `_workflow_text.py` is a third, for the two guards that read a workflow as text
 rather than as a node graph: what a fan-in guard has to settle is whether the job's shell rejects
-a result, and only running that shell answers it.
+a result, and only running that shell answers it. `test__workflow_text.py` covers it directly —
+including the case that makes running a shell dangerous as a test, a `needs:` name the script does
+not read, which leaves `${{ ... }}` in place for bash to error on and exit 0 through.
 
 `path_classification_pattern_sets.py` is the single definition of every named pattern set this
 repo classifies paths against. Unlike the two helpers above it has no leading underscore and no
