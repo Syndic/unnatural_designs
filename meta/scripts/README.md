@@ -75,7 +75,9 @@ module enumeration). The leading underscore signals it's not a public API; `test
 covers it directly. `_workflows.py` is the same idea for GitHub Actions YAML, and is the only
 module here with a third-party dependency — `check_modules.py` and `check_python_version.py` are
 its two consumers, which is why both run under `uv run --frozen` in CI while the others use a
-bare `python3`.
+bare `python3`. `_workflow_text.py` is a third, for the two guards that read a workflow as text
+rather than as a node graph: what a fan-in guard has to settle is whether the job's shell rejects
+a result, and only running that shell answers it.
 
 `path_classification_pattern_sets.py` is the single definition of every named pattern set this
 repo classifies paths against. Unlike the two helpers above it has no leading underscore and no
@@ -121,6 +123,16 @@ filtered workflow never reports, and a required check that never reports leaves 
 resolves against the shared sets and still matches the paths it gates, and that it is a step of the
 reporting job rather than a `changes` job the rest `needs:` — a failed dependency skips its
 dependents, and a skipped required check reads as a pass.
+
+`test_ci_fan_ins.py` has no script half either. It holds `ci.yml`'s two fan-ins — `Build and test
+(all targets)` and `golangci-lint (all modules)` — to what makes requiring one mean anything: it
+depends on the whole matrix, it runs `if: always()`, and its shell rejects every result that is not
+`success`. That last is asserted by running the shell rather than matching its spelling, so the
+`case` idiom `devcontainer.yml` uses for the same job would pass too. The other half is a
+completeness guard over the workflow: a matrix job's own check name carries the row that produced
+it, so it can only be required through a fan-in, and a new matrix job without one fails this test
+rather than quietly becoming a check nothing can name — the gap
+[#311](https://github.com/Syndic/unnatural_designs/issues/311) closed.
 
 `test_semgrep_budget.py` has no script half either. It holds `security.yml`'s Semgrep job to the
 per-rule `--timeout` it was measured to need, and holds `MODULE.bazel.lock` to a size that budget

@@ -178,24 +178,29 @@ future toolchain changes.
 ## CI
 
 Three GitHub Actions workflows run on every push and pull request to `main`, and a fourth
-on pull requests only.
+on pull requests only. What makes any of their jobs binding is the ruleset, not the `needs:` edges
+between them — see [What makes a check binding](#what-makes-a-check-binding) below.
 
 **CI** - code-change-driven checks:
 
-| Job                          | Trigger condition                                                                                  |
-| ---------------------------- | -------------------------------------------------------------------------------------------------- |
-| Gazelle check                | Always - verifies BUILD files match source                                                         |
-| MODULE.bazel.lock freshness  | Always - verifies `bazel mod tidy` leaves MODULE.bazel and its lock unchanged                      |
-| Module completeness check    | Always - verifies Go module matrix/config and Python workspace/lock invariants                     |
-| go.work check                | Always - verifies all Go modules are registered in `go.work`                                       |
-| Secrets check                | Always - verifies the `secrets/` directory contains no committed files other than `secrets.md`     |
-| No-cgo policy check          | Always - rejects `import "C"` and transitive deps that compile C/C++/cgo/SWIG                      |
-| golangci-lint                | After module check passes - runs per Go module                                                     |
-| ruff                         | Always - `ruff format --check` and `ruff check` over all Python                                    |
-| shellcheck                   | Always - lints every tracked `*.sh`                                                                |
-| ty                           | Always - `uvx ty@<pin> check` (Astral's static type checker, alpha) over all Python                |
-| Build and test               | After all checks above pass                                                                        |
-| Coverage                     | After build and test - `bazel coverage //...`, uploads merged lcov to Codecov                      |
+| Job                                    | What it checks                                                              |
+| -------------------------------------- | --------------------------------------------------------------------------- |
+| Gazelle BUILD file check               | BUILD files match source                                                    |
+| MODULE.bazel.lock freshness            | `bazel mod tidy` leaves MODULE.bazel and its lock unchanged                 |
+| Module completeness check              | Go module matrix/config and Python workspace/lock invariants                |
+| go.work consistency/completeness check | every Go module in the repo is registered in `go.work`                      |
+| ADR number uniqueness check            | ADR numbers are unique repo-wide and filenames are `NNNN-kebab-slug.md`     |
+| Python version consistency check       | every Python language-level declaration agrees with `//:.python-version`    |
+| Secrets check                          | `secrets/` contains no committed files other than `secrets.md`              |
+| No-cgo policy check                    | rejects `import "C"` and transitive deps that compile C/C++/cgo/SWIG        |
+| `golangci-lint (<module>)`             | Go lint - one job per Go module                                             |
+| `golangci-lint (all modules)`          | Fan-in over the per-module jobs - the name to require in the ruleset        |
+| ruff                                   | `ruff format --check` and `ruff check` over all Python                      |
+| shellcheck                             | lints every tracked `*.sh`                                                  |
+| ty                                     | `uvx ty@<pin> check` (Astral's static type checker, alpha) over all Python  |
+| `Build and test (<platform>)`          | `bazel test //...` - one job per supported platform                         |
+| `Build and test (all targets)`         | Fan-in over the per-platform jobs - the name to require in the ruleset      |
+| Coverage                               | `bazel coverage //...`, uploads merged lcov to Codecov - advisory           |
 
 **Security** - also runs on a weekly schedule (Mondays at 02:00 UTC):
 
@@ -204,8 +209,8 @@ on pull requests only.
 | Semgrep                           | SAST - scans for injection flaws, insecure API usage, and hardcoded secrets     |
 | `CodeQL Analysis (<language>)`    | SAST - one job per language: actions, Go, Python                                |
 | `CodeQL Analysis (all languages)` | Fan-in over the per-language jobs - the name to require in the ruleset          |
-| govulncheck                       | Dependency CVE scanning - checks reachable call paths against the Go vuln DB    |
-| govulncheck-all                   | A single static target that github can require pass for branch protection rules |
+| `govulncheck (<module>)`          | Dependency CVE scanning - reachable call paths against the Go vuln DB           |
+| `govulncheck (all modules)`       | Fan-in over the per-module jobs - the name to require in the ruleset            |
 | pip-audit                         | Dependency CVE scanning for Python - manifest-based scan over the uv resolution |
 | Trivy                             | Supply chain and filesystem scanning - secrets, CVEs across all ecosystems      |
 
@@ -215,7 +220,9 @@ the PR base: it only runs the build when `.devcontainer/` or `.github/workflows/
 changed in this PR, and reports success otherwise so the status check always reports. The path
 diff is its own job, and both required checks fail when *it* fails: an unevaluated gate skips its
 consumers exactly the way a gate that ran and said no does, and GitHub counts a skipped required
-check as passed.
+check as passed. The same workflow builds the shared base image on its own narrower path gate - one
+job per architecture, behind the `Base image (all platforms)` fan-in, where a skipped row passes
+because most PRs legitimately do not touch the image.
 
 **Self-test - commit-file-via-app** (`Action self-test`) - exercises the
 [`commit-file-via-app`](.github/actions/commit-file-via-app/README.md) composite action end-to-end
@@ -225,6 +232,29 @@ a workflow filtered at its trigger never reports, and a required check that neve
 every PR, and `Action self-test` is required in the ruleset. Fork PRs cannot read the app
 credentials, so they cannot run the exercise - and therefore cannot propose a change to the
 action: one that touches it fails the check, while one that touches nothing there passes normally.
+
+### What makes a check binding
+
+A check blocks a merge because the `main` ruleset names it in its required-status-check list.
+Nothing else does: the `needs:` edges above are a cost optimisation - do not burn three platform
+runners on a tree that fails gazelle - and they decide what *runs*, never what must *pass*. A check
+unhooked from `needs` to parallelise it keeps gating; a check absent from the ruleset gates nothing
+however many jobs wait on it.
+
+Every job in the two tables above is required except `Coverage`, which is advisory deliberately:
+its failure is a judgement call rather than a defect, and Codecov's own `project`/`patch` statuses
+are threshold-based. So are the three named in the two paragraphs after them - `Build devcontainer
+and smoke test`, `Base image (all platforms)` and `Action self-test`. The path-diff job those
+workflows gate on is not itself required; the jobs that report take its failure as their own.
+
+A matrix job is required through its fan-in - `Build and test (all targets)`,
+`golangci-lint (all modules)`, `govulncheck (all modules)`, `CodeQL Analysis (all languages)`,
+`Base image (all platforms)` - because its own check name carries the row that produced it and so
+moves with the matrix. Each fan-in depends on every row and runs `if: always()`, so requiring the
+one stable name requires them all, and adding a row needs no ruleset edit.
+
+The list itself is repo settings, invisible from this tree: renaming a job, or adding one outside
+an existing matrix, needs a ruleset edit that nothing in CI will remind you about.
 
 ## Automation
 

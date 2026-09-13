@@ -26,10 +26,10 @@ report *says*, and the file-coverage gate it fails on, are
 """
 
 import re
-import subprocess
-import textwrap
 import unittest
 from pathlib import Path
+
+from meta.scripts._workflow_text import job_block, run_fan_in
 
 # Not .resolve(): every file read here is a cross-package data dep, so each lives in the runfiles
 # tree beside this one rather than at the source path a resolved symlink would lead back to.
@@ -60,22 +60,6 @@ _FAN_IN_NAME = "CodeQL Analysis (all languages)"
 _DOCS_NAMING_THE_FAN_IN = (_ROOT / "README.md", _ROOT / ".claude" / "CLAUDE.md")
 
 
-# Trailing comments introduce the *next* job rather than closing this one, and this file writes
-# comments that quote the very lines these assertions look for — so a block that keeps them can
-# satisfy an assertion out of prose written about a different job.
-_TRAILING_COMMENTS_RE = re.compile(r"(?:^[ \t]*(?:#.*)?\n)+\Z", re.M)
-
-
-def job_block(text: str, job: str) -> str:
-    """One job's lines: its key through its last line of YAML, comments for the next job dropped."""
-    start = re.search(rf"^  {re.escape(job)}:$", text, re.M)
-    if start is None:
-        raise AssertionError(f"no `{job}:` job in {_WORKFLOW.name}")
-    rest = text[start.end() :]
-    end = re.search(r"^  [a-zA-Z_][\w-]*:$", rest, re.M)
-    return _TRAILING_COMMENTS_RE.sub("", rest[: end.start()] if end else rest)
-
-
 def step_block(block: str, uses: str) -> str:
     """One step's lines, found by the action it `uses`, through the line before the next step."""
     start = block.index(f"- uses: {uses}")
@@ -84,21 +68,7 @@ def step_block(block: str, uses: str) -> str:
     return rest[: end.start() + 1] if end else rest
 
 
-# The `run: |` body, dedented. Asserting on the shell's *spelling* would fail the `case` form
-# devcontainer.yml uses for the same job while it behaved identically, so the tests run it instead.
-_RUN_SCRIPT_RE = re.compile(r"^ +run: \|\n((?:^ {10}.*\n|^\n)+)", re.M)
-
-
-def run_fan_in(result: str) -> subprocess.CompletedProcess:
-    """Run the fan-in's shell with `result` standing in for the matrix job's outcome."""
-    script = _RUN_SCRIPT_RE.search(job_block(_WORKFLOW.read_text(encoding="utf-8"), "codeql-all"))
-    if script is None:
-        raise AssertionError("no `run: |` script in the codeql-all job")
-    body = textwrap.dedent(script.group(1)).replace("${{ needs.codeql.result }}", result)
-    return subprocess.run(["bash", "-c", body], capture_output=True, text=True)
-
-
-_CODEQL = job_block(_WORKFLOW.read_text(encoding="utf-8"), "codeql")
+_CODEQL = job_block(_WORKFLOW.read_text(encoding="utf-8"), "codeql", where=_WORKFLOW.name)
 
 # Split on the list marker and read each entry's keys separately, rather than matching a
 # `- language:`/`build-mode:` pair. A pattern that wants both keys adjacent silently drops the entry
@@ -160,7 +130,9 @@ class FanInTest(unittest.TestCase):
     """The job the ruleset names, and the properties that make requiring it mean something."""
 
     def setUp(self):
-        self.fan_in = job_block(_WORKFLOW.read_text(encoding="utf-8"), "codeql-all")
+        self.fan_in = job_block(
+            _WORKFLOW.read_text(encoding="utf-8"), "codeql-all", where=_WORKFLOW.name
+        )
 
     def test_fan_in_depends_on_the_matrix_job(self):
         self.assertIn(
@@ -188,7 +160,7 @@ class FanInTest(unittest.TestCase):
         )
 
     def test_fan_in_passes_when_every_row_succeeded(self):
-        done = run_fan_in("success")
+        done = run_fan_in(self.fan_in, "codeql", "success")
         self.assertEqual(done.returncode, 0, f"{done.stdout}{done.stderr}".strip())
 
     def test_fan_in_fails_on_anything_else(self):
@@ -196,7 +168,7 @@ class FanInTest(unittest.TestCase):
         for result in ("failure", "cancelled", "skipped"):
             with self.subTest(result=result):
                 self.assertNotEqual(
-                    run_fan_in(result).returncode,
+                    run_fan_in(self.fan_in, "codeql", result).returncode,
                     0,
                     f"a matrix that reports `{result}` is a language that was not analysed; "
                     "unlike devcontainer.yml's path-gated `base-image-all`, nothing gates this "
