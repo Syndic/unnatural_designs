@@ -101,6 +101,31 @@ Monday. The accepted consequence is that a stale matrix shows `ci.yml` red while
 reports green — the merge is still blocked, but security.yml's green answers a narrower question
 than it looks like it does.
 
+## Enforcement lives in the ruleset, not in `needs`
+
+A check blocks a merge because the `main` ruleset names it — id 14538709, readable with
+`gh api repos/Syndic/unnatural_designs/rulesets/14538709` and writable nowhere in this tree.
+`needs:` decides only what *runs*, and exists so three platform runners are not spent on a tree
+that fails gazelle. #311 is where the two were separated: eight checks were binding only as a side
+effect of sitting in `build-and-test-per-target`'s `needs`, and three more — `pip-audit`,
+`shellcheck`, `ADR number uniqueness check` — were binding not at all.
+
+- **Do not make a check binding by adding it to `needs`.** Rejected in #311 as the fix for the
+  three: it conflates "is a prerequisite of" with "must pass" — shellcheck failing has no bearing
+  on whether `bazel test` can run — and it serialises the run, so one lint failure delays every
+  other signal on the PR. The `needs` edges stayed exactly as they were and the ruleset grew
+  instead, which is also why unhooking a fast check from `needs` to parallelise it is now a free
+  refactor rather than a silent demotion.
+- **A matrix job is requirable only through a fan-in**, since its own check name carries the row
+  that produced it. The fan-in carries `if: always()` for the reason the section below gives: a
+  failed matrix would otherwise skip it, and a skipped required check reads as a pass.
+  `//meta/scripts:test_ci_fan_ins` holds ci.yml's two to that shape, and fails a matrix job added
+  with no fan-in at all — the state `golangci-lint` was in, which is what blocked requiring it.
+- **The cost, accepted rather than solved.** The required list is repo settings, so adding or
+  renaming a job needs a ruleset edit nothing in CI will prompt for. README's "What makes a check
+  binding" is the reader-facing copy of what is required today; a checked-in record of the list is
+  tracked separately.
+
 ## A required check cannot be filtered at the trigger
 
 GitHub counts a job skipped by an `if:` condition or by a failed `needs:` as **passing**. A
@@ -310,13 +335,10 @@ configuration that runs CodeQL with no workflow file in the repo. Load-bearing f
 - **`build-mode: none` is not available for Go** (nor Swift or Kotlin), so Go is the one language
   whose analysis has to build, and so the one that needs a toolchain on PATH.
 - **`CodeQL Analysis (all languages)` is the name for the ruleset to require**, not the
-  per-language jobs — those are matrix rows, so their check names move with the language list. The
-  `codeql-all` fan-in gives branch protection one stable name and makes every row required through
-  it, so an added language needs no ruleset edit. Its `if: always()` is what makes that real:
-  without it a failed matrix *skips* the fan-in, and branch protection counts a skipped required
-  check as passed. The context itself is repo settings and unreadable from here, so
-  `//meta/scripts:test_codeql_toolchain` holds the workflow and the docs that quote it to the one
-  string.
+  per-language jobs — the rule and its reasoning are under "Enforcement lives in the ruleset, not
+  in `needs`". What is local to this job: an added language needs no ruleset edit, and
+  `//meta/scripts:test_codeql_toolchain` rather than `:test_ci_fan_ins` is what holds this
+  workflow and the docs that quote it to the one string.
 - **What the analysis *found* is gated by a second, separate rule.** Requiring `CodeQL Analysis
   (all languages)` gates on the analysis running and succeeding, not on its results. Those are
   gated by the `code_scanning` ruleset rule, where `CodeQL` sits alongside `Trivy` at
