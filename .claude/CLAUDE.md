@@ -101,6 +101,32 @@ Monday. The accepted consequence is that a stale matrix shows `ci.yml` red while
 reports green — the merge is still blocked, but security.yml's green answers a narrower question
 than it looks like it does.
 
+## A required check cannot be filtered at the trigger
+
+GitHub counts a job skipped by an `if:` condition or by a failed `needs:` as **passing**. A
+*workflow* skipped by trigger-level filtering (`paths:`, `branches:`, a commit message) is the
+opposite: it never reports, so a required check naming it sits `Pending` and blocks the merge
+indefinitely. So a check named in the `main` ruleset has to belong to a workflow that runs on every
+PR, and the path filter moves inside the job — where skipping the work still lets the job report
+success.
+
+Two workflows are shaped by this, and both classify with `meta/scripts/classify_changed_paths.py`
+rather than a filter GitHub applies before the run:
+
+- `devcontainer.yml` — `Build devcontainer and smoke test` and `Base image (all platforms)`.
+- `commit-file-via-app-selftest.yml` — `Action self-test`, which is what the action's external
+  `@main` consumers get instead of a review gate.
+
+*Where* the classification sits inside the workflow is a second decision, and the two answer it
+differently because they have different numbers of consumers. devcontainer.yml has three, so it
+pays for a `changes` job the rest `needs:` — and each consumer then has to check that job's own
+result explicitly, because a failed dependency *skips* them and skipped reads as passed. The
+self-test has one consumer, so the classification is a step inside the required job: a
+classification that fails takes the check down with it, with nothing left to remember.
+
+`renovate-derived-files.yml` keeps its trigger-level `paths:` deliberately — nothing requires it,
+and it gates on `github.actor == 'renovate[bot]'` besides.
+
 ## Path-classification pattern sets live in one module
 
 `meta/scripts/path_classification_pattern_sets.py` defines every named pattern set the repo

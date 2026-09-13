@@ -32,3 +32,9 @@ the action end-to-end against a scratch branch on every PR that touches this dir
 each clause of the contract above: a changed file is committed and web-flow signed with the
 expected content; no changed files leaves the branch tip untouched; and given several paths of
 which only some changed, only the changed ones are committed.
+
+`Action self-test` is a required status check, which is what makes the exercise a gate rather than
+a report. The workflow itself runs on every PR and classifies the diff inside the job — a
+trigger-level `paths:` filter would leave the required check permanently pending on PRs that touch
+nothing here. Fork PRs are the one accepted gap: they cannot read the app credentials, so the job
+skips and the check passes advisory.

@@ -256,6 +256,27 @@ py_test(
     main = "test_renovate_grouping.py",
 )
 
+# Same shape as the workflow-reading tests above: the assertion is the whole gate. What it guards
+# is a required status check named in repo settings, which nothing here can read — so the couplings
+# it can hold are the ones the setting depends on, and every one of them fails silently.
+py_test(
+    name = "test_commit_file_via_app_selftest",
+    size = "small",
+    srcs = ["test_commit_file_via_app_selftest.py"],
+    # The docs are here for one string: the required check name, held against the job that
+    # produces it, the same way test_codeql_toolchain holds its fan-in's.
+    data = [
+        "//:.claude/CLAUDE.md",
+        "//:.github/workflows/commit-file-via-app-selftest.yml",
+        "//:README.md",
+    ],
+    main = "test_commit_file_via_app_selftest.py",
+    deps = [
+        ":path_classification_pattern_sets_lib",
+        requirement("pyyaml"),
+    ],
+)
+
 py_library(
     name = "classify_changed_paths_lib",
     srcs = ["classify_changed_paths.py"],

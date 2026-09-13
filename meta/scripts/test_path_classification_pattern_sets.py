@@ -1,6 +1,7 @@
 """Tests for the shared path-classification pattern sets.
 
-These are the sets two workflows and the `base-image-pin` pre-commit hook classify against, so the
+These are the sets three workflows and the `base-image-pin` pre-commit hook classify against, so
+the
 tests are about *behaviour* — which sets a given path falls into — rather than about any loading
 machinery, of which there is now none: the sets are module-level constants composed by set union.
 
@@ -24,11 +25,18 @@ def fires(path: str) -> set[str]:
     }
 
 
+# The self-test set fires alone: nothing else in the repo classifies the action's directory.
+_SELFTEST = {"commit_file_via_app"}
+
+
 class TestSetsPresent(unittest.TestCase):
     """A set missing from SETS is unselectable, and one with no patterns is silently never hit."""
 
     def test_the_expected_sets_exist(self):
-        self.assertEqual(sorted(SETS), ["base", "bazel", "changed", "devcontainer", "go", "python"])
+        self.assertEqual(
+            sorted(SETS),
+            ["base", "bazel", "changed", "commit_file_via_app", "devcontainer", "go", "python"],
+        )
 
     def test_every_set_has_usable_patterns(self):
         for name, patterns in SETS.items():
@@ -128,6 +136,36 @@ class TestDevcontainerSets(unittest.TestCase):
         self.assertEqual(fires(".github/workflows/ci.yml"), set())
 
 
+class TestCommitFileViaAppSet(unittest.TestCase):
+    """The set that decides whether the action's self-test runs. Unlike the sets around it this one
+    gates a required check rather than a derived file, so a path that falls out of it does not go
+    stale — it goes unexercised, and the check reports success having run nothing."""
+
+    def test_the_action_and_everything_beside_it(self):
+        self.assertEqual(fires(".github/actions/commit-file-via-app/action.yml"), _SELFTEST)
+        self.assertEqual(fires(".github/actions/commit-file-via-app/README.md"), _SELFTEST)
+
+    def test_the_self_test_workflow_itself(self):
+        # The workflow decides what the exercise covers, so editing it has to re-run the exercise.
+        self.assertEqual(fires(".github/workflows/commit-file-via-app-selftest.yml"), _SELFTEST)
+
+    def test_a_sibling_composite_action_is_not_matched(self):
+        self.assertEqual(fires(".github/actions/setup-bazel-remote/action.yml"), set())
+
+    def test_the_workflow_that_consumes_the_action_is_not_matched(self):
+        # renovate-derived-files.yml calls the action but is not part of its contract; a change
+        # there cannot break the external consumers this gate exists for.
+        self.assertEqual(fires(".github/workflows/renovate-derived-files.yml"), set())
+
+    def test_the_module_that_defines_the_sets_is_not_in_this_one(self):
+        # Deliberately unlike `changed`: editing these patterns cannot change how the action
+        # behaves, so a self-test run over such an edit would exercise nothing a previous run did
+        # not. This file is what holds the set honest instead.
+        self.assertNotIn(
+            "commit_file_via_app", fires("meta/scripts/path_classification_pattern_sets.py")
+        )
+
+
 class TestPythonAndGoSets(unittest.TestCase):
     def test_requirements_lock_is_python_not_bazel(self):
         # Whether a Python change also refreshes the Bazel lock is decided later, on whether
@@ -177,6 +215,8 @@ _SAMPLE_PATHS = (
     ".devcontainer/Dockerfile",
     ".github/workflows/devcontainer.yml",
     ".github/workflows/ci.yml",
+    ".github/actions/commit-file-via-app/action.yml",
+    ".github/workflows/commit-file-via-app-selftest.yml",
     "requirements_lock.txt",
     "apps/foo/pyproject.toml",
     "tools/net/go.mod",

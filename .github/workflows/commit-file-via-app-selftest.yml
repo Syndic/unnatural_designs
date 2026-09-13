@@ -12,14 +12,15 @@ name: Self-test — commit-file-via-app
 # Case 3 is the shape `renovate-derived-files.yml` hits on most runs: it passes `uv.lock`,
 # `requirements_lock.txt`, and `MODULE.bazel.lock` in one invocation, and a Bazel-only PR moves
 # only the last of them. The scratch branch is deleted even on failure.
+#
+# `Action self-test` is a required status check, so the workflow always runs and always reports;
+# path filtering happens in the job. See .claude/CLAUDE.md "A required check cannot be filtered at
+# the trigger".
 
 on:
   pull_request:
     types: [opened, synchronize, reopened]
     branches: [main]
-    paths:
-      - ".github/actions/commit-file-via-app/**"
-      - ".github/workflows/commit-file-via-app-selftest.yml"
 
 # Supersede in-flight runs for the same PR; see .claude/CLAUDE.md "Superseding CI runs".
 concurrency:
@@ -32,7 +33,11 @@ permissions:
 jobs:
   selftest:
     name: Action self-test
-    # Fork PRs can't read the app credentials; skip rather than fail confusingly.
+    # A deliberate gap rather than an implementation detail. A fork PR's token cannot read the app
+    # credentials, so the job skips there — and branch protection counts a skipped required check
+    # as a pass, leaving this advisory on fork PRs. Failing instead would block every fork PR on a
+    # check none of them can run, and the only thing that would actually close the gap is
+    # `pull_request_target`, which hands repo secrets to unreviewed code. Fork PRs get review.
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     env:
@@ -48,11 +53,32 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.head_ref }}
+          # Need the base reachable so the classify step below can diff against it. Shallow
+          # checkout (the default) only fetches the head commit.
+          fetch-depth: 0
           persist-credentials: false
+
+      # The gate the trigger no longer carries. It is a step in this job rather than a `changes`
+      # job the rest `needs:`, so a classification that fails takes the required check down with
+      # it — a `needs:` dependency's failure would skip these steps instead, and a skipped
+      # required check reads as a pass.
+      #
+      # Which paths are in the set, and why, lives in
+      # meta/scripts/path_classification_pattern_sets.py; the three-dot diff lives in the script.
+      - name: Classify changed paths
+        id: classify
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          python3 meta/scripts/classify_changed_paths.py \
+            --base "${BASE_SHA}" \
+            --emit commit_file_via_app
 
       # The action mints its own token from these credentials; this one is for the scratch-branch
       # setup, assertions, and cleanup around it.
       - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        if: steps.classify.outputs.commit_file_via_app == 'true'
         id: app-token
         with:
           client-id: ${{ vars.RENOVATE_HELPER_CLIENT_ID }}
@@ -61,6 +87,7 @@ jobs:
       # Branch from the local HEAD (not the PR head SHA from the event payload) so the remote
       # scratch branch is guaranteed to match the working tree the action diffs against.
       - name: Create scratch branch at the checked-out commit
+        if: steps.classify.outputs.commit_file_via_app == 'true'
         id: scratch
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -76,9 +103,11 @@ jobs:
       # Must touch a *tracked* file — the action's diff check is `git diff`, which is blind to
       # untracked paths.
       - name: Modify a tracked file in the working tree
+        if: steps.classify.outputs.commit_file_via_app == 'true'
         run: echo "${COMMIT_MARKER}" >> README.md
 
       - name: Commit the change via the action
+        if: steps.classify.outputs.commit_file_via_app == 'true'
         uses: ./.github/actions/commit-file-via-app
         with:
           client-id: ${{ vars.RENOVATE_HELPER_CLIENT_ID }}
@@ -89,6 +118,7 @@ jobs:
           commit-message: "test: commit-file-via-app self-test"
 
       - name: Assert a signed commit landed with the expected content
+        if: steps.classify.outputs.commit_file_via_app == 'true'
         id: assert-commit
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -129,9 +159,11 @@ jobs:
 
       # Restore the working tree so the second action run sees no diff.
       - name: Revert the working-tree change
+        if: steps.classify.outputs.commit_file_via_app == 'true'
         run: git checkout -- README.md
 
       - name: Run the action again with no diff
+        if: steps.classify.outputs.commit_file_via_app == 'true'
         uses: ./.github/actions/commit-file-via-app
         with:
           client-id: ${{ vars.RENOVATE_HELPER_CLIENT_ID }}
@@ -142,6 +174,7 @@ jobs:
           commit-message: "test: this commit must never land (no-diff no-op)"
 
       - name: Assert the no-diff run was a no-op
+        if: steps.classify.outputs.commit_file_via_app == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REPO: ${{ github.repository }}
@@ -158,9 +191,11 @@ jobs:
           fi
 
       - name: Modify only one of the two tracked files
+        if: steps.classify.outputs.commit_file_via_app == 'true'
         run: echo "${PARTIAL_MARKER}" >> README.md
 
       - name: Commit both paths via the action, only one of them changed
+        if: steps.classify.outputs.commit_file_via_app == 'true'
         uses: ./.github/actions/commit-file-via-app
         with:
           client-id: ${{ vars.RENOVATE_HELPER_CLIENT_ID }}
@@ -174,6 +209,7 @@ jobs:
       # An unchanged file wrongly included in `additions` yields an identical tree, so that stays
       # invisible here; what this catches is no commit at all, wrong content, or a rewritten path.
       - name: Assert only the changed path was committed
+        if: steps.classify.outputs.commit_file_via_app == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REPO: ${{ github.repository }}
@@ -209,6 +245,11 @@ jobs:
             exit 1
           fi
 
+      - if: steps.classify.outputs.commit_file_via_app != 'true'
+        run: echo "No commit-file-via-app changes in this PR; skipping the self-test."
+
+      # Gates on the scratch step rather than on the classification: when the classification
+      # skipped it there is no branch to delete, and `outcome` says so without restating why.
       - name: Delete scratch branch
         if: always() && steps.scratch.outcome == 'success'
         env:

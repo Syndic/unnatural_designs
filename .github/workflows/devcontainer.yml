@@ -3,9 +3,8 @@ name: Devcontainer
 # Build the devcontainer and smoke-test the toolchain it ships. Catches breakage from
 # Renovate-driven bumps to the Debian base, the `features` block (go, etc.), the Dockerfile's
 # PYTHON_VERSION, or BAZELISK_VERSION before someone hits it locally.
-# The workflow always runs so the status check always reports — a trigger-level `paths:`
-# filter would skip the workflow entirely on unrelated PRs, leaving a required check
-# permanently pending. Path filtering happens inside the job instead.
+# The workflow always runs so the status check always reports; path filtering happens in the
+# `changes` job. See .claude/CLAUDE.md "A required check cannot be filtered at the trigger".
 on:
   push:
     branches: [main]

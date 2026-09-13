@@ -2,8 +2,8 @@
 
 One definition each, composed by set union, so no site restates another's patterns. Consumers
 name a set: `classify_changed_paths.py` turns a diff into `name=true|false` step outputs for
-devcontainer.yml and renovate-derived-files.yml, and `base_image_pin_hook.py` gates the
-`base-image-pin` pre-commit hook on `BASE`.
+devcontainer.yml, renovate-derived-files.yml and commit-file-via-app-selftest.yml, and
+`base_image_pin_hook.py` gates the `base-image-pin` pre-commit hook on `BASE`.
 
 Composition is the point. `BASE` decides whether a new devcontainer base image is published, and
 the `BAZEL` set inside it decides whether the consumer's pin in .devcontainer/Dockerfile is
@@ -100,6 +100,26 @@ GO = (
 # Dockerfile and lifecycle scripts feed the image build instead — CHANGED covers those.
 DEVCONTAINER = (r"^\.devcontainer/devcontainer\.json$",)
 
+# The commit-file-via-app composite action and the workflow that self-tests it. Two paths, and
+# both have to be here: the action is what the self-test exercises, and the self-test's own file is
+# what decides whether the exercise is still the right one, so editing either needs the run.
+#
+# Unlike every other set here this one is not about a derived file — it gates a *required* check
+# whose workflow deliberately has no trigger-level `paths:` filter (see .claude/CLAUDE.md
+# "A required check cannot be filtered at the trigger"). The classification moved in here so the
+# gate is a step inside the required job rather than a filter GitHub applies before it.
+#
+# `path_classification_pattern_sets.py` is deliberately absent, on the same reasoning as BASE:
+# editing these patterns cannot change how the action behaves, so a self-test run over such an edit
+# would exercise nothing the previous run did not. What holds the set itself honest is
+# //meta/scripts:test_path_classification_pattern_sets, not a run of the workflow.
+COMMIT_FILE_VIA_APP = (
+    # A plain prefix: action.yml, the README that states the contract, and anything added beside
+    # them are all inputs to what the self-test asserts.
+    r"^\.github/actions/commit-file-via-app/",
+    r"^\.github/workflows/commit-file-via-app-selftest\.yml$",
+)
+
 # The name each set is selected by on the command line and in `$GITHUB_OUTPUT`.
 SETS: dict[str, tuple[str, ...]] = {
     "bazel": BAZEL,
@@ -108,4 +128,5 @@ SETS: dict[str, tuple[str, ...]] = {
     "python": PYTHON,
     "go": GO,
     "devcontainer": DEVCONTAINER,
+    "commit_file_via_app": COMMIT_FILE_VIA_APP,
 }
