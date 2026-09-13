@@ -103,17 +103,26 @@ class GateTest(unittest.TestCase):
         self.assertIn("gave up on this target", out)
 
     def test_a_dropped_target_names_the_rule_that_spent_the_budget(self):
-        # The file alone does not say what to do: raising the budget, excluding the rule and
-        # calling it pathological are different answers, and the rule is what picks between them.
+        # Why the rule has to be on the line is `_describe`'s docstring; this holds that it is.
         _, out = _run(_report(_TIMEOUT))
         self.assertIn(_TIMEOUT_RULE, out)
 
     def test_an_error_owned_by_a_file_attributes_no_rule(self):
-        # A blocking `PartialParsing` carries no `rule_id`, which must read as no attribution
-        # rather than as an empty or `None` one.
-        _, out = _run(_report(_PARTIAL_LOSSY))
+        # `rule_id` explicitly null, not merely absent, so a presence check (`"rule_id" in entry`)
+        # cannot pass here while printing `(rule: None)` in production. Paired with a timeout so
+        # the assertion is not also satisfied by a build that attributes nothing at all — which
+        # is what made the first version of this test green against the very bug it names.
+        _, out = _run(_report(dict(_PARTIAL_LOSSY, rule_id=None), _TIMEOUT))
         self.assertIn("lossy.py", out)
-        self.assertNotIn("rule:", out)
+        attributed = [line for line in out.splitlines() if "rule:" in line]
+        self.assertEqual(len(attributed), 1)
+        self.assertIn("MODULE.bazel.lock", attributed[0])
+
+    def test_a_dropped_target_with_no_rule_says_so(self):
+        # The attribution slot is kept even when empty: a gave-up error whose `rule_id` went
+        # missing must not render as the file-owned case, which carries no slot at all.
+        _, out = _run(_report(dict(_TIMEOUT, rule_id=None)))
+        self.assertIn("(rule: <none reported>)", out)
 
     def test_an_accepted_error_does_not_fail(self):
         # PEP 758's unparenthesized `except`, which this repo has decided to live with.

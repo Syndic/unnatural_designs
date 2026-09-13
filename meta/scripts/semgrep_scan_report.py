@@ -131,13 +131,17 @@ def _describe(entry):
 
     The rule is what makes the line actionable: the remedy for a timeout is rule-specific — raise
     the budget, exclude the rule, or treat it as pathological — and nothing can choose between
-    those without knowing which rule spent the budget. Absent on errors belonging to a file rather
-    than a rule, such as `PartialParsing`.
+    those without knowing which rule spent the budget. Errors belonging to a file rather than a
+    rule, such as `PartialParsing`, carry no attribution and are printed without one.
     """
     kind = error_type(entry) or "<no type>"
     path = entry.get("path") or "<no path>"
     note = " — semgrep gave up on this target" if kind in _GAVE_UP_ON_A_TARGET else ""
-    rule = entry.get("rule_id")
+    # A gave-up error keeps its attribution slot even when nothing fills it: silence there is
+    # indistinguishable from a file-owned error, so a renamed or emptied `rule_id` would send the
+    # reader back to the log with nothing saying why. `<no type>` and `<no path>` above say the
+    # same thing about their own fields.
+    rule = entry.get("rule_id") or ("<none reported>" if kind in _GAVE_UP_ON_A_TARGET else "")
     origin = f" (rule: {rule})" if rule else ""
     return f"{kind}: {path}{note}{origin}"
 
