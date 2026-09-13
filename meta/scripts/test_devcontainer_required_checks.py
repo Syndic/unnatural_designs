@@ -51,6 +51,11 @@ _REQUIRED_CHECKS = {
 _FAN_IN_STEP = "Verify every base-image row passed"
 _GUARD_STEP = "Verify the classification ran"
 
+# An `if:` is the one thing here with no runnable equivalent — GitHub evaluates it, not bash — so
+# it is matched rather than exercised. Only the `${{ }}` wrapper is normalised away, since it is
+# optional and carries no meaning; anything past that is a different condition.
+_WRAPPED_RE = re.compile(r"^\$\{\{(.*)\}\}$", re.S)
+
 _EMIT_RE = re.compile(r"--emit\s+(\S+)")
 _GATE_RE = re.compile(r"needs\.changes\.outputs\.(\w+)")
 _STEP_OUTPUT_RE = re.compile(r"^\$\{\{\s*steps\.(\w+)\.outputs\.(\w+)\s*\}\}$")
@@ -71,6 +76,15 @@ def classify_step() -> dict:
 def emitted_sets() -> list[str]:
     """The pattern sets devcontainer.yml asks the classifier for, in the order it asks."""
     return _EMIT_RE.findall(classify_step()["run"])
+
+
+def condition(job: str) -> str | None:
+    """A job's `if:`, with an optional `${{ }}` wrapper and surrounding whitespace removed."""
+    declared = _JOBS[job].get("if")
+    if not isinstance(declared, str):
+        return declared
+    hit = _WRAPPED_RE.match(declared.strip())
+    return (hit.group(1) if hit else declared).strip()
 
 
 def needs(job: str) -> list[str]:
@@ -139,7 +153,10 @@ class ClassificationOutputsTest(unittest.TestCase):
         for name, expression in self.outputs.items():
             with self.subTest(output=name):
                 hit = _STEP_OUTPUT_RE.match(expression)
-                self.assertIsNotNone(hit, f"`{name}` is not a plain step-output reference")
+                # `fail` rather than `assertIsNotNone`: it is typed `NoReturn`, so the two reads
+                # below are narrowed for ty as well as guarded at run time.
+                if hit is None:
+                    self.fail(f"`{name}` is not a plain step-output reference")
                 self.assertEqual(hit.group(1), classify_step()["id"])
                 self.assertEqual(hit.group(2), name)
 
@@ -166,7 +183,7 @@ class BaseImageFanInTest(unittest.TestCase):
 
     def test_the_fan_in_runs_even_when_the_matrix_fails(self):
         self.assertEqual(
-            self.job["if"],
+            condition("base-image-all"),
             "always()",
             "without it a failed matrix skips this job, and branch protection counts a skipped "
             "required check as passed",
@@ -212,8 +229,8 @@ class BuildAndSmokeTestGuardTest(unittest.TestCase):
 
     def test_the_job_survives_a_failed_classification(self):
         self.assertEqual(
-            self.job["if"],
-            "${{ !cancelled() }}",
+            condition("build-and-smoke-test"),
+            "!cancelled()",
             "with no condition this job is skipped when `changes` fails, and a skipped required "
             "check passes; `always()` would fix that and undo the concurrency group's "
             "supersession, starting a devcontainer build for a run already replaced",
