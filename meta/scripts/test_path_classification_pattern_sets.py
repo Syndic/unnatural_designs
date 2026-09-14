@@ -1,7 +1,6 @@
 """Tests for the shared path-classification pattern sets.
 
-These are the sets three workflows and the `base-image-pin` pre-commit hook classify against, so
-the
+These are the sets three workflows and the `base-image-pin` pre-commit hook classify against, so the
 tests are about *behaviour* — which sets a given path falls into — rather than about any loading
 machinery, of which there is now none: the sets are module-level constants composed by set union.
 

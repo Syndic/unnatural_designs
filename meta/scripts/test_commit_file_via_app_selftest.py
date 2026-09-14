@@ -1,9 +1,9 @@
 """Holds the commit-file-via-app self-test to the shape a required status check has to have.
 
 `Action self-test` is the only gate between a change to `.github/actions/commit-file-via-app/` and
-the repos outside this one that reference it at `@main`. Requiring it in the ruleset is a repo
-setting nothing in the tree can read, so what this file can hold is everything the setting depends
-on — and each of those fails silently, which is why they are worth a test at all:
+the repos outside this one that reference it at `@main`. Requiring it is a repo setting nothing in
+the tree can read — and one the ruleset does not carry yet, see .claude/CLAUDE.md — so what this
+file can hold is everything that setting depends on, each of which fails silently:
 
   - **A trigger-level `paths:` filter.** GitHub counts a job skipped by `if:` as passing, but a
     workflow skipped by path filtering never reports: the required check sits `Pending` and blocks
@@ -16,7 +16,7 @@ on — and each of those fails silently, which is why they are worth a test at a
   - **The classification.** Now that the trigger runs on every PR, the pattern set is the whole of
     what decides that the exercise runs at all. A set that stops matching this workflow's own path,
     or an `--emit` naming a set that no longer exists, ends with a green check that ran nothing.
-  - **Where the classification sits.** In a step of the required job, not a job the rest `needs:`.
+  - **Where the classification sits.** In a step of the reporting job, not a job the rest `needs:`.
     A failed dependency skips its dependents, and a skipped required check reads as a pass, so the
     `needs:` shape would turn a broken classifier into a green gate.
 
@@ -38,7 +38,7 @@ _WORKFLOW_PATH = ".github/workflows/commit-file-via-app-selftest.yml"
 _WORKFLOW = _ROOT / _WORKFLOW_PATH
 _ACTION_PATH = ".github/actions/commit-file-via-app/action.yml"
 
-# The context branch protection requires, and the id of the job that produces it.
+# The context the ruleset is to require, and the id of the job that produces it.
 _CHECK_NAME = "Action self-test"
 _JOB = "selftest"
 _DOCS_NAMING_THE_CHECK = (_ROOT / "README.md", _ROOT / ".claude" / "CLAUDE.md")
@@ -120,7 +120,7 @@ class TestTheWorkflowAlwaysReports(unittest.TestCase):
 
 
 class TestTheCheckName(unittest.TestCase):
-    def test_the_job_is_named_what_branch_protection_names(self):
+    def test_the_job_is_named_what_the_ruleset_is_to_name(self):
         self.assertEqual(job()["name"], _CHECK_NAME)
 
     def test_docs_name_the_check(self):
@@ -140,9 +140,15 @@ class TestTheClassification(unittest.TestCase):
 
     def test_the_set_matches_what_the_self_test_covers(self):
         # Both halves rename easily and neither rename fails anything: the workflow could be moved
-        # and the action's directory could be, and the set would go on matching nothing.
+        # and the action's directory could be, and the set would go on matching nothing. So each
+        # path is asserted to exist as well as to match — a constant matching a stale pattern is
+        # the one way both sides drift together and stay green.
         for path in (_WORKFLOW_PATH, _ACTION_PATH):
             with self.subTest(path=path):
+                self.assertTrue(
+                    (_ROOT / path).is_file(),
+                    f"{path} does not exist; the constant and the pattern can drift together",
+                )
                 self.assertTrue(
                     any(re.search(pattern, path) for pattern in SETS[_SET_NAME]),
                     f"{path} is not in the `{_SET_NAME}` set, so a PR touching it would skip the "

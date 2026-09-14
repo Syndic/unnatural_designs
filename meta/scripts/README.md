@@ -113,13 +113,13 @@ branch protection requires. Same reason it rides `bazel test //...`: the couplin
 checked-in files, and nothing fails while they drift — not until `go.work` outruns the runner
 image's Go, or a green required check turns out to have been skipped.
 
-`test_commit_file_via_app_selftest.py` has no script half either. `Action self-test` is a required
-status check, and the ruleset naming it is a repo setting nothing here can read — so this holds
+`test_commit_file_via_app_selftest.py` has no script half either. `Action self-test` is the name to
+require in the ruleset, and a ruleset is a repo setting nothing here can read — so this holds
 everything that setting depends on: that the workflow carries no trigger-level `paths:` filter (a
 filtered workflow never reports, and a required check that never reports leaves every unrelated PR
 `Pending`), that the job's name still matches the string the docs quote, that the classification
 resolves against the shared sets and still matches the paths it gates, and that it is a step of the
-required job rather than a `changes` job the rest `needs:` — a failed dependency skips its
+reporting job rather than a `changes` job the rest `needs:` — a failed dependency skips its
 dependents, and a skipped required check reads as a pass.
 
 `test_semgrep_budget.py` has no script half either. It holds `security.yml`'s Semgrep job to the

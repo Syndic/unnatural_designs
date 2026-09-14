@@ -263,12 +263,15 @@ py_test(
     name = "test_commit_file_via_app_selftest",
     size = "small",
     srcs = ["test_commit_file_via_app_selftest.py"],
-    # The docs are here for one string: the required check name, held against the job that
-    # produces it, the same way test_codeql_toolchain holds its fan-in's.
+    # The docs are here for one string: the check name, held against the job that produces it, the
+    # same way test_codeql_toolchain holds its fan-in's. `composite_actions` is here so the action
+    # path the pattern set is checked against is a file this test actually reads — a bare constant
+    # would go on matching a pattern that had gone stale in the same direction as the rename.
     data = [
         "//:.claude/CLAUDE.md",
         "//:.github/workflows/commit-file-via-app-selftest.yml",
         "//:README.md",
+        "//:composite_actions",
     ],
     main = "test_commit_file_via_app_selftest.py",
     deps = [

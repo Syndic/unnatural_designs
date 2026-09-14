@@ -104,10 +104,11 @@ DEVCONTAINER = (r"^\.devcontainer/devcontainer\.json$",)
 # both have to be here: the action is what the self-test exercises, and the self-test's own file is
 # what decides whether the exercise is still the right one, so editing either needs the run.
 #
-# Unlike every other set here this one is not about a derived file — it gates a *required* check
-# whose workflow deliberately has no trigger-level `paths:` filter (see .claude/CLAUDE.md
-# "A required check cannot be filtered at the trigger"). The classification moved in here so the
-# gate is a step inside the required job rather than a filter GitHub applies before it.
+# Unlike every other set here this one is not about a derived file — it gates the check the `main`
+# ruleset is to require for the commit-file-via-app action, whose workflow therefore has no
+# trigger-level `paths:` filter (see .claude/CLAUDE.md "A required check cannot be filtered at the
+# trigger"). The classification moved in here so the gate is a step inside the job that reports
+# that check rather than a filter GitHub applies before it.
 #
 # `path_classification_pattern_sets.py` is deliberately absent, on the same reasoning as BASE:
 # editing these patterns cannot change how the action behaves, so a self-test run over such an edit

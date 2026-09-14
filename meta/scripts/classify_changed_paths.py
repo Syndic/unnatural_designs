@@ -4,7 +4,7 @@
 Diff the changes a branch introduced, test each changed path against a named pattern set, and emit
 one `<name>=true|false` per set to `$GITHUB_OUTPUT` so later steps can gate on it. The sets live in
 `path_classification_pattern_sets.py`; callers name the ones they want. Used by
-renovate-derived-files.yml and devcontainer.yml.
+renovate-derived-files.yml, devcontainer.yml and commit-file-via-app-selftest.yml.
 
 Three decisions live here so every caller inherits them:
 

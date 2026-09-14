@@ -220,10 +220,10 @@ check as passed.
 **Self-test - commit-file-via-app** (`Action self-test`) - exercises the
 [`commit-file-via-app`](.github/actions/commit-file-via-app/README.md) composite action end-to-end
 against a scratch branch, because repos outside this one reference it at `@main` and get no other
-review gate. Gated on the same kind of in-job path diff as Devcontainer, and required for the same
-reason: a workflow filtered at its trigger never reports, and a required check that never reports
-blocks every PR. Fork PRs cannot read the app credentials, so the job skips there - on those the
-check is advisory.
+review gate. Gated on the same kind of in-job path diff as Devcontainer, and for the same reason:
+a workflow filtered at its trigger never reports, and a required check that never reports blocks
+every PR. `Action self-test` is the name to require in the ruleset. Fork PRs cannot read the app
+credentials, so the job skips there - on those the check is advisory.
 
 ## Automation
 

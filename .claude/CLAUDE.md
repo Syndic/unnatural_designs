@@ -113,16 +113,20 @@ success.
 Two workflows are shaped by this, and both classify with `meta/scripts/classify_changed_paths.py`
 rather than a filter GitHub applies before the run:
 
-- `devcontainer.yml` — `Build devcontainer and smoke test` and `Base image (all platforms)`.
+- `devcontainer.yml` — `Build devcontainer and smoke test` and `Base image (all platforms)`, both
+  named in the ruleset.
 - `commit-file-via-app-selftest.yml` — `Action self-test`, which is what the action's external
-  `@main` consumers get instead of a review gate.
+  `@main` consumers get instead of a review gate. **The ruleset does not name it yet** (#312): the
+  workflow was reshaped first, since naming a path-filtered check is what wedges every unrelated
+  PR, and the settings change is the remaining half. Until it lands the self-test reports without
+  blocking, so a break in the action can still merge.
 
 *Where* the classification sits inside the workflow is a second decision, and the two answer it
 differently because they have different numbers of consumers. devcontainer.yml has three, so it
 pays for a `changes` job the rest `needs:` — and each consumer then has to check that job's own
 result explicitly, because a failed dependency *skips* them and skipped reads as passed. The
-self-test has one consumer, so the classification is a step inside the required job: a
-classification that fails takes the check down with it, with nothing left to remember.
+self-test has one consumer, so the classification is a step inside the job that reports the
+check: a classification that fails takes the check down with it, with nothing left to remember.
 
 `renovate-derived-files.yml` keeps its trigger-level `paths:` deliberately — nothing requires it,
 and it gates on `github.actor == 'renovate[bot]'` besides.
