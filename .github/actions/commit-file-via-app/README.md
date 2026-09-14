@@ -34,9 +34,9 @@ expected content; no changed files leaves the branch tip untouched; and given se
 which only some changed, only the changed ones are committed.
 
 `Action self-test` is the name to require in the `main` ruleset — requiring it is what would make
-the exercise a gate rather than a report. **It is not named there yet** ([#312](https://github.com/Syndic/unnatural_designs/issues/312)),
-so today the self-test reports without blocking. The workflow is shaped so that the name can be
-required: it runs on every PR and classifies the diff inside the job, because a trigger-level
-`paths:` filter would leave the check permanently pending on PRs that touch nothing here. Fork PRs
-are the one accepted gap: they cannot read the app credentials, so the job skips and the check
-passes advisory.
+the exercise a gate rather than a report. **It is not named there yet**
+([#312](https://github.com/Syndic/unnatural_designs/issues/312)), so today the self-test reports
+without blocking. The workflow is shaped so that the name can be required: it runs on every PR and
+classifies the diff inside the job, because a trigger-level `paths:` filter would leave the check
+permanently pending on PRs that touch nothing here. Fork PRs are the one accepted gap: they cannot
+read the app credentials, so the job skips and the check passes advisory.
