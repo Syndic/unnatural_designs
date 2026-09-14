@@ -122,11 +122,13 @@ rather than a filter GitHub applies before the run:
   blocking, so a break in the action can still merge.
 
 *Where* the classification sits inside the workflow is a second decision, and the two answer it
-differently because they have different numbers of consumers. devcontainer.yml has three, so it
-pays for a `changes` job the rest `needs:` — and each consumer then has to check that job's own
-result explicitly, because a failed dependency *skips* them and skipped reads as passed. The
-self-test has one consumer, so the classification is a step inside the job that reports the
-check: a classification that fails takes the check down with it, with nothing left to remember.
+differently because they have different numbers of consumers. devcontainer.yml has four jobs
+hanging off one `changes` job, so it pays for that job — and the two that *report* a required check
+then ask about its result as a question separate from what it classified, since a failed dependency
+*skips* them and skipped reads as passed (#316). The other two are covered through a fan-in rather
+than each asking. The self-test has one consumer, so the classification is a step inside the job
+that reports the check: a classification that fails takes the check down with it, with nothing left
+to remember.
 
 `renovate-derived-files.yml` keeps its trigger-level `paths:` deliberately — nothing requires it,
 and it gates on `github.actor == 'renovate[bot]'` besides.
