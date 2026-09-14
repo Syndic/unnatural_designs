@@ -211,7 +211,10 @@ Three GitHub Actions workflows run on every push and pull request to `main`.
 **Devcontainer** - builds the devcontainer image and smoke-tests the toolchain it ships
 (`bazel --version`, `go version`, `python3 --version`). The job is gated on a path diff against
 the PR base: it only runs the build when `.devcontainer/` or `.github/workflows/devcontainer.yml`
-changed in this PR, and reports success otherwise so the status check always reports.
+changed in this PR, and reports success otherwise so the status check always reports. The path
+diff is its own job, and both required checks fail when *it* fails: an unevaluated gate skips its
+consumers exactly the way a gate that ran and said no does, and GitHub counts a skipped required
+check as passed.
 
 ## Automation
 

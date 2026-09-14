@@ -23,9 +23,9 @@ permissions:
 
 jobs:
   # Split out so the base-image matrix and the publish job can gate on the same classification
-  # without each re-running the diff. `build-and-smoke-test` keeps its name and its
-  # always-runs shape because it is the required status check; the jobs added below are new,
-  # so they can skip outright.
+  # without each re-running the diff. `build-and-smoke-test` keeps its name and reports on every
+  # PR because it is the required status check; `base-image` below can skip outright, since the
+  # fan-in over it is what reports in its place.
   changes:
     name: Detect devcontainer changes
     runs-on: ubuntu-latest
@@ -131,27 +131,51 @@ jobs:
   # Unlike ci.yml's equivalent, `skipped` has to pass: that matrix is gated on the base image
   # actually having changed, so most PRs legitimately skip it. Only failure and cancellation
   # are real.
+  #
+  # That is why `changes` is a separate question rather than one more result to accept: a gate
+  # that *failed to evaluate* skips the matrix byte-identically to a gate that ran and said no.
+  # //meta/scripts:test_devcontainer_required_checks keeps both questions asked.
   base-image-all:
     name: Base image (all platforms)
-    needs: base-image
+    needs:
+      - changes
+      - base-image
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Verify every base-image row passed
         run: |
           set -euo pipefail
+          classification="${{ needs.changes.result }}"
           result="${{ needs.base-image.result }}"
+          echo "changes result: $classification"
           echo "base-image result: $result"
+          # No `case`: the gate is only ever allowed to have succeeded.
+          [ "$classification" = success ] || exit 1
           case "$result" in
             success | skipped) ;;
             *) exit 1 ;;
           esac
 
+  # `!cancelled()` rather than the bare default: a failed `changes` would otherwise skip this job
+  # outright, and branch protection counts a skipped required check as passed. Why this and not
+  # `always()`, which would do that too: .claude/CLAUDE.md "Superseding CI runs".
   build-and-smoke-test:
     name: Build devcontainer and smoke test
     needs: changes
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
+      # First, because every `needs.changes.outputs.*` gate below reads empty when the
+      # classification failed — which is indistinguishable from it having matched nothing, and
+      # would leave this job echoing "no devcontainer changes" and reporting green.
+      - name: Verify the classification ran
+        run: |
+          set -euo pipefail
+          result="${{ needs.changes.result }}"
+          echo "changes result: $result"
+          [ "$result" = success ] || exit 1
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # ── Feature lock freshness ────────────────────────────────────────────────────

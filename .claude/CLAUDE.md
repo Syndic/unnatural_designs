@@ -171,6 +171,15 @@ concurrency:
 `renovate-derived-files.yml` is the deliberate exception; the reason is at that file's own
 `concurrency` note, since it is a property of that workflow rather than of the convention.
 
+That cancellation is also what picks a job's `if:`. A job that has to survive a *failed* dependency
+takes `if: ${{ !cancelled() }}`, never `if: always()`: `always()` runs through cancellation too, so
+it would start work on the run this group just superseded — which for devcontainer.yml's
+`build-and-smoke-test` is a five-minute container build for a tree that will never merge. The cheap
+fan-ins are the exception, and `always()` there is load-bearing: it is what lets one see a
+`cancelled` result and refuse it, so a cancelled run still blocks the merge even though the
+`!cancelled()` job beside it reported a passing `skipped`.
+//meta/scripts:test_devcontainer_required_checks holds one of each.
+
 ## CodeQL runs as advanced setup
 
 The `codeql` job in `security.yml` replaced GitHub's **default setup** — the managed

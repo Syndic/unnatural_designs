@@ -159,7 +159,22 @@ py_test(
     main = "test_codeql_toolchain.py",
 )
 
-# Same shape as the two above: the assertion is the whole gate. What it guards is invisible while
+# Same shape, and the same failure mode it guards against: a `changes` job that fails hands both of
+# devcontainer.yml's required checks a `skipped`, which branch protection reads as a pass. Reads the
+# sets directly, because the workflow's `--emit` names are the one copy of them nothing else holds.
+py_test(
+    name = "test_devcontainer_required_checks",
+    size = "small",
+    srcs = ["test_devcontainer_required_checks.py"],
+    data = ["//:.github/workflows/devcontainer.yml"],
+    main = "test_devcontainer_required_checks.py",
+    deps = [
+        ":path_classification_pattern_sets_lib",
+        requirement("pyyaml"),
+    ],
+)
+
+# Same shape as the ones above: the assertion is the whole gate. What it guards is invisible while
 # the uv workspace has no members — the export is correct by coincidence until the day one lands.
 py_test(
     name = "test_pip_audit_coverage",
