@@ -46,7 +46,14 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.head_ref }}
+          # The PR head, by a ref that exists in *this* repo. `github.head_ref` is a bare branch
+          # name and `repository:` defaults to this repository, so a fork's branch name resolved
+          # here: missing, and the job dies before the gate, or — for a fork whose branch is
+          # `main` — silently the wrong tree, diffing main against main and reporting green.
+          # GitHub maintains refs/pull/N/head here for fork and same-repo PRs alike. It is the
+          # head rather than refs/pull/N/merge, so `git rev-parse HEAD` below is still the commit
+          # the PR proposes.
+          ref: refs/pull/${{ github.event.pull_request.number }}/head
           # Need the base reachable so the classify step below can diff against it. Shallow
           # checkout (the default) only fetches the head commit.
           fetch-depth: 0

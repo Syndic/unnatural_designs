@@ -49,6 +49,10 @@ _ACTION_PATH = ".github/actions/commit-file-via-app/action.yml"
 
 # The context the ruleset requires, and the id of the job that produces it.
 _CHECK_NAME = "Action self-test"
+# The ref the checkout must use. `github.head_ref` is a bare branch name and checkout's
+# `repository:` defaults to this repo, so on a fork PR it resolves the fork's branch name here.
+_CHECKOUT_ACTION = "actions/checkout@"
+_PULL_HEAD_REF = "refs/pull/"
 _JOB = "selftest"
 _DOCS_NAMING_THE_CHECK = (_ROOT / "README.md", _ROOT / ".claude" / "CLAUDE.md")
 
@@ -206,6 +210,44 @@ class TestEveryExercisingStepIsGated(unittest.TestCase):
                     any(g in condition for g in (_GATE, _CLEANUP_GATE)),
                     f"step `{name}` runs on every PR; it should be gated on the gate's verdict",
                 )
+
+
+class TestTheCheckout(unittest.TestCase):
+    """The job stopped restricting itself to same-repo PRs, which made the checkout's ref wrong.
+
+    `github.head_ref` carries the branch *name* with no owner, and `repository:` defaults to this
+    repository — so a fork's branch name was resolved against this repo. A name with no counterpart
+    here failed the job before the gate could refuse anything; a name that collided took this
+    repo's branch of that name instead. The second is the dangerous one: a fork whose branch is
+    `main` checked out this repo's `main`, so the classifier diffed main against main, found
+    nothing, and the check went green over a change to the action. That is the hole the fork rule
+    exists to close, reached through the commonest fork-PR shape there is."""
+
+    def setUp(self):
+        self.checkout = next(s for s in job()["steps"] if _CHECKOUT_ACTION in (s.get("uses") or ""))
+
+    def test_the_ref_resolves_in_this_repository(self):
+        ref = self.checkout["with"]["ref"]
+        self.assertIn(
+            _PULL_HEAD_REF,
+            ref,
+            "the ref must be one this repository actually has for a fork PR; GitHub maintains "
+            "refs/pull/N/head for both fork and same-repo PRs",
+        )
+        self.assertIn("pull_request.number", ref)
+
+    def test_the_ref_is_the_head_not_the_merge_commit(self):
+        # refs/pull/N/merge would also resolve, and would change what the scratch branch is
+        # created at and what the exercise diffs — `git rev-parse HEAD` is read downstream.
+        self.assertNotIn("/merge", self.checkout["with"]["ref"])
+
+    def test_no_step_resolves_a_fork_branch_name_against_this_repo(self):
+        # The regression guard. `github.head_ref` is correct only while the job refuses to run on
+        # fork PRs, and it no longer does.
+        for step in job()["steps"]:
+            name = step.get("name") or step.get("uses") or ""
+            with self.subTest(step=name):
+                self.assertNotIn("github.head_ref", str(step.get("with", "")))
 
 
 class TestTheForkRule(unittest.TestCase):
