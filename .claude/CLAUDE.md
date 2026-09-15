@@ -162,11 +162,15 @@ for each set lives beside it — this section carries only what is invisible fro
   The two used to be separate regexes plus two long comments asking a reader to keep them in step,
   and they had already diverged on anchoring; `CHANGED` splats `BASE` splats `BAZEL` is what makes
   them agree now.
-- **`CHANGED` covers the module that defines it, deliberately.** The sets used to live in
-  `devcontainer.yml`, which that workflow's own pattern matches, so editing them always forced a
-  consumer build. Moving them out would have dropped that silently: a set edit that classifies
-  nothing still imports, so every gated step would skip and the required check would go green
-  having built nothing.
+- **A set covers the module that defines it, because a check's effective domain is part of its
+  logic.** Dropping a pattern leaves the subject of the check untouched and changes the check's
+  *answer*: the run that would have failed stands down instead, and the PR goes green having
+  verified nothing. So an edit to these patterns is an edit to every check that reads them, and
+  has to be one those checks see. It takes no special access — the two edits in one commit are a
+  self-exempting PR from any branch. `CHANGED` has carried this since the sets moved out of
+  `devcontainer.yml`, whose own pattern used to cover them, and a set edit that classifies nothing
+  still imports, so without it every gated step would skip and the required check would go green
+  having built nothing. `COMMIT_FILE_VIA_APP` carries it for the general reason above.
 - **pre-commit cannot read the file, so the `base-image-pin` hook carries no `files:` filter.** It
   runs on every commit and gates internally in `meta/scripts/base_image_pin_hook.py`. It carries
   `require_serial: true`, which is load-bearing rather than tidiness: pre-commit partitions the

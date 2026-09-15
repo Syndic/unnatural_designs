@@ -112,12 +112,13 @@ COMMIT_FILE_VIA_APP = (
     # them are all inputs to what the self-test asserts.
     r"^\.github/actions/commit-file-via-app/",
     r"^\.github/workflows/commit-file-via-app-selftest\.yml$",
-    # This module, for a reason `CHANGED` does not share and `BASE` deliberately rejects: editing
-    # these patterns cannot change how the action behaves, but it can change whether the gate over
-    # it fires at all. Since the gate refuses a fork PR that touches the action, a fork that edited
-    # the action *and* dropped it from this set in the same PR would classify itself out and report
-    # green — so an edit here is itself something the check has to see. The cost is a real run on
-    # any PR touching this file, and a refusal on a fork PR touching it for unrelated reasons.
+    # This module. A check's effective domain is part of its logic: dropping a pattern leaves the
+    # action untouched but changes the check's answer, so a PR that would have failed now passes,
+    # the exercise having skipped rather than run. An edit here is therefore a change to this
+    # check, and has to be one the check sees. Note this needs no fork — the same two-file commit
+    # from a branch in this repo classified itself out before the pattern below existed; the fork
+    # rule only makes it reachable by someone with no write access. The cost is a real run on any
+    # PR touching this file, and a refusal on a fork PR touching it for unrelated reasons.
     r"^meta/scripts/path_classification_pattern_sets\.py$",
 )
 

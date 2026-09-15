@@ -161,11 +161,10 @@ class TestCommitFileViaAppSet(unittest.TestCase):
         self.assertEqual(fires(".github/workflows/renovate-derived-files.yml"), set())
 
     def test_the_module_that_defines_the_sets_is_in_this_one(self):
-        # Not for `changed`'s reason. Editing these patterns cannot change how the action behaves,
-        # so on its own that would argue for leaving it out, as `BASE` does. What puts it in is the
-        # fork rule: the gate refuses a fork PR that touches the action, so a fork that dropped the
-        # action from this set in the same PR that changed it would classify itself out and report
-        # green. An edit here has to be something the check sees.
+        # A check's effective domain is part of its logic. Dropping the action's pattern leaves the
+        # action alone but changes what the check answers, so a PR that would have failed passes
+        # instead — no fork required, just the two edits in one commit. Holding the module in the
+        # set is what makes that self-exempting commit run the exercise it tried to skip.
         self.assertIn(
             "commit_file_via_app", fires("meta/scripts/path_classification_pattern_sets.py")
         )
