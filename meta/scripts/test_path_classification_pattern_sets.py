@@ -1,6 +1,6 @@
 """Tests for the shared path-classification pattern sets.
 
-These are the sets two workflows and the `base-image-pin` pre-commit hook classify against, so the
+These are the sets three workflows and the `base-image-pin` pre-commit hook classify against, so the
 tests are about *behaviour* — which sets a given path falls into — rather than about any loading
 machinery, of which there is now none: the sets are module-level constants composed by set union.
 
@@ -24,11 +24,20 @@ def fires(path: str) -> set[str]:
     }
 
 
+# The self-test set fires alone: nothing else in the repo classifies the action's directory.
+_SELFTEST = {"commit_file_via_app"}
+
+_SETS_MODULE = "meta/scripts/path_classification_pattern_sets.py"
+
+
 class TestSetsPresent(unittest.TestCase):
     """A set missing from SETS is unselectable, and one with no patterns is silently never hit."""
 
     def test_the_expected_sets_exist(self):
-        self.assertEqual(sorted(SETS), ["base", "bazel", "changed", "devcontainer", "go", "python"])
+        self.assertEqual(
+            sorted(SETS),
+            ["base", "bazel", "changed", "commit_file_via_app", "devcontainer", "go", "python"],
+        )
 
     def test_every_set_has_usable_patterns(self):
         for name, patterns in SETS.items():
@@ -118,14 +127,61 @@ class TestDevcontainerSets(unittest.TestCase):
     def test_own_workflow_rebuilds(self):
         self.assertEqual(fires(".github/workflows/devcontainer.yml"), {"changed"})
 
-    def test_the_module_that_defines_the_sets_rebuilds(self):
-        # `changed` has to cover the file that defines it. A set edit that classifies nothing still
-        # imports, so without this every gated step skips and the required check goes green having
-        # built nothing — and nothing fails afterwards either.
-        self.assertEqual(fires("meta/scripts/path_classification_pattern_sets.py"), {"changed"})
+    def test_the_module_that_defines_the_sets_is_in_every_set_that_reads_it(self):
+        # A check's effective domain is part of its logic, so an edit here is an edit to each of
+        # these checks: `base` publishes the image, `changed` rebuilds the container,
+        # `commit_file_via_app` runs the action's self-test. `base` carries the pattern and
+        # `changed` inherits it through the splat — asserted on behaviour, so either route counts.
+        self.assertEqual(
+            fires("meta/scripts/path_classification_pattern_sets.py"),
+            {"base", "changed", "commit_file_via_app"},
+        )
+
+    def test_the_base_gate_cannot_be_classified_away(self):
+        # The bypass the membership closes: edit the image's own sources and drop their pattern in
+        # the same commit. Without the module in `base`, the publish gate and the base-image smoke
+        # test both stand down on the one commit that most needs them.
+        doctored = tuple(p for p in BASE if "devcontainer-base" not in p)
+        changed = ["meta/devcontainer-base/scripts/lib.sh", _SETS_MODULE]
+        self.assertTrue(
+            any(re.search(p, f) for p in doctored for f in changed),
+            "a commit that removes the base-image pattern must still classify as a base change, "
+            "on the strength of having edited this module at all",
+        )
 
     def test_sibling_workflow_does_not(self):
         self.assertEqual(fires(".github/workflows/ci.yml"), set())
+
+
+class TestCommitFileViaAppSet(unittest.TestCase):
+    """The set that decides whether the action's self-test runs. Unlike the sets around it this one
+    gates a required check rather than a derived file, so a path that falls out of it does not go
+    stale — it goes unexercised, and the check reports success having run nothing."""
+
+    def test_the_action_and_everything_beside_it(self):
+        self.assertEqual(fires(".github/actions/commit-file-via-app/action.yml"), _SELFTEST)
+        self.assertEqual(fires(".github/actions/commit-file-via-app/README.md"), _SELFTEST)
+
+    def test_the_self_test_workflow_itself(self):
+        # The workflow decides what the exercise covers, so editing it has to re-run the exercise.
+        self.assertEqual(fires(".github/workflows/commit-file-via-app-selftest.yml"), _SELFTEST)
+
+    def test_a_sibling_composite_action_is_not_matched(self):
+        self.assertEqual(fires(".github/actions/setup-bazel-remote/action.yml"), set())
+
+    def test_the_workflow_that_consumes_the_action_is_not_matched(self):
+        # renovate-derived-files.yml calls the action but is not part of its contract; a change
+        # there cannot break the external consumers this gate exists for.
+        self.assertEqual(fires(".github/workflows/renovate-derived-files.yml"), set())
+
+    def test_the_module_that_defines_the_sets_is_in_this_one(self):
+        # A check's effective domain is part of its logic. Dropping the action's pattern leaves the
+        # action alone but changes what the check answers, so a PR that would have failed passes
+        # instead — no fork required, just the two edits in one commit. Holding the module in the
+        # set is what makes that self-exempting commit run the exercise it tried to skip.
+        self.assertIn(
+            "commit_file_via_app", fires("meta/scripts/path_classification_pattern_sets.py")
+        )
 
 
 class TestPythonAndGoSets(unittest.TestCase):
@@ -173,10 +229,13 @@ _SAMPLE_PATHS = (
     "meta/devcontainer-base/scripts/lib.sh",
     "meta/devcontainer-base/README.md",
     "meta/scripts/check_modules.py",
+    "meta/scripts/path_classification_pattern_sets.py",
     ".devcontainer/devcontainer.json",
     ".devcontainer/Dockerfile",
     ".github/workflows/devcontainer.yml",
     ".github/workflows/ci.yml",
+    ".github/actions/commit-file-via-app/action.yml",
+    ".github/workflows/commit-file-via-app-selftest.yml",
     "requirements_lock.txt",
     "apps/foo/pyproject.toml",
     "tools/net/go.mod",

@@ -2,8 +2,8 @@
 
 One definition each, composed by set union, so no site restates another's patterns. Consumers
 name a set: `classify_changed_paths.py` turns a diff into `name=true|false` step outputs for
-devcontainer.yml and renovate-derived-files.yml, and `base_image_pin_hook.py` gates the
-`base-image-pin` pre-commit hook on `BASE`.
+devcontainer.yml, renovate-derived-files.yml and commit-file-via-app-selftest.yml, and
+`base_image_pin_hook.py` gates the `base-image-pin` pre-commit hook on `BASE`.
 
 Composition is the point. `BASE` decides whether a new devcontainer base image is published, and
 the `BAZEL` set inside it decides whether the consumer's pin in .devcontainer/Dockerfile is
@@ -44,15 +44,22 @@ BAZEL = (
     r"^\.bazelversion$",
 )
 
-# Everything the devcontainer base image is assembled from — the publish job's gate. Without the
-# manifests above, Renovate's automerged digest bump would move the pin, skip every base job, and
-# never republish, so the published image would keep the superseded Debian layers and the bump would
-# reach nothing.
+# Everything the publish job's gate has to see: what the base image is assembled from, plus the
+# patterns deciding whether the gate fires at all. Without the manifests above, Renovate's
+# automerged digest bump would move the pin, skip every base job, and never republish, so the
+# published image would keep the superseded Debian layers and the bump would reach nothing.
 BASE = (
     # A plain prefix rather than a per-file allowlist. The README under here is rationale rather
     # than build input, but the image is cheap to rebuild and an allowlist would drift from the
     # directory.
     r"^meta/devcontainer-base/",
+    # This module. A check's effective domain is part of its logic, so an edit here is an edit to
+    # every check reading these patterns — the publish gate included, which would otherwise stand
+    # down on the one commit able to classify the image's own sources out of this set. `CHANGED`
+    # inherits it through the splat rather than restating it. The cost is a publish of a
+    # byte-identical index on any commit touching this file: the trade `.bazelversion` above
+    # already takes, for the same reason it is worth taking.
+    r"^meta/scripts/path_classification_pattern_sets\.py$",
     *BAZEL,
 )
 
@@ -64,15 +71,9 @@ BASE = (
 CHANGED = (
     r"^\.devcontainer/",
     r"^\.github/workflows/devcontainer\.yml$",
-    # This module is in the set on purpose. The sets used to live in devcontainer.yml, which the
-    # workflow's own pattern covers, so an edit to them always forced a consumer build in the PR
-    # that made it. Moving them here would otherwise drop that: a set edit that classifies nothing
-    # still imports, so every gated step would skip and the required check would go green having
-    # built nothing — and stay wrong afterwards with nothing failing. BASE needs no equivalent,
-    # since editing these patterns cannot move the image's bytes.
-    # //meta/scripts:test_path_classification_pattern_sets keeps this pattern here, so a deletion
-    # turns red rather than quiet.
-    r"^meta/scripts/path_classification_pattern_sets\.py$",
+    # This module reaches here through `*BASE`, which carries it for the whole-repo reason stated
+    # there. //meta/scripts:test_path_classification_pattern_sets holds the membership, so losing
+    # it turns red rather than quiet.
     *BASE,
 )
 
@@ -100,6 +101,25 @@ GO = (
 # Dockerfile and lifecycle scripts feed the image build instead — CHANGED covers those.
 DEVCONTAINER = (r"^\.devcontainer/devcontainer\.json$",)
 
+# Everything `Action self-test`'s verdict depends on: the action it exercises, the workflow that
+# decides what exercising means, and this module, which decides whether it runs at all.
+#
+# Unlike every other set here this one is not about a derived file — it gates a required status
+# check, whose workflow therefore carries no trigger-level `paths:` filter (see .claude/CLAUDE.md
+# "A required check cannot be filtered at the trigger"). The classification moved in here so the
+# gate is a step inside the job that reports the check rather than a filter GitHub applies first.
+COMMIT_FILE_VIA_APP = (
+    # A plain prefix: action.yml, the README that states the contract, and anything added beside
+    # them are all inputs to what the self-test asserts.
+    r"^\.github/actions/commit-file-via-app/",
+    r"^\.github/workflows/commit-file-via-app-selftest\.yml$",
+    # This module. A check's effective domain is part of its logic: dropping a pattern leaves the
+    # action untouched but changes the check's answer, so a PR that would have failed now passes,
+    # the exercise having skipped rather than run. An edit here is therefore a change to this
+    # check, and has to be treated as such.
+    r"^meta/scripts/path_classification_pattern_sets\.py$",
+)
+
 # The name each set is selected by on the command line and in `$GITHUB_OUTPUT`.
 SETS: dict[str, tuple[str, ...]] = {
     "bazel": BAZEL,
@@ -108,4 +128,5 @@ SETS: dict[str, tuple[str, ...]] = {
     "python": PYTHON,
     "go": GO,
     "devcontainer": DEVCONTAINER,
+    "commit_file_via_app": COMMIT_FILE_VIA_APP,
 }

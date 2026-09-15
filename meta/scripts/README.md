@@ -89,8 +89,9 @@ feeds a required check. The constants carry their own rationale, so neither this
 workflows restate which paths are in a set.
 
 `classify_changed_paths.py` and `base_image_pin_hook.py` are its consumers. The first turns a
-three-dot diff into `name=true|false` step outputs for `devcontainer.yml` and
-`renovate-derived-files.yml`; the second is the `base-image-pin` pre-commit entry, which exists
+three-dot diff into `name=true|false` step outputs for `devcontainer.yml`,
+`renovate-derived-files.yml` and `commit-file-via-app-selftest.yml`; the second is the
+`base-image-pin` pre-commit entry, which exists
 because pre-commit's `files:` cannot read a shared definition — so the hook takes no filter, gates
 on the shared set itself, and does nothing on a commit touching none of it.
 
@@ -111,6 +112,15 @@ also holds the `codeql-all` fan-in to its two load-bearing properties, since tha
 branch protection requires. Same reason it rides `bazel test //...`: the couplings are between
 checked-in files, and nothing fails while they drift — not until `go.work` outruns the runner
 image's Go, or a green required check turns out to have been skipped.
+
+`test_commit_file_via_app_selftest.py` has no script half either. `Action self-test` is a required
+status check, and a ruleset is a repo setting nothing here can read — so this holds everything that
+setting depends on: that the workflow carries no trigger-level `paths:` filter (a
+filtered workflow never reports, and a required check that never reports leaves every unrelated PR
+`Pending`), that the job's name still matches the string the docs quote, that the classification
+resolves against the shared sets and still matches the paths it gates, and that it is a step of the
+reporting job rather than a `changes` job the rest `needs:` — a failed dependency skips its
+dependents, and a skipped required check reads as a pass.
 
 `test_semgrep_budget.py` has no script half either. It holds `security.yml`'s Semgrep job to the
 per-rule `--timeout` it was measured to need, and holds `MODULE.bazel.lock` to a size that budget

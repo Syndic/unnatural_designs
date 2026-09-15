@@ -7,6 +7,7 @@ gazelle(name = "gazelle")
 # and stay green while drifting, so each reads the real file rather than a fixture.
 exports_files([
     ".github/workflows/ci.yml",
+    ".github/workflows/commit-file-via-app-selftest.yml",
     ".github/workflows/devcontainer.yml",
     ".github/workflows/renovate-run-after-automerge.yml",
     ".github/workflows/security.yml",

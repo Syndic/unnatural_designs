@@ -177,7 +177,8 @@ future toolchain changes.
 
 ## CI
 
-Three GitHub Actions workflows run on every push and pull request to `main`.
+Three GitHub Actions workflows run on every push and pull request to `main`, and a fourth
+on pull requests only.
 
 **CI** - code-change-driven checks:
 
@@ -215,6 +216,15 @@ changed in this PR, and reports success otherwise so the status check always rep
 diff is its own job, and both required checks fail when *it* fails: an unevaluated gate skips its
 consumers exactly the way a gate that ran and said no does, and GitHub counts a skipped required
 check as passed.
+
+**Self-test - commit-file-via-app** (`Action self-test`) - exercises the
+[`commit-file-via-app`](.github/actions/commit-file-via-app/README.md) composite action end-to-end
+against a scratch branch, because repos outside this one reference it at `@main` and get no other
+review gate. Gated on the same kind of in-job path diff as Devcontainer, and for the same reason:
+a workflow filtered at its trigger never reports, and a required check that never reports blocks
+every PR, and `Action self-test` is required in the ruleset. Fork PRs cannot read the app
+credentials, so they cannot run the exercise - and therefore cannot propose a change to the
+action: one that touches it fails the check, while one that touches nothing there passes normally.
 
 ## Automation
 
