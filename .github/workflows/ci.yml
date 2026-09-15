@@ -258,7 +258,7 @@ jobs:
       - name: ty check
         env:
           # renovate: datasource=pypi depName=ty
-          TY_VERSION: "0.0.80"
+          TY_VERSION: "0.0.81"
         run: uvx "ty@${TY_VERSION}" check
 
   # Build and test runs once per supported target platform, on a runner whose host matches
@@ -349,7 +349,7 @@ jobs:
       - name: Locate merged lcov
         id: lcov
         run: echo "path=$(bazel info output_path)/_coverage/_coverage_report.dat" >> "$GITHUB_OUTPUT"
-      - uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+      - uses: codecov/codecov-action@0b35c9ecc4f0529d0eb674914510c22f85b196b4 # v7.1.0
         with:
           files: ${{ steps.lcov.outputs.path }}
           disable_search: true
