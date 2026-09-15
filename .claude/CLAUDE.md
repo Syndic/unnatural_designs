@@ -121,6 +121,15 @@ rather than a filter GitHub applies before the run:
   PR, and the settings change is the remaining half. Until it lands the self-test reports without
   blocking, so a break in the action can still merge.
 
+  A fork PR cannot read the app credentials, so it cannot run that exercise — and the rule is that
+  it therefore cannot propose the change either: a fork PR touching the action **fails** the gate
+  step rather than skipping it. The tempting shape is a job-level `if:` that skips on forks, which
+  is what this used to carry; skipped reads as passed, so it let a fork change the action and
+  report green having verified nothing. A fork PR that touches nothing here still passes, so this
+  refuses one change rather than blocking forks. The refusal is a step that exits non-zero, and
+  `//meta/scripts:test_commit_file_via_app_selftest` runs that shell rather than reading it —
+  skipping and failing differ by one `exit` and nothing about the YAML's shape distinguishes them.
+
 *Where* the classification sits inside the workflow is a second decision, and the two answer it
 differently because they have different numbers of consumers. devcontainer.yml has four jobs
 hanging off one `changes` job, so it pays for that job — and the two that *report* a required check

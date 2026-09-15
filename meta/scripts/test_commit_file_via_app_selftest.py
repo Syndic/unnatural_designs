@@ -19,11 +19,20 @@ file can hold is everything that setting depends on, each of which fails silentl
   - **Where the classification sits.** In a step of the reporting job, not a job the rest `needs:`.
     A failed dependency skips its dependents, and a skipped required check reads as a pass, so the
     `needs:` shape would turn a broken classifier into a green gate.
+  - **What happens on a fork PR.** A fork cannot read the app credentials, so it cannot run the
+    exercise — and the rule is that it therefore cannot propose the change either. The job used to
+    carry a fork `if:` and skip, which reads as a pass, so a fork could change the action and
+    report green having verified nothing. The refusal lives in the gate step's shell, which these
+    tests run rather than read: a `skipped` and a `failure` are one character apart in YAML and
+    opposite in meaning.
 
 What the self-test *asserts* about the action is the workflow's own business and is not read here.
 """
 
+import os
 import re
+import subprocess
+import tempfile
 import unittest
 from itertools import pairwise
 from pathlib import Path
@@ -43,20 +52,14 @@ _CHECK_NAME = "Action self-test"
 _JOB = "selftest"
 _DOCS_NAMING_THE_CHECK = (_ROOT / "README.md", _ROOT / ".claude" / "CLAUDE.md")
 
-# The classify step, and the three conditions a step following it is allowed to carry: the gate
-# itself, its negation (the leg that says the self-test was skipped), and the cleanup, which reads
-# the scratch step's outcome instead — `skipped` whenever the classification skipped it.
+# The two steps that decide anything, and the two conditions a step after them may carry: the
+# gate's own verdict, or the cleanup's, which reads the scratch step's outcome instead — `skipped`
+# whenever the gate stood the exercise down.
 _CLASSIFY_ID = "classify"
+_GATE_ID = "gate"
 _SET_NAME = "commit_file_via_app"
-_OUTPUT = f"steps.{_CLASSIFY_ID}.outputs.{_SET_NAME}"
-_GATE = f"{_OUTPUT} == 'true'"
-_SKIPPED_LEG = f"{_OUTPUT} != 'true'"
+_GATE = f"steps.{_GATE_ID}.outputs.run == 'true'"
 _CLEANUP_GATE = "steps.scratch.outcome == 'success'"
-
-# Fork PRs cannot read the app credentials, so the job skips there — an accepted gap, spelled out
-# at the condition itself. Held because dropping it turns every fork PR red on a check none of them
-# can run, and widening it is how the credentials would reach unreviewed code.
-_FORK_SKIP = "github.event.pull_request.head.repo.full_name == github.repository"
 
 
 def workflow() -> dict:
@@ -81,13 +84,45 @@ def job() -> dict:
     return jobs[_JOB]
 
 
-def steps_after_classify() -> list[dict]:
-    """Every step following the classify step, which is every step that could need gating."""
+def step_with_id(step_id: str) -> dict:
+    """The one step carrying `step_id`."""
+    for step in job()["steps"]:
+        if step.get("id") == step_id:
+            return step
+    raise AssertionError(f"no step with `id: {step_id}` in the `{_JOB}` job")
+
+
+def steps_after_gate() -> list[dict]:
+    """Every step following the gate, which is every step that could need gating."""
     steps = job()["steps"]
     for index, step in enumerate(steps):
-        if step.get("id") == _CLASSIFY_ID:
+        if step.get("id") == _GATE_ID:
             return steps[index + 1 :]
-    raise AssertionError(f"no step with `id: {_CLASSIFY_ID}` in the `{_JOB}` job")
+    raise AssertionError(f"no step with `id: {_GATE_ID}` in the `{_JOB}` job")
+
+
+def run_gate(changed: str, from_fork: str) -> tuple[int, str]:
+    """Run the gate step's real shell and return `(exit status, what it wrote to GITHUB_OUTPUT)`.
+
+    Executed rather than read. The difference between refusing a fork and quietly standing the
+    exercise down is one `exit` in a shell branch, and every way of asserting that by pattern
+    passes on a script that does the opposite."""
+    script = step_with_id(_GATE_ID)["run"]
+    with tempfile.TemporaryDirectory() as tmp:
+        output = Path(tmp) / "github_output"
+        output.touch()
+        done = subprocess.run(
+            ["bash", "-c", script],
+            capture_output=True,
+            text=True,
+            env={
+                "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+                "CHANGED": changed,
+                "FROM_FORK": from_fork,
+                "GITHUB_OUTPUT": str(output),
+            },
+        )
+        return done.returncode, output.read_text(encoding="utf-8")
 
 
 def emitted_sets() -> list[str]:
@@ -163,25 +198,63 @@ class TestTheClassification(unittest.TestCase):
 
 class TestEveryExercisingStepIsGated(unittest.TestCase):
     def test_no_step_reaches_the_app_credentials_ungated(self):
-        for step in steps_after_classify():
+        for step in steps_after_gate():
             name = step.get("name") or step.get("uses") or step.get("run", "")[:40]
             with self.subTest(step=name):
                 condition = step.get("if", "")
                 self.assertTrue(
-                    any(g in condition for g in (_GATE, _SKIPPED_LEG, _CLEANUP_GATE)),
-                    f"step `{name}` runs on every PR; it should be gated on the classification",
+                    any(g in condition for g in (_GATE, _CLEANUP_GATE)),
+                    f"step `{name}` runs on every PR; it should be gated on the gate's verdict",
                 )
 
-    def test_the_unchanged_leg_reports_what_happened(self):
-        # Without it a PR that touched nothing shows a job of skipped steps and no statement that
-        # skipping them was the right answer.
-        legs = [s for s in steps_after_classify() if _SKIPPED_LEG in s.get("if", "")]
-        self.assertEqual(len(legs), 1)
 
+class TestTheForkRule(unittest.TestCase):
+    """A fork cannot run the exercise, so it cannot propose the change the exercise covers.
 
-class TestTheForkGap(unittest.TestCase):
-    def test_the_job_skips_fork_pull_requests(self):
-        self.assertIn(_FORK_SKIP, job()["if"])
+    The job carries no fork `if:` any more. That shape skipped the whole job, and branch protection
+    counts a skipped required check as a pass — so a fork could change the action and report green
+    having verified nothing, on the one check standing between this action and the repos that
+    consume it at `@main`."""
+
+    def test_the_job_never_skips_itself(self):
+        self.assertNotIn(
+            "if",
+            job(),
+            "a job-level `if:` skips the whole job, and skipped reads as passed — whatever the "
+            "condition, the refusal has to be a step that fails",
+        )
+
+    def test_a_fork_touching_the_action_is_refused(self):
+        status, _ = run_gate(changed="true", from_fork="true")
+        self.assertNotEqual(
+            status,
+            0,
+            "a fork PR cannot run the exercise, so a change to the action must fail here rather "
+            "than pass unverified",
+        )
+
+    def test_a_fork_touching_nothing_else_still_passes(self):
+        # Forks are refused from one change, not blocked in general.
+        status, outputs = run_gate(changed="false", from_fork="true")
+        self.assertEqual(status, 0)
+        self.assertIn("run=false", outputs)
+
+    def test_the_exercise_runs_for_this_repo_when_the_action_changed(self):
+        status, outputs = run_gate(changed="true", from_fork="false")
+        self.assertEqual(status, 0)
+        self.assertIn("run=true", outputs)
+
+    def test_nothing_to_exercise_stands_down_rather_than_failing(self):
+        status, outputs = run_gate(changed="false", from_fork="false")
+        self.assertEqual(status, 0)
+        self.assertIn("run=false", outputs)
+
+    def test_the_gate_reads_both_questions_from_the_workflow(self):
+        # The shell above is only as good as what the workflow binds into it: a missing `env:` key
+        # is an unset variable, which `set -u` turns into a failed job on every PR.
+        env = step_with_id(_GATE_ID)["env"]
+        self.assertIn(_SET_NAME, env["CHANGED"])
+        self.assertIn("head.repo.full_name != github.repository", env["FROM_FORK"])
 
 
 if __name__ == "__main__":

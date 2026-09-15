@@ -38,5 +38,10 @@ the exercise a gate rather than a report. **It is not named there yet**
 ([#312](https://github.com/Syndic/unnatural_designs/issues/312)), so today the self-test reports
 without blocking. The workflow is shaped so that the name can be required: it runs on every PR and
 classifies the diff inside the job, because a trigger-level `paths:` filter would leave the check
-permanently pending on PRs that touch nothing here. Fork PRs are the one accepted gap: they cannot
-read the app credentials, so the job skips and the check passes advisory.
+permanently pending on PRs that touch nothing here.
+
+**Changes to this directory cannot come from a fork.** GitHub withholds the app credentials from
+fork PRs, so the self-test cannot run there, and a change to the action that nothing exercised is
+what this check exists to stop — so the check fails rather than skipping. A fork PR that touches
+nothing here passes normally. If you are working from a fork and need a change here, open an issue
+and it can be carried on a branch in this repo, where the exercise runs.

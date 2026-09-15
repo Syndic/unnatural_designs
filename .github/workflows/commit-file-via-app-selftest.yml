@@ -33,12 +33,9 @@ permissions:
 jobs:
   selftest:
     name: Action self-test
-    # A deliberate gap rather than an implementation detail. A fork PR's token cannot read the app
-    # credentials, so the job skips there — and branch protection counts a skipped required check
-    # as a pass, leaving this advisory on fork PRs. Failing instead would block every fork PR on a
-    # check none of them can run, and the only thing that would actually close the gap is
-    # `pull_request_target`, which hands repo secrets to unreviewed code. Fork PRs get review.
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    # No job-level `if:`. A fork PR used to skip the whole job, which branch protection reads as a
+    # pass — so a fork could change the action and report green having verified nothing. The fork
+    # case is decided in the gate step below instead, where it can fail.
     runs-on: ubuntu-latest
     env:
       # run_attempt guards against a leftover branch from a prior attempt whose cleanup failed.
@@ -75,10 +72,40 @@ jobs:
             --base "${BASE_SHA}" \
             --emit commit_file_via_app
 
+      # The whole decision, in one place. Two questions: did this PR touch the action, and can this
+      # PR run the exercise at all. A fork PR's token cannot read the app credentials, so it cannot
+      # — and a change to the action that nothing exercised is precisely what this check exists to
+      # stop. So a fork PR that touches the action is refused here rather than skipped past. The
+      # contribution is welcome; it has to land through a branch in this repo, where it can be run.
+      #
+      # A fork PR that touches nothing here still passes, so forks are not blocked in general —
+      # only from proposing the one change this check cannot verify.
+      - name: Decide whether the exercise runs
+        id: gate
+        env:
+          CHANGED: ${{ steps.classify.outputs.commit_file_via_app }}
+          FROM_FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
+        run: |
+          set -euo pipefail
+          if [ "${CHANGED}" != "true" ]; then
+            echo "No commit-file-via-app changes in this PR; nothing to exercise."
+            echo "run=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          if [ "${FROM_FORK}" = "true" ]; then
+            echo "::error::This PR changes commit-file-via-app, and a fork PR cannot run the" \
+                 "self-test that verifies it, so the change is refused rather than merged" \
+                 "unverified."
+            echo "The exercise needs app credentials, which GitHub withholds from fork PRs by" \
+                 "design. Re-open this change from a branch in this repository."
+            exit 1
+          fi
+          echo "run=true" >> "${GITHUB_OUTPUT}"
+
       # The action mints its own token from these credentials; this one is for the scratch-branch
       # setup, assertions, and cleanup around it.
       - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        if: steps.classify.outputs.commit_file_via_app == 'true'
+        if: steps.gate.outputs.run == 'true'
         id: app-token
         with:
           client-id: ${{ vars.RENOVATE_HELPER_CLIENT_ID }}
@@ -87,7 +114,7 @@ jobs:
       # Branch from the local HEAD (not the PR head SHA from the event payload) so the remote
       # scratch branch is guaranteed to match the working tree the action diffs against.
       - name: Create scratch branch at the checked-out commit
-        if: steps.classify.outputs.commit_file_via_app == 'true'
+        if: steps.gate.outputs.run == 'true'
         id: scratch
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -103,11 +130,11 @@ jobs:
       # Must touch a *tracked* file — the action's diff check is `git diff`, which is blind to
       # untracked paths.
       - name: Modify a tracked file in the working tree
-        if: steps.classify.outputs.commit_file_via_app == 'true'
+        if: steps.gate.outputs.run == 'true'
         run: echo "${COMMIT_MARKER}" >> README.md
 
       - name: Commit the change via the action
-        if: steps.classify.outputs.commit_file_via_app == 'true'
+        if: steps.gate.outputs.run == 'true'
         uses: ./.github/actions/commit-file-via-app
         with:
           client-id: ${{ vars.RENOVATE_HELPER_CLIENT_ID }}
@@ -118,7 +145,7 @@ jobs:
           commit-message: "test: commit-file-via-app self-test"
 
       - name: Assert a signed commit landed with the expected content
-        if: steps.classify.outputs.commit_file_via_app == 'true'
+        if: steps.gate.outputs.run == 'true'
         id: assert-commit
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -159,11 +186,11 @@ jobs:
 
       # Restore the working tree so the second action run sees no diff.
       - name: Revert the working-tree change
-        if: steps.classify.outputs.commit_file_via_app == 'true'
+        if: steps.gate.outputs.run == 'true'
         run: git checkout -- README.md
 
       - name: Run the action again with no diff
-        if: steps.classify.outputs.commit_file_via_app == 'true'
+        if: steps.gate.outputs.run == 'true'
         uses: ./.github/actions/commit-file-via-app
         with:
           client-id: ${{ vars.RENOVATE_HELPER_CLIENT_ID }}
@@ -174,7 +201,7 @@ jobs:
           commit-message: "test: this commit must never land (no-diff no-op)"
 
       - name: Assert the no-diff run was a no-op
-        if: steps.classify.outputs.commit_file_via_app == 'true'
+        if: steps.gate.outputs.run == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REPO: ${{ github.repository }}
@@ -191,11 +218,11 @@ jobs:
           fi
 
       - name: Modify only one of the two tracked files
-        if: steps.classify.outputs.commit_file_via_app == 'true'
+        if: steps.gate.outputs.run == 'true'
         run: echo "${PARTIAL_MARKER}" >> README.md
 
       - name: Commit both paths via the action, only one of them changed
-        if: steps.classify.outputs.commit_file_via_app == 'true'
+        if: steps.gate.outputs.run == 'true'
         uses: ./.github/actions/commit-file-via-app
         with:
           client-id: ${{ vars.RENOVATE_HELPER_CLIENT_ID }}
@@ -209,7 +236,7 @@ jobs:
       # An unchanged file wrongly included in `additions` yields an identical tree, so that stays
       # invisible here; what this catches is no commit at all, wrong content, or a rewritten path.
       - name: Assert only the changed path was committed
-        if: steps.classify.outputs.commit_file_via_app == 'true'
+        if: steps.gate.outputs.run == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REPO: ${{ github.repository }}
@@ -244,9 +271,6 @@ jobs:
             echo "FAIL: committed README.md is missing the partial-diff marker"
             exit 1
           fi
-
-      - if: steps.classify.outputs.commit_file_via_app != 'true'
-        run: echo "No commit-file-via-app changes in this PR; skipping the self-test."
 
       # Gates on the scratch step rather than on the classification: when the classification
       # skipped it there is no branch to delete, and `outcome` says so without restating why.
