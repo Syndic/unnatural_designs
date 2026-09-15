@@ -10,7 +10,7 @@ FROM ${BASE_IMAGE}
 ARG BAZELISK_VERSION=v1.29.0
 
 # renovate: datasource=github-releases depName=bazelbuild/buildtools
-ARG BUILDIFIER_VERSION=v8.5.1
+ARG BUILDIFIER_VERSION=v10.0.1
 
 # renovate: datasource=github-releases depName=koalaman/shellcheck
 ARG SHELLCHECK_VERSION=v0.11.0
