@@ -44,15 +44,22 @@ BAZEL = (
     r"^\.bazelversion$",
 )
 
-# Everything the devcontainer base image is assembled from — the publish job's gate. Without the
-# manifests above, Renovate's automerged digest bump would move the pin, skip every base job, and
-# never republish, so the published image would keep the superseded Debian layers and the bump would
-# reach nothing.
+# Everything the publish job's gate has to see: what the base image is assembled from, plus the
+# patterns deciding whether the gate fires at all. Without the manifests above, Renovate's
+# automerged digest bump would move the pin, skip every base job, and never republish, so the
+# published image would keep the superseded Debian layers and the bump would reach nothing.
 BASE = (
     # A plain prefix rather than a per-file allowlist. The README under here is rationale rather
     # than build input, but the image is cheap to rebuild and an allowlist would drift from the
     # directory.
     r"^meta/devcontainer-base/",
+    # This module. A check's effective domain is part of its logic, so an edit here is an edit to
+    # every check reading these patterns — the publish gate included, which would otherwise stand
+    # down on the one commit able to classify the image's own sources out of this set. `CHANGED`
+    # inherits it through the splat rather than restating it. The cost is a publish of a
+    # byte-identical index on any commit touching this file: the trade `.bazelversion` above
+    # already takes, for the same reason it is worth taking.
+    r"^meta/scripts/path_classification_pattern_sets\.py$",
     *BAZEL,
 )
 
@@ -64,15 +71,9 @@ BASE = (
 CHANGED = (
     r"^\.devcontainer/",
     r"^\.github/workflows/devcontainer\.yml$",
-    # This module is in the set on purpose. The sets used to live in devcontainer.yml, which the
-    # workflow's own pattern covers, so an edit to them always forced a consumer build in the PR
-    # that made it. Moving them here would otherwise drop that: a set edit that classifies nothing
-    # still imports, so every gated step would skip and the required check would go green having
-    # built nothing — and stay wrong afterwards with nothing failing. BASE needs no equivalent,
-    # since editing these patterns cannot move the image's bytes.
-    # //meta/scripts:test_path_classification_pattern_sets keeps this pattern here, so a deletion
-    # turns red rather than quiet.
-    r"^meta/scripts/path_classification_pattern_sets\.py$",
+    # This module reaches here through `*BASE`, which carries it for the whole-repo reason stated
+    # there. //meta/scripts:test_path_classification_pattern_sets holds the membership, so losing
+    # it turns red rather than quiet.
     *BASE,
 )
 

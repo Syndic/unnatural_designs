@@ -27,6 +27,8 @@ def fires(path: str) -> set[str]:
 # The self-test set fires alone: nothing else in the repo classifies the action's directory.
 _SELFTEST = {"commit_file_via_app"}
 
+_SETS_MODULE = "meta/scripts/path_classification_pattern_sets.py"
+
 
 class TestSetsPresent(unittest.TestCase):
     """A set missing from SETS is unselectable, and one with no patterns is silently never hit."""
@@ -125,14 +127,26 @@ class TestDevcontainerSets(unittest.TestCase):
     def test_own_workflow_rebuilds(self):
         self.assertEqual(fires(".github/workflows/devcontainer.yml"), {"changed"})
 
-    def test_the_module_that_defines_the_sets_rebuilds(self):
-        # `changed` has to cover the file that defines it. A set edit that classifies nothing still
-        # imports, so without this every gated step skips and the required check goes green having
-        # built nothing — and nothing fails afterwards either. `commit_file_via_app` covers it for
-        # its own reason, which TestCommitFileViaAppSet states.
+    def test_the_module_that_defines_the_sets_is_in_every_set_that_reads_it(self):
+        # A check's effective domain is part of its logic, so an edit here is an edit to each of
+        # these checks: `base` publishes the image, `changed` rebuilds the container,
+        # `commit_file_via_app` runs the action's self-test. `base` carries the pattern and
+        # `changed` inherits it through the splat — asserted on behaviour, so either route counts.
         self.assertEqual(
             fires("meta/scripts/path_classification_pattern_sets.py"),
-            {"changed", "commit_file_via_app"},
+            {"base", "changed", "commit_file_via_app"},
+        )
+
+    def test_the_base_gate_cannot_be_classified_away(self):
+        # The bypass the membership closes: edit the image's own sources and drop their pattern in
+        # the same commit. Without the module in `base`, the publish gate and the base-image smoke
+        # test both stand down on the one commit that most needs them.
+        doctored = tuple(p for p in BASE if "devcontainer-base" not in p)
+        changed = ["meta/devcontainer-base/scripts/lib.sh", _SETS_MODULE]
+        self.assertTrue(
+            any(re.search(p, f) for p in doctored for f in changed),
+            "a commit that removes the base-image pattern must still classify as a base change, "
+            "on the strength of having edited this module at all",
         )
 
     def test_sibling_workflow_does_not(self):
@@ -215,6 +229,7 @@ _SAMPLE_PATHS = (
     "meta/devcontainer-base/scripts/lib.sh",
     "meta/devcontainer-base/README.md",
     "meta/scripts/check_modules.py",
+    "meta/scripts/path_classification_pattern_sets.py",
     ".devcontainer/devcontainer.json",
     ".devcontainer/Dockerfile",
     ".github/workflows/devcontainer.yml",
