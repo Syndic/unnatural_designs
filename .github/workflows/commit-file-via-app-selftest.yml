@@ -33,9 +33,6 @@ permissions:
 jobs:
   selftest:
     name: Action self-test
-    # No job-level `if:`. A fork PR used to skip the whole job, which branch protection reads as a
-    # pass — so a fork could change the action and report green having verified nothing. The fork
-    # case is decided in the gate step below instead, where it can fail.
     runs-on: ubuntu-latest
     env:
       # run_attempt guards against a leftover branch from a prior attempt whose cleanup failed.
@@ -76,7 +73,8 @@ jobs:
       # PR run the exercise at all. A fork PR's token cannot read the app credentials, so it cannot
       # — and a change to the action that nothing exercised is precisely what this check exists to
       # stop. So a fork PR that touches the action is refused here rather than skipped past. The
-      # contribution is welcome; it has to land through a branch in this repo, where it can be run.
+      # contribution is welcome; but it has to land through a branch in this repo, where it can be
+      # tested.
       #
       # A fork PR that touches nothing here still passes, so forks are not blocked in general —
       # only from proposing the one change this check cannot verify.
