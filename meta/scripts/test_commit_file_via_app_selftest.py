@@ -1,9 +1,9 @@
 """Holds the commit-file-via-app self-test to the shape a required status check has to have.
 
 `Action self-test` is the only gate between a change to `.github/actions/commit-file-via-app/` and
-the repos outside this one that reference it at `@main`. Requiring it is a repo setting nothing in
-the tree can read — and one the ruleset does not carry yet, see .claude/CLAUDE.md — so what this
-file can hold is everything that setting depends on, each of which fails silently:
+the repos outside this one that reference it at `@main`. The ruleset that requires it is a repo
+setting nothing in the tree can read, so what this file can hold is everything that setting depends
+on — each of which fails silently:
 
   - **A trigger-level `paths:` filter.** GitHub counts a job skipped by `if:` as passing, but a
     workflow skipped by path filtering never reports: the required check sits `Pending` and blocks
@@ -47,7 +47,7 @@ _WORKFLOW_PATH = ".github/workflows/commit-file-via-app-selftest.yml"
 _WORKFLOW = _ROOT / _WORKFLOW_PATH
 _ACTION_PATH = ".github/actions/commit-file-via-app/action.yml"
 
-# The context the ruleset is to require, and the id of the job that produces it.
+# The context the ruleset requires, and the id of the job that produces it.
 _CHECK_NAME = "Action self-test"
 _JOB = "selftest"
 _DOCS_NAMING_THE_CHECK = (_ROOT / "README.md", _ROOT / ".claude" / "CLAUDE.md")
@@ -155,7 +155,7 @@ class TestTheWorkflowAlwaysReports(unittest.TestCase):
 
 
 class TestTheCheckName(unittest.TestCase):
-    def test_the_job_is_named_what_the_ruleset_is_to_name(self):
+    def test_the_job_is_named_what_branch_protection_names(self):
         self.assertEqual(job()["name"], _CHECK_NAME)
 
     def test_docs_name_the_check(self):

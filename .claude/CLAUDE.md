@@ -116,10 +116,7 @@ rather than a filter GitHub applies before the run:
 - `devcontainer.yml` — `Build devcontainer and smoke test` and `Base image (all platforms)`, both
   named in the ruleset.
 - `commit-file-via-app-selftest.yml` — `Action self-test`, which is what the action's external
-  `@main` consumers get instead of a review gate. **The ruleset does not name it yet** (#312): the
-  workflow was reshaped first, since naming a path-filtered check is what wedges every unrelated
-  PR, and the settings change is the remaining half. Until it lands the self-test reports without
-  blocking, so a break in the action can still merge.
+  `@main` consumers get instead of a review gate.
 
   A fork PR cannot read the app credentials, so it cannot run that exercise — and the rule is that
   it therefore cannot propose the change either: a fork PR touching the action **fails** the gate

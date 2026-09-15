@@ -222,7 +222,7 @@ check as passed.
 against a scratch branch, because repos outside this one reference it at `@main` and get no other
 review gate. Gated on the same kind of in-job path diff as Devcontainer, and for the same reason:
 a workflow filtered at its trigger never reports, and a required check that never reports blocks
-every PR. `Action self-test` is the name to require in the ruleset. Fork PRs cannot read the app
+every PR, and `Action self-test` is required in the ruleset. Fork PRs cannot read the app
 credentials, so they cannot run the exercise - and therefore cannot propose a change to the
 action: one that touches it fails the check, while one that touches nothing there passes normally.
 

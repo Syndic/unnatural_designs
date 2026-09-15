@@ -13,9 +13,9 @@ name: Self-test — commit-file-via-app
 # `requirements_lock.txt`, and `MODULE.bazel.lock` in one invocation, and a Bazel-only PR moves
 # only the last of them. The scratch branch is deleted even on failure.
 #
-# `Action self-test` is the name to require in the ruleset, so the workflow always runs and always
-# reports and the path filtering happens in the job. See .claude/CLAUDE.md "A required check cannot
-# be filtered at the trigger", which also records that the ruleset does not name it yet.
+# `Action self-test` is a required status check, so the workflow always runs and always reports,
+# and the path filtering happens in the job. See .claude/CLAUDE.md "A required check cannot be
+# filtered at the trigger".
 
 on:
   pull_request:

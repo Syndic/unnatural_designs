@@ -257,8 +257,8 @@ py_test(
 )
 
 # Same shape as the workflow-reading tests above: the assertion is the whole gate. What it guards
-# is a check the ruleset is to name, and a ruleset is a repo setting nothing here can read — so
-# the couplings it can hold are the ones that setting depends on, and each fails silently.
+# is a required status check, and a ruleset is a repo setting nothing here can read — so the
+# couplings it can hold are the ones that setting depends on, and each fails silently.
 py_test(
     name = "test_commit_file_via_app_selftest",
     size = "small",
