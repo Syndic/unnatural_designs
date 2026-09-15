@@ -56,7 +56,7 @@ func TestIsTerminal_StatError(t *testing.T) {
 	}
 }
 
-func TestNewColorizer(t *testing.T) {
+func TestNewStyler(t *testing.T) {
 	t.Setenv(EnvNoColor, "")
 	t.Setenv("TERM", "xterm-256color")
 
@@ -76,9 +76,9 @@ func TestNewColorizer(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			c, err := NewColorizer(tc.mode, nonTTY(t))
+			c, err := NewStyler(tc.mode, nonTTY(t))
 			if (err != nil) != tc.wantErr {
-				t.Fatalf("NewColorizer err = %v, wantErr = %v", err, tc.wantErr)
+				t.Fatalf("NewStyler err = %v, wantErr = %v", err, tc.wantErr)
 			}
 			if tc.wantErr {
 				return
@@ -90,56 +90,68 @@ func TestNewColorizer(t *testing.T) {
 	}
 }
 
-func TestNewColorizer_AutoNoColorEnv(t *testing.T) {
+func TestNewStyler_AutoNoColorEnv(t *testing.T) {
 	t.Setenv(EnvNoColor, "1")
 	t.Setenv("TERM", "xterm-256color")
-	c, err := NewColorizer("auto", nonTTY(t))
+	c, err := NewStyler("auto", nonTTY(t))
 	if err != nil {
-		t.Fatalf("NewColorizer: %v", err)
+		t.Fatalf("NewStyler: %v", err)
 	}
 	if c.enabled {
 		t.Error("auto with NO_COLOR set: enabled = true, want false")
 	}
 }
 
-func TestNewColorizer_AutoDumbTerm(t *testing.T) {
+func TestNewStyler_AutoDumbTerm(t *testing.T) {
 	t.Setenv(EnvNoColor, "")
 	t.Setenv("TERM", TermDumb)
-	c, err := NewColorizer("auto", nonTTY(t))
+	c, err := NewStyler("auto", nonTTY(t))
 	if err != nil {
-		t.Fatalf("NewColorizer: %v", err)
+		t.Fatalf("NewStyler: %v", err)
 	}
 	if c.enabled {
 		t.Error("auto with TERM=dumb: enabled = true, want false")
 	}
 }
 
-func TestColorizer_Disabled(t *testing.T) {
-	c, err := NewColorizer("never", nonTTY(t))
+func TestStyler_Disabled(t *testing.T) {
+	c, err := NewStyler("never", nonTTY(t))
 	if err != nil {
-		t.Fatalf("NewColorizer: %v", err)
+		t.Fatalf("NewStyler: %v", err)
 	}
 	for name, got := range map[string]string{
-		"Pass": c.Pass("ok"),
-		"Warn": c.Warn("ok"),
-		"Fail": c.Fail("ok"),
+		"Pass":      c.Pass("ok"),
+		"Warn":      c.Warn("ok"),
+		"Fail":      c.Fail("ok"),
+		"Accent":    c.Accent("ok"),
+		"Track":     c.Track("ok"),
+		"PassBlock": c.PassBlock("ok"),
+		"WarnBlock": c.WarnBlock("ok"),
+		"FailBlock": c.FailBlock("ok"),
 	} {
 		if got != "ok" {
-			t.Errorf("%s on disabled colorizer = %q, want %q", name, got, "ok")
+			t.Errorf("%s on disabled styler = %q, want %q", name, got, "ok")
 		}
+	}
+	// Tag carries its bracket text even with colors disabled — that's the
+	// pipe-safe fallback.
+	if got := c.Tag(StatusPass); got != "[PASS]" {
+		t.Errorf("Tag(PASS) on disabled styler = %q, want %q", got, "[PASS]")
 	}
 }
 
-func TestColorizer_Enabled(t *testing.T) {
-	c, err := NewColorizer("always", nonTTY(t))
+func TestStyler_Enabled(t *testing.T) {
+	c, err := NewStyler("always", nonTTY(t))
 	if err != nil {
-		t.Fatalf("NewColorizer: %v", err)
+		t.Fatalf("NewStyler: %v", err)
 	}
 	const reset = "\033[0m"
 	cases := map[string]string{
-		"Pass": c.Pass("ok"),
-		"Warn": c.Warn("ok"),
-		"Fail": c.Fail("ok"),
+		"Pass":   c.Pass("ok"),
+		"Warn":   c.Warn("ok"),
+		"Fail":   c.Fail("ok"),
+		"Accent": c.Accent("ok"),
+		"Track":  c.Track("ok"),
 	}
 	for name, got := range cases {
 		if !strings.Contains(got, "ok") {
@@ -152,7 +164,152 @@ func TestColorizer_Enabled(t *testing.T) {
 			t.Errorf("%s output %q missing ANSI prefix", name, got)
 		}
 	}
-	if cases["Pass"] == cases["Warn"] || cases["Pass"] == cases["Fail"] || cases["Warn"] == cases["Fail"] {
-		t.Error("Pass/Warn/Fail produced identical wrapping")
+	// Pass/Warn/Fail/Accent must all be distinguishable from each other.
+	seen := map[string]string{}
+	for name, got := range cases {
+		if prior, ok := seen[got]; ok {
+			t.Errorf("%s and %s produced identical wrapping %q", prior, name, got)
+		}
+		seen[got] = name
+	}
+	// Warn uses ANSI 3 so it tracks the user's terminal theme, rather than a
+	// hardcoded 256-color value.
+	if !strings.Contains(c.Warn("ok"), "\033[33m") {
+		t.Errorf("Warn() should use ANSI 3 (\\033[33m); got %q", c.Warn("ok"))
+	}
+	if strings.Contains(c.Warn("ok"), "38;5;214") {
+		t.Errorf("Warn() still emits the old 256-color 214; got %q", c.Warn("ok"))
+	}
+}
+
+func TestStyler_Block_BoldAnsi0FgOnColoredBg(t *testing.T) {
+	c, err := NewStyler("always", nonTTY(t))
+	if err != nil {
+		t.Fatalf("NewStyler: %v", err)
+	}
+	cases := []struct {
+		name   string
+		got    string
+		prefix string
+		glyph  string
+	}{
+		{"PassBlock", c.PassBlock("✓"), "\033[42;30;1m", "✓"}, //nolint:gosec // ANSI SGR sequence, not credentials
+		{"WarnBlock", c.WarnBlock("!"), "\033[43;30;1m", "!"}, //nolint:gosec // ANSI SGR sequence, not credentials
+		{"FailBlock", c.FailBlock("✗"), "\033[41;30;1m", "✗"}, //nolint:gosec // ANSI SGR sequence, not credentials
+	}
+	for _, tc := range cases {
+		if !strings.HasPrefix(tc.got, tc.prefix) {
+			t.Errorf("%s missing packed SGR prefix %q; got %q", tc.name, tc.prefix, tc.got)
+		}
+		if !strings.HasSuffix(tc.got, "\033[0m") {
+			t.Errorf("%s missing reset suffix; got %q", tc.name, tc.got)
+		}
+		if !strings.Contains(tc.got, " "+tc.glyph+" ") {
+			t.Errorf("%s missing space-padded glyph; got %q", tc.name, tc.got)
+		}
+		// Reverse-video must NOT be in use — the earlier SGR 7 approach let
+		// bold land on the background in many terminals.
+		if strings.Contains(tc.got, "\033[7m") {
+			t.Errorf("%s still emits SGR 7 reverse-video; got %q", tc.name, tc.got)
+		}
+	}
+
+	// Disabled styler still returns the bare glyph (no padding) so the
+	// NO_COLOR output stays a single visible cell wide.
+	disabled, err := NewStyler("never", nonTTY(t))
+	if err != nil {
+		t.Fatalf("NewStyler: %v", err)
+	}
+	if got := disabled.PassBlock("✓"); got != "✓" {
+		t.Errorf("disabled PassBlock(✓) = %q, want %q (no padding under NO_COLOR)", got, "✓")
+	}
+}
+
+func TestStyler_BarRunes(t *testing.T) {
+	disabled, err := NewStyler("never", nonTTY(t))
+	if err != nil {
+		t.Fatalf("NewStyler: %v", err)
+	}
+	l, f, tip, p, r := disabled.BarRunes()
+	if l != "[" || f != "=" || tip != ">" || p != " " || r != "]" {
+		t.Errorf("disabled BarRunes = %q/%q/%q/%q/%q, want [/=/>/ /]", l, f, tip, p, r)
+	}
+
+	enabled, err := NewStyler("always", nonTTY(t))
+	if err != nil {
+		t.Fatalf("NewStyler: %v", err)
+	}
+	l, f, tip, p, r = enabled.BarRunes()
+	if l != "" || r != "" {
+		t.Errorf("enabled BarRunes should have empty lbound/rbound; got %q/%q", l, r)
+	}
+	if !strings.Contains(f, "█") || !strings.Contains(f, "\033[") {
+		t.Errorf("enabled filler should be a colored block char; got %q", f)
+	}
+	if !strings.Contains(p, "░") || !strings.Contains(p, "\033[") {
+		t.Errorf("enabled padding should be a colored track char; got %q", p)
+	}
+	if !strings.Contains(tip, "█") {
+		t.Errorf("enabled tip should be a block char; got %q", tip)
+	}
+}
+
+func TestStyler_Box(t *testing.T) {
+	disabled, err := NewStyler("never", nonTTY(t))
+	if err != nil {
+		t.Fatalf("NewStyler: %v", err)
+	}
+	if got := disabled.Box(10, []string{"hello     "}); got != "" {
+		t.Errorf("disabled Box should be empty; got %q", got)
+	}
+
+	enabled, err := NewStyler("always", nonTTY(t))
+	if err != nil {
+		t.Fatalf("NewStyler: %v", err)
+	}
+	got := enabled.Box(5, []string{"hello"})
+	want := "┌─────┐\n│hello│\n└─────┘\n"
+	if got != want {
+		t.Errorf("enabled Box = %q, want %q", got, want)
+	}
+}
+
+func TestStyler_Tag(t *testing.T) {
+	enabled, err := NewStyler("always", nonTTY(t))
+	if err != nil {
+		t.Fatalf("NewStyler: %v", err)
+	}
+	disabled, err := NewStyler("never", nonTTY(t))
+	if err != nil {
+		t.Fatalf("NewStyler: %v", err)
+	}
+
+	expectedPrefix := map[string]string{ //nolint:gosec // ANSI SGR sequences, not credentials
+		StatusPass: "\033[42;30;1m",
+		StatusWarn: "\033[43;30;1m",
+		StatusFail: "\033[41;30;1m",
+	}
+	for _, status := range []string{StatusPass, StatusWarn, StatusFail} {
+		bracketed := "[" + status + "]"
+		if got := disabled.Tag(status); got != bracketed {
+			t.Errorf("disabled Tag(%s) = %q, want %q", status, got, bracketed)
+		}
+		got := enabled.Tag(status)
+		if !strings.HasPrefix(got, expectedPrefix[status]) {
+			t.Errorf("enabled Tag(%s) missing packed SGR prefix %q; got %q", status, expectedPrefix[status], got)
+		}
+		// Colored form is space-padded, not bracketed — brackets only ship
+		// on the NO_COLOR fallback so the pipe artifact stays readable.
+		if !strings.Contains(got, " "+status+" ") {
+			t.Errorf("enabled Tag(%s) missing space-padded label; got %q", status, got)
+		}
+		if strings.Contains(got, bracketed) {
+			t.Errorf("enabled Tag(%s) should not contain brackets; got %q", status, got)
+		}
+	}
+
+	// Unknown status names fall back to plain brackets — defensive default.
+	if got := enabled.Tag("MAYBE"); got != "[MAYBE]" {
+		t.Errorf("Tag(unknown) = %q, want %q", got, "[MAYBE]")
 	}
 }
