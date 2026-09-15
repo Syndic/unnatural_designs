@@ -120,12 +120,9 @@ rather than a filter GitHub applies before the run:
 
   A fork PR cannot read the app credentials, so it cannot run that exercise — and the rule is that
   it therefore cannot propose the change either: a fork PR touching the action **fails** the gate
-  step rather than skipping it. The tempting shape is a job-level `if:` that skips on forks, which
-  is what this used to carry; skipped reads as passed, so it let a fork change the action and
-  report green having verified nothing. A fork PR that touches nothing here still passes, so this
-  refuses one change rather than blocking forks. The refusal is a step that exits non-zero, and
-  `//meta/scripts:test_commit_file_via_app_selftest` runs that shell rather than reading it —
-  skipping and failing differ by one `exit` and nothing about the YAML's shape distinguishes them.
+  step rather than skipping it. The tempting shape is a job-level `if:` that skips on forks, but
+  forks should not be more free to propose sensitive changes with less validation. A fork PR that
+  touches nothing here still passes, so this refuses one change rather than blocking forks.
 
 *Where* the classification sits inside the workflow is a second decision, and the two answer it
 differently because they have different numbers of consumers. devcontainer.yml has four jobs
@@ -165,12 +162,8 @@ for each set lives beside it — this section carries only what is invisible fro
 - **A set covers the module that defines it, because a check's effective domain is part of its
   logic.** Dropping a pattern leaves the subject of the check untouched and changes the check's
   *answer*: the run that would have failed stands down instead, and the PR goes green having
-  verified nothing. So an edit to these patterns is an edit to every check that reads them, and
-  has to be one those checks see. It takes no special access — the two edits in one commit are a
-  self-exempting PR from any branch. `CHANGED` has carried this since the sets moved out of
-  `devcontainer.yml`, whose own pattern used to cover them, and a set edit that classifies nothing
-  still imports, so without it every gated step would skip and the required check would go green
-  having built nothing. `COMMIT_FILE_VIA_APP` carries it for the general reason above.
+  verified nothing. So an edit to these patterns should be seen as an edit to every check that
+  reads them.
 - **pre-commit cannot read the file, so the `base-image-pin` hook carries no `files:` filter.** It
   runs on every commit and gates internally in `meta/scripts/base_image_pin_hook.py`. It carries
   `require_serial: true`, which is load-bearing rather than tidiness: pre-commit partitions the
