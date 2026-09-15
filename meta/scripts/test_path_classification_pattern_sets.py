@@ -128,8 +128,12 @@ class TestDevcontainerSets(unittest.TestCase):
     def test_the_module_that_defines_the_sets_rebuilds(self):
         # `changed` has to cover the file that defines it. A set edit that classifies nothing still
         # imports, so without this every gated step skips and the required check goes green having
-        # built nothing — and nothing fails afterwards either.
-        self.assertEqual(fires("meta/scripts/path_classification_pattern_sets.py"), {"changed"})
+        # built nothing — and nothing fails afterwards either. `commit_file_via_app` covers it for
+        # its own reason, which TestCommitFileViaAppSet states.
+        self.assertEqual(
+            fires("meta/scripts/path_classification_pattern_sets.py"),
+            {"changed", "commit_file_via_app"},
+        )
 
     def test_sibling_workflow_does_not(self):
         self.assertEqual(fires(".github/workflows/ci.yml"), set())
@@ -156,11 +160,13 @@ class TestCommitFileViaAppSet(unittest.TestCase):
         # there cannot break the external consumers this gate exists for.
         self.assertEqual(fires(".github/workflows/renovate-derived-files.yml"), set())
 
-    def test_the_module_that_defines_the_sets_is_not_in_this_one(self):
-        # Deliberately unlike `changed`: editing these patterns cannot change how the action
-        # behaves, so a self-test run over such an edit would exercise nothing a previous run did
-        # not. This file is what holds the set honest instead.
-        self.assertNotIn(
+    def test_the_module_that_defines_the_sets_is_in_this_one(self):
+        # Not for `changed`'s reason. Editing these patterns cannot change how the action behaves,
+        # so on its own that would argue for leaving it out, as `BASE` does. What puts it in is the
+        # fork rule: the gate refuses a fork PR that touches the action, so a fork that dropped the
+        # action from this set in the same PR that changed it would classify itself out and report
+        # green. An edit here has to be something the check sees.
+        self.assertIn(
             "commit_file_via_app", fires("meta/scripts/path_classification_pattern_sets.py")
         )
 
