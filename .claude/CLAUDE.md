@@ -103,28 +103,37 @@ than it looks like it does.
 
 ## Enforcement lives in the ruleset, not in `needs`
 
-A check blocks a merge because the `main` ruleset names it — id 14538709, readable with
-`gh api repos/Syndic/unnatural_designs/rulesets/14538709` and writable nowhere in this tree.
-`needs:` decides only what *runs*, and exists so three platform runners are not spent on a tree
-that fails gazelle. #311 is where the two were separated: eight checks were binding only as a side
-effect of sitting in `build-and-test-per-target`'s `needs`, and three more — `pip-audit`,
-`shellcheck`, `ADR number uniqueness check` — were binding not at all.
+Two questions, deliberately kept independent:
 
-- **Do not make a check binding by adding it to `needs`.** Rejected in #311 as the fix for the
-  three: it conflates "is a prerequisite of" with "must pass" — shellcheck failing has no bearing
-  on whether `bazel test` can run — and it serialises the run, so one lint failure delays every
-  other signal on the PR. The `needs` edges stayed exactly as they were and the ruleset grew
-  instead, which is also why unhooking a fast check from `needs` to parallelise it is now a free
-  refactor rather than a silent demotion.
+- **What must pass** is the `main` ruleset's required-status-check list — id 14538709, readable
+  with `gh api repos/Syndic/unnatural_designs/rulesets/14538709` and writable nowhere in this tree.
+- **What runs when** is `needs:`. It expresses ordering only, and is chosen for cost and speed —
+  three platform runners are not worth spending on a tree that fails gazelle.
+
+#311 is where the two were separated: eight checks were binding only as a side effect of sitting in
+`build-and-test-per-target`'s `needs`, and three more — `pip-audit`, `shellcheck`, `ADR number
+uniqueness check` — were binding not at all.
+
+- **Name every check that must pass, including one something already `needs`.** The redundancy is
+  the point rather than a cost to trim: a list that omits what is transitively reachable puts
+  enforcement back in the dependency graph, where reordering jobs moves it. Nothing here rewards a
+  minimal list.
+- **Reordering is therefore free.** Unhooking a fast check from `needs` to parallelise it, or
+  adding an edge to save a runner, is a scheduling change and never an enforcement change. That
+  freedom is what the split buys, and it is why #311 left every `needs` edge exactly as it was and
+  grew the ruleset instead.
+- **Do not make a check binding by adding it to `needs`.** Rejected in #311: it conflates "is a
+  prerequisite of" with "must pass" — shellcheck failing has no bearing on whether `bazel test` can
+  run — and it serialises the run, so one lint failure delays every other signal on the PR.
 - **A matrix job is requirable only through a fan-in**, since its own check name carries the row
   that produced it. The fan-in carries `if: always()` for the reason the section below gives: a
   failed matrix would otherwise skip it, and a skipped required check reads as a pass.
   `//meta/scripts:test_ci_fan_ins` holds ci.yml's two to that shape, and fails a matrix job added
   with no fan-in at all — the state `golangci-lint` was in, which is what blocked requiring it.
-- **The cost, accepted rather than solved.** The required list is repo settings, so adding or
-  renaming a job needs a ruleset edit nothing in CI will prompt for. README's "What makes a check
-  binding" is the reader-facing copy of what is required today; a checked-in record of the list is
-  tracked separately.
+- **Nothing in the tree records the list yet**, so a job added here is un-enforced by default and
+  silently. #313 builds the manifest and the accounting test that close that — every job either
+  named or on an advisory list with a recorded reason — and #314 reconciles the manifest against
+  the live ruleset. Until those land, adding or renaming a job means remembering to edit settings.
 
 ## A required check cannot be filtered at the trigger
 
