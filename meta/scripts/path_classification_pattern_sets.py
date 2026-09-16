@@ -63,10 +63,6 @@ BASE = (
     # than build input, but the image is cheap to rebuild and an allowlist would drift from the
     # directory.
     r"^meta/devcontainer-base/",
-    # `SETS_MODULE` arrives with these, which is what stops a commit classifying the image's own
-    # sources out of this set and standing the publish gate down for itself. The cost is a publish
-    # of a byte-identical index on any commit touching that file — the trade `.bazelversion` above
-    # already takes, for the same reason it is worth taking.
     *BAZEL,
 )
 
@@ -78,8 +74,6 @@ BASE = (
 CHANGED = (
     r"^\.devcontainer/",
     r"^\.github/workflows/devcontainer\.yml$",
-    # `SETS_MODULE` reaches here through `*BASE` → `*BAZEL`; see its own declaration for why
-    # every set carries it.
     *BASE,
 )
 
@@ -124,9 +118,6 @@ COMMIT_FILE_VIA_APP = (
     # them are all inputs to what the self-test asserts.
     r"^\.github/actions/commit-file-via-app/",
     r"^\.github/workflows/commit-file-via-app-selftest\.yml$",
-    # Composes no other set, so it names `SETS_MODULE` itself. Sharpest case of why: this gates a
-    # required check, and dropping the action's pattern would let the self-test skip on the very
-    # PR changing the action.
     *SETS_MODULE,
 )
 
