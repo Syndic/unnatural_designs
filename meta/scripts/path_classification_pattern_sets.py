@@ -17,6 +17,15 @@ Patterns are matched with `re.search`, so each one anchors itself.
 
 from __future__ import annotations
 
+# The module you are reading, as a path. Every set below carries it — directly if it composes no
+# other set, otherwise through the one it composes — because a check's effective domain is part of
+# its logic: dropping a pattern leaves the subject of the check untouched and changes the check's
+# *answer*, so one commit can edit a set and the path that set names and have the gate stand down
+# for exactly the commit that needed it. Naming the path once and composing it is what keeps that
+# true for a set written later; //meta/scripts:test_path_classification_pattern_sets fails a set
+# that does not carry it, which is the half a convention cannot enforce on its own.
+SETS_MODULE = (r"^meta/scripts/path_classification_pattern_sets\.py$",)
+
 # The Bazel manifests. Two consumers, one set. For renovate-derived-files.yml this means "an input
 # that invalidates MODULE.bazel.lock moved" — the module graph, or the bazel release, whose
 # `lockFileVersion` and recorded extension shape the lock tracks. For the base image it means the
@@ -42,6 +51,7 @@ from __future__ import annotations
 BAZEL = (
     r"^MODULE\.bazel$",
     r"^\.bazelversion$",
+    *SETS_MODULE,
 )
 
 # Everything the publish job's gate has to see: what the base image is assembled from, plus the
@@ -53,13 +63,10 @@ BASE = (
     # than build input, but the image is cheap to rebuild and an allowlist would drift from the
     # directory.
     r"^meta/devcontainer-base/",
-    # This module. A check's effective domain is part of its logic, so an edit here is an edit to
-    # every check reading these patterns — the publish gate included, which would otherwise stand
-    # down on the one commit able to classify the image's own sources out of this set. `CHANGED`
-    # inherits it through the splat rather than restating it. The cost is a publish of a
-    # byte-identical index on any commit touching this file: the trade `.bazelversion` above
+    # `SETS_MODULE` arrives with these, which is what stops a commit classifying the image's own
+    # sources out of this set and standing the publish gate down for itself. The cost is a publish
+    # of a byte-identical index on any commit touching that file — the trade `.bazelversion` above
     # already takes, for the same reason it is worth taking.
-    r"^meta/scripts/path_classification_pattern_sets\.py$",
     *BAZEL,
 )
 
@@ -71,9 +78,8 @@ BASE = (
 CHANGED = (
     r"^\.devcontainer/",
     r"^\.github/workflows/devcontainer\.yml$",
-    # This module reaches here through `*BASE`, which carries it for the whole-repo reason stated
-    # there. //meta/scripts:test_path_classification_pattern_sets holds the membership, so losing
-    # it turns red rather than quiet.
+    # `SETS_MODULE` reaches here through `*BASE` → `*BAZEL`; see its own declaration for why
+    # every set carries it.
     *BASE,
 )
 
@@ -85,6 +91,7 @@ PYTHON = (
     r"(^|/)pyproject\.toml$",
     r"(^|/)uv\.lock$",
     r"(^|/)requirements_lock\.txt$",
+    *SETS_MODULE,
 )
 
 # A Renovate Go bump always edits a go.mod (and go.sum alongside it), so go.mod covers every case;
@@ -93,13 +100,17 @@ PYTHON = (
 GO = (
     r"(^|/)go\.mod$",
     r"(^|/)go\.work$",
+    *SETS_MODULE,
 )
 
 # Only devcontainer.json moves the feature references, and the lock is keyed by the reference
 # string, so any edit here restales every entry. `^`-anchored: this repo has exactly one
 # devcontainer, and a vendored copy under some subdirectory is not ours to re-resolve. The
 # Dockerfile and lifecycle scripts feed the image build instead — CHANGED covers those.
-DEVCONTAINER = (r"^\.devcontainer/devcontainer\.json$",)
+DEVCONTAINER = (
+    r"^\.devcontainer/devcontainer\.json$",
+    *SETS_MODULE,
+)
 
 # Everything `Action self-test`'s verdict depends on: the action it exercises, the workflow that
 # decides what exercising means, and this module, which decides whether it runs at all.
@@ -113,11 +124,10 @@ COMMIT_FILE_VIA_APP = (
     # them are all inputs to what the self-test asserts.
     r"^\.github/actions/commit-file-via-app/",
     r"^\.github/workflows/commit-file-via-app-selftest\.yml$",
-    # This module. A check's effective domain is part of its logic: dropping a pattern leaves the
-    # action untouched but changes the check's answer, so a PR that would have failed now passes,
-    # the exercise having skipped rather than run. An edit here is therefore a change to this
-    # check, and has to be treated as such.
-    r"^meta/scripts/path_classification_pattern_sets\.py$",
+    # Composes no other set, so it names `SETS_MODULE` itself. Sharpest case of why: this gates a
+    # required check, and dropping the action's pattern would let the self-test skip on the very
+    # PR changing the action.
+    *SETS_MODULE,
 )
 
 # The name each set is selected by on the command line and in `$GITHUB_OUTPUT`.

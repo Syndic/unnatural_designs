@@ -12,7 +12,8 @@ longer part of it.
 import re
 import unittest
 
-from meta.scripts.path_classification_pattern_sets import BASE, BAZEL, CHANGED, SETS
+import meta.scripts.path_classification_pattern_sets as pattern_sets
+from meta.scripts.path_classification_pattern_sets import BASE, BAZEL, CHANGED, SETS, SETS_MODULE
 
 
 def fires(path: str) -> set[str]:
@@ -28,6 +29,59 @@ def fires(path: str) -> set[str]:
 _SELFTEST = {"commit_file_via_app"}
 
 _SETS_MODULE = "meta/scripts/path_classification_pattern_sets.py"
+
+
+def declared_sets() -> dict[str, tuple[str, ...]]:
+    """Every pattern set the module defines, read off the module rather than out of `SETS`.
+
+    `SETS` is the registry consumers select from, and a set can exist without being in it — the
+    composed building blocks are exactly that. Reading the module catches those too, and catches a
+    new set whose author has not registered it yet, which is the moment the convention is most
+    likely to be missed."""
+    return {
+        name: value
+        for name, value in vars(pattern_sets).items()
+        if name.isupper()
+        and isinstance(value, tuple)
+        and all(isinstance(pattern, str) for pattern in value)
+    }
+
+
+class TestEverySetCarriesTheModuleThatDefinesIt(unittest.TestCase):
+    """The one invariant a convention cannot hold on its own.
+
+    A check's effective domain is part of its logic: dropping a pattern leaves the subject of the
+    check untouched and changes the check's answer, so a single commit can edit a set and the path
+    that set names, and have the gate stand down for exactly the commit that needed it. Every set
+    therefore carries `SETS_MODULE` — directly when it composes nothing, otherwise through the set
+    it composes. A set written later gets no reminder, so this is the reminder."""
+
+    def test_every_declared_set_carries_it(self):
+        for name, patterns in declared_sets().items():
+            with self.subTest(set=name):
+                self.assertTrue(
+                    set(SETS_MODULE) <= set(patterns),
+                    f"`{name}` does not carry SETS_MODULE, so a commit editing this module and a "
+                    f"path in `{name}` together would classify itself out of `{name}`'s gate. "
+                    "Splat `*SETS_MODULE` if it composes no other set; otherwise splat the set it "
+                    "composes.",
+                )
+
+    def test_the_registry_is_covered_too(self):
+        # `declared_sets()` is the wider net; this fails loudly if it ever stops seeing the
+        # registry, which would make the test above pass by looking at nothing.
+        self.assertTrue(set(SETS) <= {n.lower() for n in declared_sets()})
+
+    def test_it_fires_every_registered_set(self):
+        # The behavioural counterpart to the structural check above: the splats could all be in
+        # place while the pattern matched nothing. Compared against `SETS` rather than a written
+        # list, so adding a set does not date this.
+        self.assertEqual(fires(_SETS_MODULE), set(SETS))
+
+    def test_the_module_names_its_own_path(self):
+        # The pattern has to match the file it lives in — an edit to the filename that missed this
+        # constant would leave every set carrying a pattern that matches nothing.
+        self.assertTrue(any(re.search(p, _SETS_MODULE) for p in SETS_MODULE))
 
 
 class TestSetsPresent(unittest.TestCase):
@@ -126,16 +180,6 @@ class TestDevcontainerSets(unittest.TestCase):
 
     def test_own_workflow_rebuilds(self):
         self.assertEqual(fires(".github/workflows/devcontainer.yml"), {"changed"})
-
-    def test_the_module_that_defines_the_sets_is_in_every_set_that_reads_it(self):
-        # A check's effective domain is part of its logic, so an edit here is an edit to each of
-        # these checks: `base` publishes the image, `changed` rebuilds the container,
-        # `commit_file_via_app` runs the action's self-test. `base` carries the pattern and
-        # `changed` inherits it through the splat — asserted on behaviour, so either route counts.
-        self.assertEqual(
-            fires("meta/scripts/path_classification_pattern_sets.py"),
-            {"base", "changed", "commit_file_via_app"},
-        )
 
     def test_the_base_gate_cannot_be_classified_away(self):
         # The bypass the membership closes: edit the image's own sources and drop their pattern in

@@ -88,6 +88,13 @@ name instead of emitting `name=false` forever. Being plain Python also keeps
 feeds a required check. The constants carry their own rationale, so neither this file nor the
 workflows restate which paths are in a set.
 
+One member is not about any set's subject: every set carries `SETS_MODULE`, the module's own path.
+A check's effective domain is part of its logic, so a commit that edits a set and a path that set
+names can otherwise classify itself out of that set's gate. Sets composing another get it through
+the splat; the rest name it directly, and
+`//meta/scripts:test_path_classification_pattern_sets` fails a set that carries it by neither
+route — including one added later, which is where a convention alone would not hold.
+
 `classify_changed_paths.py` and `base_image_pin_hook.py` are its consumers. The first turns a
 three-dot diff into `name=true|false` step outputs for `devcontainer.yml`,
 `renovate-derived-files.yml` and `commit-file-via-app-selftest.yml`; the second is the
