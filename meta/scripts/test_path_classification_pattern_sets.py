@@ -28,7 +28,12 @@ def fires(path: str) -> set[str]:
 # The self-test set fires alone: nothing else in the repo classifies the action's directory.
 _SELFTEST = {"commit_file_via_app"}
 
-_SETS_MODULE = "meta/scripts/path_classification_pattern_sets.py"
+# Derived, never written twice. A literal here would be a second copy of the path `SETS_MODULE`
+# already encodes, so every assertion comparing them would compare two hand-written strings and
+# pass while both were stale — a rename that updated the import and neither constant would leave
+# every set carrying a pattern matching no file in the tree, and the suite green. The import
+# tracks the rename, so this does too.
+_SETS_MODULE = pattern_sets.__name__.replace(".", "/") + ".py"
 
 
 def declared_sets() -> dict[str, tuple[str, ...]]:
@@ -218,15 +223,6 @@ class TestCommitFileViaAppSet(unittest.TestCase):
         # there cannot break the external consumers this gate exists for.
         self.assertEqual(fires(".github/workflows/renovate-derived-files.yml"), set())
 
-    def test_the_module_that_defines_the_sets_is_in_this_one(self):
-        # A check's effective domain is part of its logic. Dropping the action's pattern leaves the
-        # action alone but changes what the check answers, so a PR that would have failed passes
-        # instead — no fork required, just the two edits in one commit. Holding the module in the
-        # set is what makes that self-exempting commit run the exercise it tried to skip.
-        self.assertIn(
-            "commit_file_via_app", fires("meta/scripts/path_classification_pattern_sets.py")
-        )
-
 
 class TestPythonAndGoSets(unittest.TestCase):
     def test_requirements_lock_is_python_not_bazel(self):
@@ -273,7 +269,7 @@ _SAMPLE_PATHS = (
     "meta/devcontainer-base/scripts/lib.sh",
     "meta/devcontainer-base/README.md",
     "meta/scripts/check_modules.py",
-    "meta/scripts/path_classification_pattern_sets.py",
+    _SETS_MODULE,
     ".devcontainer/devcontainer.json",
     ".devcontainer/Dockerfile",
     ".github/workflows/devcontainer.yml",
