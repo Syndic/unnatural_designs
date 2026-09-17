@@ -43,9 +43,40 @@ what adoption means.
 ### Repo health
 
 **Check**:
-A guard that enforces an invariant no single language toolchain owns. Whether it blocks depends on
-where it runs — CI, pre-commit, or on-save in the editor — not on what it is.
+Logic that verifies an invariant about the repository, and has no side effects. A check is
+_blocking_ or _non-blocking_; blocking is much the commoner, so an unqualified "check" means a
+blocking one, and "blocking check" is the explicit form where the contrast needs saying.
+
+Blocking is relative to the gate of the context the check runs in: a pre-commit hook blocks the
+commit, a CI job blocks the merge. What differs between those contexts is not whether a check can
+block but whether it can be side-stepped — `--no-verify` skips a hook, and nothing skips a
+required status check. So a check may live in a hook or on save in the editor for the fast
+feedback, but it must also run in CI, the only place enforcement does not rely on good faith.
+`check_secrets_dir.py` is the same invariant in two contexts: the `check-secrets-dir` hook and the
+`Secrets check` CI job.
 _Avoid_: gate, guard, linter, validator
+
+**Advisory check**:
+A check deliberately not named in the ruleset, so its failure does not block a merge. `Coverage` is
+the only one: its verdict is a judgement call rather than a defect. The distinction is recorded in
+`meta/scripts/ci_enforcement_manifest.py`, because a check that gates nothing by decision and one
+that gates nothing by omission are indistinguishable from the workflow.
+_Avoid_: soft check, warning, non-required check
+
+**Automated task**:
+A job that acts on the repo's behalf and has side effects, rather than verifying something. Tasks
+gate nothing because there is no verdict to gate on, which is what separates them from advisory
+checks. Six of the seven pre-commit hooks are tasks — they rewrite derived files rather than
+reporting on them — as are `Publish the shared base image`, `Re-derive lock files` and `Request a
+Renovate run`.
+_Avoid_: action, automation, fixer
+
+**Fan-in**:
+The single non-matrix job that aggregates every row of a matrix job, and the only name a ruleset
+can require on that matrix's behalf — a row's own check name carries the row that produced it, so
+it moves with the matrix. A matrix job with no fan-in is a check nothing can require, and nothing
+about it looks wrong.
+_Avoid_: aggregator, rollup, gate job
 
 **Derived file**:
 A checked-in file that is reproducible from other checked-in sources, so it is regenerated rather

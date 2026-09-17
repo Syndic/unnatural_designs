@@ -129,10 +129,26 @@ check.
   failed matrix would otherwise skip it, and a skipped required check reads as a pass.
   `//meta/scripts:test_ci_fan_ins` holds ci.yml's two to that shape, and fails a matrix job added
   with no fan-in at all — the state `golangci-lint` was in, which is what blocked requiring it.
-- **Nothing in the tree records the list yet**, so a job added here is un-enforced by default and
-  silently. #313 builds the manifest and the accounting test that close that — every job either
-  named or on an advisory list with a recorded reason — and #314 reconciles the manifest against
-  the live ruleset. Until those land, adding or renaming a job means remembering to edit settings.
+- **`meta/scripts/ci_enforcement_manifest.py` records the list**, and
+  `//meta/scripts:test_ci_enforcement_manifest` fails a job that is in neither of its two lists —
+  so a job added here is no longer un-enforced by default and silently. Two axes cross in that
+  file and the lists divide on only one: *check vs. automated task* (side effects) is vocabulary,
+  while *blocking vs. not* is what the lists are. A matrix job is in neither list, because a
+  row-carrying check name is one no ruleset can hold; its status is derived from its fan-in.
+- **The manifest is not self-verifying, and a green test is not a verified ruleset.** It is a
+  tree-local claim about settings nothing here can read, so editing the ruleset in the UI and not
+  the manifest leaves the test asserting a fiction — this section's own failure one level up. The
+  gap is accepted and recorded rather than papered over; #314 reconciles the two against the API.
+- **A blocking job must require only blocking jobs**, which is the one rule covering both
+  directions: a required check unhooked from `needs` to parallelise it, and a non-required job
+  pulled *into* a required job's `needs` so its failure now takes a merge gate down. Direction is
+  easy to invert when reading a workflow — `Coverage` sitting *downstream* of a required check is
+  fine, and what the rule forbids is `Coverage` appearing inside one's `needs:`.
+- **`Detect devcontainer changes` is required because of that rule** (#313). Two required checks
+  carry it in `needs:`, so leaving it unrequired put two merge gates downstream of an unguarded
+  job. The explicit `needs.changes.result` reads #316 added stay: the ruleset entry blocks the
+  merge, and those reads are what keep a green check from claiming to have verified something it
+  never looked at. Removing them would move the enforcement of three checks into repo settings.
 
 ## A required check cannot be filtered at the trigger
 
@@ -146,8 +162,8 @@ success.
 Two workflows are shaped by this, and both classify with `meta/scripts/classify_changed_paths.py`
 rather than a filter GitHub applies before the run:
 
-- `devcontainer.yml` — `Build devcontainer and smoke test` and `Base image (all platforms)`, both
-  named in the ruleset.
+- `devcontainer.yml` — `Build devcontainer and smoke test`, `Base image (all platforms)` and the
+  `Detect devcontainer changes` job they hang off, all three named in the ruleset.
 - `commit-file-via-app-selftest.yml` — `Action self-test`, which is what the action's external
   `@main` consumers get instead of a review gate.
 
@@ -166,8 +182,15 @@ than each asking. The self-test has one consumer, so the classification is a ste
 that reports the check: a classification that fails takes the check down with it, with nothing left
 to remember.
 
+`changes` is itself required as of #313, which does not make those reads redundant — the ruleset
+entry blocks the merge, and the reads are what stop the two consumers reporting green over a
+classification that never ran.
+
 `renovate-derived-files.yml` keeps its trigger-level `paths:` deliberately — nothing requires it,
-and it gates on `github.actor == 'renovate[bot]'` besides.
+and it gates on `github.actor == 'renovate[bot]'` besides. That is now machine-checked rather than
+merely true: `//meta/scripts:test_ci_enforcement_manifest` fails a required check whose workflow
+filters `pull_request` on `paths:`, targets a branch other than `main`, or narrows `types:` past
+`opened`/`synchronize`.
 
 ## Path-classification pattern sets live in one module
 

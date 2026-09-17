@@ -132,6 +132,19 @@ it, so it can only be required through a fan-in, and a new matrix job without on
 rather than quietly becoming a check nothing can name — the gap
 [#311](https://github.com/Syndic/unnatural_designs/issues/311) closed.
 
+`test_ci_enforcement_manifest.py` has no script half either, and generalises the fan-in test above
+across every workflow that runs on `pull_request`. Its data sits beside it in
+`ci_enforcement_manifest.py` — the check names the `main` ruleset requires, and the four jobs that
+deliberately gate nothing with a reason each — as a library rather than constants in the test,
+because [#314](https://github.com/Syndic/unnatural_designs/issues/314) reconciles the same lists
+against the live ruleset and is a second consumer by construction. The test fails a job in neither
+list, a blocking job that `needs:` a non-blocking one (enforcement moved by a scheduling edit, in
+either direction), a required check whose workflow filters `pull_request` at its trigger, a matrix
+with no fan-in or no rows, and a fan-in accepting a result no recorded exemption covers. What it
+cannot do is read the ruleset, so a green run is not a verified ruleset — a gap stated in the
+manifest and repeated in the failure message a newly added job gets, since that is the moment
+someone is most likely to assume otherwise.
+
 `test_semgrep_budget.py` has no script half either. It holds `security.yml`'s Semgrep job to the
 per-rule `--timeout` it was measured to need, and holds `MODULE.bazel.lock` to a size that budget
 still covers. Over budget, semgrep drops the whole file rather than the rule, reports success and

@@ -175,6 +175,33 @@ py_test(
     deps = [requirement("pyyaml")],
 )
 
+# The enforcement manifest: check names the `main` ruleset holds, plus what deliberately gates
+# nothing. A library because #314 reconciles it against the live ruleset and is a second consumer
+# by construction — data with two consumers does not live inside one of them.
+py_library(
+    name = "ci_enforcement_manifest_lib",
+    srcs = ["ci_enforcement_manifest.py"],
+)
+
+# `//:workflows` rather than a list of files, and the glob is load-bearing: this is the guard that
+# fails a job nobody classified, so a workflow it cannot see is one whose jobs it clears silently.
+# A curated `data` list would go stale exactly when a new workflow arrives, which is the moment the
+# guard exists for. README carries the not-required checks and the fan-in names in prose.
+py_test(
+    name = "test_ci_enforcement_manifest",
+    size = "small",
+    srcs = ["test_ci_enforcement_manifest.py"],
+    data = [
+        "//:README.md",
+        "//:workflows",
+    ],
+    main = "test_ci_enforcement_manifest.py",
+    deps = [
+        ":ci_enforcement_manifest_lib",
+        requirement("pyyaml"),
+    ],
+)
+
 # Same shape, and the same failure mode it guards against: a `changes` job that fails hands both of
 # devcontainer.yml's required checks a `skipped`, which branch protection reads as a pass. Reads the
 # sets directly, because the workflow's `--emit` names are the one copy of them nothing else holds.

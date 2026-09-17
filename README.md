@@ -218,9 +218,11 @@ between them — see [What makes a check binding](#what-makes-a-check-binding) b
 (`bazel --version`, `go version`, `python3 --version`). The job is gated on a path diff against
 the PR base: it only runs the build when `.devcontainer/` or `.github/workflows/devcontainer.yml`
 changed in this PR, and reports success otherwise so the status check always reports. The path
-diff is its own job, and both required checks fail when *it* fails: an unevaluated gate skips its
-consumers exactly the way a gate that ran and said no does, and GitHub counts a skipped required
-check as passed. The same workflow builds the shared base image on its own narrower path gate - one
+diff is its own job and a required check in its own right, and the two jobs that hang off it fail
+when *it* fails: an unevaluated gate skips its consumers exactly the way a gate that ran and said
+no does, and GitHub counts a skipped required check as passed. Both guards are wanted - one blocks
+the merge, the other keeps a green check from claiming to have verified something it never looked
+at. The same workflow builds the shared base image on its own narrower path gate - one
 job per architecture, behind the `Base image (all platforms)` fan-in, where a skipped row passes
 because most PRs legitimately do not touch the image.
 
@@ -241,11 +243,26 @@ runners on a tree that fails gazelle - and they decide what *runs*, never what m
 unhooked from `needs` to parallelise it keeps gating; a check absent from the ruleset gates nothing
 however many jobs wait on it.
 
+[`meta/scripts/ci_enforcement_manifest.py`](meta/scripts/ci_enforcement_manifest.py) is that list
+written down where something can read it, and `//meta/scripts:test_ci_enforcement_manifest` fails a
+job classified as neither required nor deliberately not. It is not self-verifying - it is a
+tree-local claim about settings nothing here can read - so a green test is not a verified ruleset.
+#314 closes that.
+
 Every job in the two tables above is required except `Coverage`, which is advisory deliberately:
 its failure is a judgement call rather than a defect, and Codecov's own `project`/`patch` statuses
-are threshold-based. So are the three named in the two paragraphs after them - `Build devcontainer
-and smoke test`, `Base image (all platforms)` and `Action self-test`. The path-diff job those
-workflows gate on is not itself required; the jobs that report take its failure as their own.
+are threshold-based. So are `Build devcontainer and smoke test`, `Base image (all platforms)` and
+`Action self-test` from the two paragraphs before this section - and `Detect devcontainer changes`,
+the path-diff job the first two hang off, since two required checks carry it in `needs:` and a
+classification nothing requires puts two merge gates downstream of an unguarded job.
+
+Three jobs gate nothing for a different reason: they are automated tasks rather than checks, acting
+on the repo's behalf instead of verifying it, so there is no verdict for a merge to wait on.
+`Publish the shared base image` pushes the image to GHCR where `Syndic/.dotfiles` expects it,
+`Re-derive lock files` regenerates what Mend-hosted Renovate cannot and commits it back to the PR,
+and `Request a Renovate run` ticks the Dependency Dashboard box after an automerge. That is also
+why `renovate-derived-files.yml` may keep a trigger-level `paths:` where a required check's
+workflow may not.
 
 A matrix job is required through its fan-in - `Build and test (all targets)`,
 `golangci-lint (all modules)`, `govulncheck (all modules)`, `CodeQL Analysis (all languages)`,
@@ -253,8 +270,11 @@ A matrix job is required through its fan-in - `Build and test (all targets)`,
 moves with the matrix. Each fan-in depends on every row and runs `if: always()`, so requiring the
 one stable name requires them all, and adding a row needs no ruleset edit.
 
-The list itself is repo settings, invisible from this tree: renaming a job, or adding one outside
-an existing matrix, needs a ruleset edit that nothing in CI will remind you about.
+The list itself is repo settings, invisible from this tree. The manifest catches the half that is
+visible - a new job in neither list, and a rename that leaves an entry naming a check no job
+reports - but it cannot see the ruleset move underneath it. So renaming a job, or adding one
+outside an existing matrix, still needs a settings edit that only the manifest's own staleness will
+hint at.
 
 ## Automation
 
