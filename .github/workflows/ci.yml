@@ -200,7 +200,7 @@ jobs:
       - uses: astral-sh/ruff-action@278981a28ce3188b1e39527901f38254bf3aac89 # v4.1.0
         with:
           # renovate: datasource=pypi depName=ruff
-          version: "0.16.7"
+          version: "0.16.8"
           args: format --check
       - run: ruff check
 
@@ -368,7 +368,7 @@ jobs:
       - name: Locate merged lcov
         id: lcov
         run: echo "path=$(bazel info output_path)/_coverage/_coverage_report.dat" >> "$GITHUB_OUTPUT"
-      - uses: codecov/codecov-action@0b35c9ecc4f0529d0eb674914510c22f85b196b4 # v7.1.0
+      - uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           files: ${{ steps.lcov.outputs.path }}
           disable_search: true
