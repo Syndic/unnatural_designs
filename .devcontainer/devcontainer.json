@@ -16,7 +16,7 @@
     }
   },
   "features": {
-    "ghcr.io/devcontainers/features/common-utils:2.5.9": {
+    "ghcr.io/devcontainers/features/common-utils:2.6.0": {
       "installZsh": true,
       "configureZshAsDefaultShell": false,
       "upgradePackages": false
