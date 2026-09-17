@@ -15,12 +15,12 @@ beside the rest of that job; devcontainer.yml's `base-image-all` is the one fan-
 result policy, since its matrix is path-gated and `skipped` legitimately passes there.
 """
 
+import subprocess
 import unittest
 from pathlib import Path
 from typing import NamedTuple
 
 import yaml
-from meta.scripts._workflow_text import job_block, run_fan_in
 
 # Not .resolve(): both files are cross-package data deps, so each lives in the runfiles tree
 # beside this one rather than at the source path a resolved symlink would lead back to.
@@ -28,7 +28,10 @@ _ROOT = Path(__file__).parent.parent.parent
 _WORKFLOW = _ROOT / ".github" / "workflows" / "ci.yml"
 _README = _ROOT / "README.md"
 
-_TEXT = _WORKFLOW.read_text(encoding="utf-8")
+_JOBS = yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8"))["jobs"]
+
+# GitHub treats these as the same condition, and a fan-in written either way behaves identically.
+_ALWAYS = ("always()", "${{ always() }}")
 
 
 class FanIn(NamedTuple):
@@ -46,23 +49,33 @@ _FAN_INS = {
 }
 
 
-# Resolved at import, the way test_codeql_toolchain resolves its job: a fan-in named here and
-# absent from the workflow is a broken file rather than a failing assertion, and should read as one.
-_BLOCKS = {
-    job: (job_block(_TEXT, job, where=_WORKFLOW.name), fan_in) for job, fan_in in _FAN_INS.items()
-}
+def needs(job: str) -> list[str]:
+    """A job's `needs:`, as a list whichever way it was written."""
+    declared = _JOBS[job].get("needs", [])
+    return [declared] if isinstance(declared, str) else list(declared)
 
 
-def matrix_jobs(text: str) -> set[str]:
-    """Job ids in one workflow that run a `strategy.matrix`."""
-    jobs = yaml.safe_load(text)["jobs"]
-    return {job for job, body in jobs.items() if "matrix" in (body.get("strategy") or {})}
+def run_fan_in(job: str, result: str) -> subprocess.CompletedProcess:
+    """Run a fan-in's shell with `result` standing in for the outcome of the job it needs.
+
+    The expression is built from the job's own `needs:` rather than passed in beside it, so the two
+    cannot disagree. One that matched nothing would leave `${{ ... }}` for bash, which errors on it
+    and then takes the branch that exits 0 — a fan-in that accepts every result, in a test written
+    to prove it rejects them.
+    """
+    scripts = [step["run"] for step in _JOBS[job]["steps"] if "run" in step]
+    assert len(scripts) == 1, f"{job} has {len(scripts)} `run:` steps; which one is the fan-in?"
+    expression = f"${{{{ needs.{needs(job)[0]}.result }}}}"
+    assert expression in scripts[0], f"{job}'s script does not read `{expression}`"
+    return subprocess.run(
+        ["bash", "-c", scripts[0].replace(expression, result)], capture_output=True, text=True
+    )
 
 
 class MatrixCoverageTest(unittest.TestCase):
     def test_every_matrix_job_has_a_fan_in(self):
         self.assertEqual(
-            matrix_jobs(_TEXT),
+            {job for job, body in _JOBS.items() if "matrix" in (body.get("strategy") or {})},
             {fan_in.matrix for fan_in in _FAN_INS.values()},
             "a matrix job's check name carries its row, so a ruleset cannot name it — give it a "
             "fan-in (and add that fan-in here) or it is a job nothing can be required to pass",
@@ -73,49 +86,49 @@ class FanInTest(unittest.TestCase):
     """What makes requiring a fan-in mean anything about the rows underneath it."""
 
     def test_fan_in_depends_on_its_matrix_job(self):
-        for job, (block, fan_in) in _BLOCKS.items():
+        for job, fan_in in _FAN_INS.items():
             with self.subTest(job=job):
-                self.assertIn(
-                    f"needs: [{fan_in.matrix}]",
-                    block,
+                self.assertEqual(
+                    needs(job),
+                    [fan_in.matrix],
                     "the fan-in is the required check; a matrix row it does not depend on is a "
                     "row nothing gates",
                 )
 
     def test_fan_in_runs_even_when_the_matrix_fails(self):
-        for job, (block, _) in _BLOCKS.items():
+        for job in _FAN_INS:
             with self.subTest(job=job):
                 self.assertIn(
-                    "if: always()",
-                    block,
-                    "without `if: always()` a failed matrix skips the fan-in, and branch "
-                    "protection counts a skipped required check as passed",
+                    _JOBS[job].get("if"),
+                    _ALWAYS,
+                    "without `always()` a failed matrix skips the fan-in, and branch protection "
+                    "counts a skipped required check as passed",
                 )
 
     def test_fan_in_is_named_what_branch_protection_names(self):
         """The ruleset holds these strings literally, and no test can read the ruleset."""
-        for job, (block, fan_in) in _BLOCKS.items():
+        for job, fan_in in _FAN_INS.items():
             with self.subTest(job=job):
-                self.assertIn(
-                    f"name: {fan_in.context}",
-                    block,
+                self.assertEqual(
+                    _JOBS[job].get("name"),
+                    fan_in.context,
                     "renaming this job silently decouples it from the required-status-check "
                     "context, which is repo settings — rename both, or neither",
                 )
 
     def test_fan_in_passes_when_every_row_succeeded(self):
-        for job, (block, fan_in) in _BLOCKS.items():
+        for job in _FAN_INS:
             with self.subTest(job=job):
-                done = run_fan_in(block, fan_in.matrix, "success")
+                done = run_fan_in(job, "success")
                 self.assertEqual(done.returncode, 0, f"{done.stdout}{done.stderr}".strip())
 
     def test_fan_in_fails_on_anything_else(self):
         """Run against the real shell, so the `case` idiom in devcontainer.yml would pass too."""
-        for job, (block, fan_in) in _BLOCKS.items():
+        for job in _FAN_INS:
             for result in ("failure", "cancelled", "skipped"):
                 with self.subTest(job=job, result=result):
                     self.assertNotEqual(
-                        run_fan_in(block, fan_in.matrix, result).returncode,
+                        run_fan_in(job, result).returncode,
                         0,
                         f"a matrix that reports `{result}` left rows unrun; nothing in ci.yml "
                         "gates either matrix on a path diff, so there is no benign reason for one",

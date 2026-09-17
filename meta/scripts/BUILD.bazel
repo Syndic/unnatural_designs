@@ -30,21 +30,6 @@ py_test(
     deps = [":path_classification_pattern_sets_lib"],
 )
 
-# Text-level slicing of a workflow job, for the fan-in guards. Separate from _workflows_lib
-# because it needs no YAML: what it exists to produce is a `run:` body the tests execute.
-py_library(
-    name = "_workflow_text_lib",
-    srcs = ["_workflow_text.py"],
-)
-
-py_test(
-    name = "test__workflow_text",
-    size = "small",
-    srcs = ["test__workflow_text.py"],
-    main = "test__workflow_text.py",
-    deps = [":_workflow_text_lib"],
-)
-
 # The one library here that needs a third-party dep. Kept separate from _workspace_lib so the
 # four check scripts that never read a workflow — go_work, adr_numbers, secrets_dir, no_cgo —
 # stay dependency-free, along with the CI job each of them runs in.
@@ -172,7 +157,6 @@ py_test(
         "//:README.md",
     ],
     main = "test_codeql_toolchain.py",
-    deps = [":_workflow_text_lib"],
 )
 
 # Same shape once more, over ci.yml's fan-ins. Its completeness half is the one assertion here
@@ -188,10 +172,7 @@ py_test(
         "//:README.md",
     ],
     main = "test_ci_fan_ins.py",
-    deps = [
-        ":_workflow_text_lib",
-        requirement("pyyaml"),
-    ],
+    deps = [requirement("pyyaml")],
 )
 
 # Same shape, and the same failure mode it guards against: a `changes` job that fails hands both of
