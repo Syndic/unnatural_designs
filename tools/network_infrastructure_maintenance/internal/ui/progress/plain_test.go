@@ -7,13 +7,11 @@ import (
 	"time"
 
 	netbox "github.com/Syndic/unnatural_designs/tools/network_infrastructure_maintenance/internal/netbox"
-	"github.com/Syndic/unnatural_designs/tools/network_infrastructure_maintenance/internal/shared"
 )
 
-// newTestPlainReporter constructs a plainReporter that writes to buf with a
-// disabled colorizer (zero-value Colorizer has color disabled).
+// newTestPlainReporter constructs a plainReporter that writes to buf.
 func newTestPlainReporter(buf *bytes.Buffer) *plainReporter {
-	return &plainReporter{w: buf, colors: shared.Colorizer{}}
+	return &plainReporter{w: buf}
 }
 
 func TestPlainReporter_NoStartedLines(t *testing.T) {
@@ -85,7 +83,7 @@ func TestPlainReporter_NoColorWhenColorizerDisabled(t *testing.T) {
 	r.ChecksComplete(18, 3, 100*time.Millisecond)
 
 	if strings.Contains(buf.String(), "\x1b[") {
-		t.Errorf("output contains ANSI escape sequence with disabled colorizer:\n%s", buf.String())
+		t.Errorf("output contains ANSI escape sequence with disabled styler:\n%s", buf.String())
 	}
 }
 
