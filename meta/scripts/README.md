@@ -122,6 +122,16 @@ resolves against the shared sets and still matches the paths it gates, and that 
 reporting job rather than a `changes` job the rest `needs:` — a failed dependency skips its
 dependents, and a skipped required check reads as a pass.
 
+`test_ci_fan_ins.py` has no script half either. It holds `ci.yml`'s two fan-ins — `Build and test
+(all targets)` and `golangci-lint (all modules)` — to what makes requiring one mean anything: it
+depends on the whole matrix, it runs `if: always()`, and its shell rejects every result that is not
+`success`. That last is asserted by running the shell rather than matching its spelling, so the
+`case` idiom `devcontainer.yml` uses for the same job would pass too. The other half is a
+completeness guard over the workflow: a matrix job's own check name carries the row that produced
+it, so it can only be required through a fan-in, and a new matrix job without one fails this test
+rather than quietly becoming a check nothing can name — the gap
+[#311](https://github.com/Syndic/unnatural_designs/issues/311) closed.
+
 `test_semgrep_budget.py` has no script half either. It holds `security.yml`'s Semgrep job to the
 per-rule `--timeout` it was measured to need, and holds `MODULE.bazel.lock` to a size that budget
 still covers. Over budget, semgrep drops the whole file rather than the rule, reports success and

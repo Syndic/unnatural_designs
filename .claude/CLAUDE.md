@@ -101,6 +101,39 @@ Monday. The accepted consequence is that a stale matrix shows `ci.yml` red while
 reports green — the merge is still blocked, but security.yml's green answers a narrower question
 than it looks like it does.
 
+## Enforcement lives in the ruleset, not in `needs`
+
+Two questions, deliberately decoupled:
+
+- **What must pass** is the `main` ruleset's required-status-check list — id 14538709, readable
+  with `gh api repos/Syndic/unnatural_designs/rulesets/14538709` and writable nowhere in this tree.
+- **What runs when** is `needs:`. It expresses ordering only, and is chosen for cost and speed —
+  three platform runners are not worth spending on a tree that fails gazelle.
+
+#311 is where the two were separated: eight checks were binding only as a side effect of sitting in
+`build-and-test-per-target`'s `needs`, and three more — `pip-audit`, `shellcheck`, `ADR number
+uniqueness check` — were not binding at all. The original intent was to keep the ruleset as minimal
+as possible by not requiring checks that were required transitively through `needs` lists, but it
+was too easy for new checks to be declared without being added as a prereq to an actually required
+check.
+
+- **Name every check that must pass, including one something already `needs`.** The redundancy is
+  accepted: a list that omits what is transitively reachable puts enforcement back in the
+  dependency graph, where reordering jobs moves it. Nothing here rewards a minimal list.
+- **Reordering is therefore free.** Unhooking a fast check from `needs` to parallelise it, or
+  adding an edge to save a runner, is a scheduling change and never an enforcement change. That
+  freedom is what the split buys, and it is why #311 left every `needs` edge exactly as it was and
+  grew the ruleset instead.
+- **A matrix job is requirable only through a fan-in**, since its own check name carries the row
+  that produced it. The fan-in carries `if: always()` for the reason the section below gives: a
+  failed matrix would otherwise skip it, and a skipped required check reads as a pass.
+  `//meta/scripts:test_ci_fan_ins` holds ci.yml's two to that shape, and fails a matrix job added
+  with no fan-in at all — the state `golangci-lint` was in, which is what blocked requiring it.
+- **Nothing in the tree records the list yet**, so a job added here is un-enforced by default and
+  silently. #313 builds the manifest and the accounting test that close that — every job either
+  named or on an advisory list with a recorded reason — and #314 reconciles the manifest against
+  the live ruleset. Until those land, adding or renaming a job means remembering to edit settings.
+
 ## A required check cannot be filtered at the trigger
 
 GitHub counts a job skipped by an `if:` condition or by a failed `needs:` as **passing**. A
@@ -310,13 +343,10 @@ configuration that runs CodeQL with no workflow file in the repo. Load-bearing f
 - **`build-mode: none` is not available for Go** (nor Swift or Kotlin), so Go is the one language
   whose analysis has to build, and so the one that needs a toolchain on PATH.
 - **`CodeQL Analysis (all languages)` is the name for the ruleset to require**, not the
-  per-language jobs — those are matrix rows, so their check names move with the language list. The
-  `codeql-all` fan-in gives branch protection one stable name and makes every row required through
-  it, so an added language needs no ruleset edit. Its `if: always()` is what makes that real:
-  without it a failed matrix *skips* the fan-in, and branch protection counts a skipped required
-  check as passed. The context itself is repo settings and unreadable from here, so
-  `//meta/scripts:test_codeql_toolchain` holds the workflow and the docs that quote it to the one
-  string.
+  per-language jobs — the rule and its reasoning are under "Enforcement lives in the ruleset, not
+  in `needs`". What is local to this job: an added language needs no ruleset edit, and
+  `//meta/scripts:test_codeql_toolchain` rather than `:test_ci_fan_ins` is what holds this
+  workflow and the docs that quote it to the one string.
 - **What the analysis *found* is gated by a second, separate rule.** Requiring `CodeQL Analysis
   (all languages)` gates on the analysis running and succeeding, not on its results. Those are
   gated by the `code_scanning` ruleset rule, where `CodeQL` sits alongside `Trivy` at
