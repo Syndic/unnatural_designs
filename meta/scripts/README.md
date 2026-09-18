@@ -139,11 +139,9 @@ deliberately gate nothing with a reason each — as a library rather than consta
 because [#314](https://github.com/Syndic/unnatural_designs/issues/314) reconciles the same lists
 against the live ruleset and is a second consumer by construction. The test fails a job in neither
 list, a blocking job that `needs:` a non-blocking one (enforcement moved by a scheduling edit, in
-either direction), a required check whose workflow filters `pull_request` at its trigger, a matrix
-with no fan-in or no rows, and a fan-in accepting a result no recorded exemption covers. What it
-cannot do is read the ruleset, so a green run is not a verified ruleset — a gap stated in the
-manifest and repeated in the failure message a newly added job gets, since that is the moment
-someone is most likely to assume otherwise.
+either direction), a required check that cannot report on every PR or reports without having run, a
+matrix with no fan-in or no rows, and a fan-in accepting a result no recorded exemption covers. It
+cannot read the ruleset; that gap and what closes it are in the manifest's own header.
 
 `test_semgrep_budget.py` has no script half either. It holds `security.yml`'s Semgrep job to the
 per-rule `--timeout` it was measured to need, and holds `MODULE.bazel.lock` to a size that budget

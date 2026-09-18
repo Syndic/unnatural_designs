@@ -59,10 +59,7 @@ REQUIRED = frozenset(
         # devcontainer.yml
         "Base image (all platforms)",
         "Build devcontainer and smoke test",
-        # Required as of #313. Both jobs above carry `needs: changes` and both are required, so a
-        # classification nobody requires put two merge gates downstream of an unguarded job. The
-        # explicit `needs.changes.result` reads #316 added stay regardless: they are what makes a
-        # green check mean something, where this entry only makes the merge block.
+        # Both jobs above carry it in `needs:`, so the closure rule requires it too.
         "Detect devcontainer changes",
         # security.yml
         "CodeQL Analysis (all languages)",

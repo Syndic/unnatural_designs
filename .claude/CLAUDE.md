@@ -182,15 +182,20 @@ than each asking. The self-test has one consumer, so the classification is a ste
 that reports the check: a classification that fails takes the check down with it, with nothing left
 to remember.
 
-`changes` is itself required as of #313, which does not make those reads redundant — the ruleset
-entry blocks the merge, and the reads are what stop the two consumers reporting green over a
-classification that never ran.
-
 `renovate-derived-files.yml` keeps its trigger-level `paths:` deliberately — nothing requires it,
 and it gates on `github.actor == 'renovate[bot]'` besides. That is now machine-checked rather than
 merely true: `//meta/scripts:test_ci_enforcement_manifest` fails a required check whose workflow
-filters `pull_request` on `paths:`, targets a branch other than `main`, or narrows `types:` past
-`opened`/`synchronize`.
+filters `pull_request` on `paths:`, uses `branches-ignore:`, targets a branch other than `main`, or
+narrows `types:` past `opened`/`synchronize`.
+
+**A job's own gate reaches the same place from the other side**, and is the half worth watching: a
+required job carrying `if: github.event_name == 'push'` reports `skipped` on every PR, and skipped
+counts as a pass, so the check gates nothing while looking green. The trigger failure blocks every
+merge and is impossible to miss; this one blocks none and is invisible. The same test therefore
+allows a required job only `always()` or `!cancelled()` — the two that always run — and refuses
+`continue-on-error`, which buys a green report whatever the job did. A job that genuinely should
+not always run belongs in the manifest's not-required list, and work it should sometimes skip
+belongs behind a step-level condition.
 
 ## Path-classification pattern sets live in one module
 

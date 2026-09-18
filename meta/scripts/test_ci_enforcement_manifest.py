@@ -13,9 +13,9 @@ The properties, and why each one is not implied by the others:
     classified; this says a `needs:` edit did not quietly overrule the classification, in either
     direction — a required check unhooked to parallelise it, or a non-required job pulled into a
     required job's `needs` so its failure now takes a merge gate down.
-  - **Trigger reach.** A required check's workflow runs on every PR. A workflow filtered at its
-    trigger never reports, and a required check that never reports sits `Pending` forever — the
-    opposite failure to a skipped job, which reads as a pass.
+  - **Reach.** A required check runs, and reports honestly, on every PR — which its workflow's
+    trigger, its own `if:` and `continue-on-error` can each undo, in opposite directions. See
+    `RequiredReachTest`.
   - **Matrix shape.** Every matrix job has exactly one fan-in and at least one row. The fan-in is
     the only name a ruleset can require on a matrix's behalf; the row count is what stops an empty
     matrix from reporting `skipped` into a fan-in that accepts `skipped`.
@@ -23,9 +23,8 @@ The properties, and why each one is not implied by the others:
     report. Without this the manifest proves a check is *reachable* from a required name, not that
     reaching it has any consequence — and "reachable but inconsequential" was #310.
 
-What none of it can do is read the ruleset, so none of it can tell you the manifest is true. That
-gap is stated at the top of the manifest and repeated in the failure message an unclassified job
-gets, because a green run here is the moment someone is most likely to assume otherwise. #314.
+What none of it can do is read the ruleset, so none of it can tell you the manifest is true —
+see that file's own header for the gap and #314 for closing it.
 
 Scope is every workflow with `pull_request` in `on:`, discovered by glob. Jobs elsewhere — a
 `schedule`-only workflow, say — cannot hold a PR merge and are not this file's business.
@@ -61,6 +60,24 @@ _NOT_SUCCESS = ("failure", "cancelled", "skipped")
 
 # GitHub treats these as the same condition, and a fan-in written either way behaves identically.
 _ALWAYS = ("always()", "${{ always() }}")
+
+# The `${{ }}` wrapper is optional on `if:` and carries no meaning, so it is normalised away
+# before a condition is compared.
+_WRAPPED_RE = re.compile(r"^\$\{\{(.*)\}\}$", re.S)
+
+# The two conditions that run whatever happened upstream. A required job may carry one of these
+# and nothing else: GitHub reports a job skipped by a false `if:` as `skipped`, and branch
+# protection counts `skipped` as a pass, so any falsifiable condition on a required job makes it a
+# decoration on every run the condition is false. `always()` is what the fan-ins carry;
+# `!cancelled()` is what `build-and-smoke-test` carries.
+_ALWAYS_RUN = frozenset({"always()", "!cancelled()"})
+
+# The branch the ruleset protects, and so the one a required check has to report on.
+_PROTECTED_BRANCH = "main"
+
+# GitHub's filter-pattern characters. A branch list using any of them needs glob semantics to
+# resolve, which this file refuses to guess at rather than approximate.
+_GLOB_RE = re.compile(r"[*?\[\]!+]")
 
 # Matrix sections rather than axes: neither is a dimension of the cross product.
 _INCLUDE = "include"
@@ -129,6 +146,10 @@ def _pull_request_jobs() -> list[Job]:
     Approximating GitHub's expression semantics would drop jobs from the domain, and a job dropped
     from the domain is one this file passes without checking. The cost is three NOT_REQUIRED
     entries; what they buy is that "never runs on a PR" is written down somewhere at all.
+
+    That argument is about *membership* only, and does not reach a required job's own gate:
+    `RequiredReachTest` refuses an `if:` on a required job rather than trying to evaluate one,
+    which needs no expression semantics and is the same fail-closed answer from the other side.
     """
     found = []
     for name, workflow in sorted(_WORKFLOWS.items()):
@@ -245,6 +266,49 @@ def run_fan_in(job: Job, results: dict[str, str]) -> subprocess.CompletedProcess
     return subprocess.run(["bash", "-c", script], capture_output=True, text=True)
 
 
+def condition(job: Job) -> str | None:
+    """A job's `if:`, with an optional `${{ }}` wrapper and surrounding whitespace removed.
+
+    GitHub evaluates this, not bash, so it is the one thing here with no runnable equivalent and
+    has to be compared rather than exercised. Only the wrapper is normalised away, since it is
+    optional and carries no meaning; anything past that is a different condition.
+    """
+    declared = job.body.get("if")
+    if not isinstance(declared, str):
+        return declared
+    hit = _WRAPPED_RE.match(declared.strip())
+    return (hit.group(1) if hit else declared).strip()
+
+
+def branch_filter_problem(filters: dict) -> str | None:
+    """Why a `pull_request:` filter might keep a required check off the protected branch.
+
+    `branches-ignore:` is refused outright rather than read: it can only subtract, and deciding
+    whether it subtracts the protected branch needs GitHub's own glob semantics. A pattern in
+    `branches:` is refused for the same reason, and refused rather than waved through because the
+    direction that matters — a filter that quietly stops admitting `main` — is the one a guess
+    would get wrong. Every workflow here lists the branch literally.
+    """
+    if "branches-ignore" in filters:
+        return (
+            "`branches-ignore:` can only remove branches from the set, and whether it removes "
+            f"`{_PROTECTED_BRANCH}` needs GitHub's glob semantics rather than a literal read"
+        )
+    branches = filters.get("branches")
+    if branches is None:
+        return None
+    if not isinstance(branches, list):
+        return "`branches:` is not a list, so the branches it admits cannot be read here"
+    if _PROTECTED_BRANCH in branches:
+        return None
+    if any(isinstance(b, str) and _GLOB_RE.search(b) for b in branches):
+        return (
+            f"`branches:` uses a pattern, and whether it admits `{_PROTECTED_BRANCH}` needs "
+            "GitHub's glob semantics rather than a literal match — teach this function"
+        )
+    return f"`branches:` does not list `{_PROTECTED_BRANCH}`"
+
+
 def exemption_for(job: Job, upstream: str, result: str) -> FanInExemption | None:
     """The recorded exemption letting `job` accept `result` from `upstream`, if there is one."""
     wanted = (job.job_id, upstream, result)
@@ -357,12 +421,15 @@ class ClosureTest(unittest.TestCase):
                     )
 
 
-class RequiredTriggerTest(unittest.TestCase):
-    """A required check has to report on every PR, or it sits `Pending` and blocks every merge.
+class RequiredReachTest(unittest.TestCase):
+    """A required check has to run, and report honestly, on every PR.
 
-    The mirror of the skipped-reads-as-passed failure, and the more confusing one: a job filtered
-    out of a run reports nothing at all, so branch protection waits forever for a check that was
-    never going to arrive.
+    Two failures with opposite shapes, which is why the trigger is not the whole question. A
+    workflow filtered out of a run reports *nothing*, so branch protection waits forever on a
+    check that was never going to arrive. A job that runs but is gated off by its own `if:`
+    reports `skipped`, which branch protection counts as a **pass** — so the check is a decoration
+    on every run its condition is false. The first blocks every merge and is impossible to miss;
+    the second blocks none and is invisible, which makes it the one worth testing for.
     """
 
     def filters(self, job: Job) -> dict:
@@ -387,15 +454,43 @@ class RequiredTriggerTest(unittest.TestCase):
 
     def test_no_required_check_is_filtered_off_the_protected_branch(self):
         for job in self.required_jobs():
-            branches = self.filters(job).get("branches")
-            if branches is None:
+            problem = branch_filter_problem(self.filters(job))
+            with self.subTest(check=job.check):
+                self.assertIsNone(
+                    problem,
+                    f"{job.workflow} may not run for PRs targeting `{_PROTECTED_BRANCH}`, which "
+                    f"is the branch the ruleset protects and `{job.check}` is required on: "
+                    f"{problem}",
+                )
+
+    def test_no_required_check_is_gated_by_its_own_condition(self):
+        """The trigger decides whether the workflow runs; this decides whether the job does."""
+        for job in self.required_jobs():
+            gate = condition(job)
+            if gate is None:
                 continue
             with self.subTest(check=job.check):
                 self.assertIn(
-                    "main",
-                    branches,
-                    f"{job.workflow} does not run for PRs targeting `main`, which is the branch "
-                    f"the ruleset protects and `{job.check}` is required on",
+                    gate,
+                    _ALWAYS_RUN,
+                    f"`{job.check}` is required but carries `if: {gate}`, so on every run that "
+                    "condition is false the job reports `skipped` — which branch protection "
+                    "counts as a pass. A required check with a falsifiable gate gates nothing. "
+                    f"Only {sorted(_ALWAYS_RUN)} are allowed here, since they always run; a job "
+                    "that genuinely should not always run belongs in NOT_REQUIRED, and work it "
+                    "should sometimes skip belongs behind a step-level condition instead.",
+                )
+
+    def test_no_required_check_tolerates_its_own_failure(self):
+        """The same place by the other door: `continue-on-error` is a red job reporting green."""
+        for job in self.required_jobs():
+            declared = job.body.get("continue-on-error")
+            if declared is None or declared is False:
+                continue
+            with self.subTest(check=job.check):
+                self.fail(
+                    f"`{job.check}` is required but carries `continue-on-error: {declared}`, so "
+                    "it reports success however it exits, and requiring it asks nothing of it"
                 )
 
     def test_no_required_check_misses_an_ordinary_pull_request_event(self):
@@ -455,11 +550,7 @@ class MatrixTest(unittest.TestCase):
 
 
 class FanInStrictnessTest(unittest.TestCase):
-    """What makes requiring a fan-in mean anything about the rows underneath it.
-
-    Without this the manifest proves a check is reachable from a required name, not that reaching
-    it has any consequence — and "reachable but inconsequential" is the bug in #310.
-    """
+    """What makes requiring a fan-in mean anything about the rows underneath it."""
 
     def test_a_fan_in_runs_even_when_its_matrix_failed(self):
         for job in blocking_fan_ins():

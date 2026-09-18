@@ -251,10 +251,10 @@ tree-local claim about settings nothing here can read - so a green test is not a
 
 Every job in the two tables above is required except `Coverage`, which is advisory deliberately:
 its failure is a judgement call rather than a defect, and Codecov's own `project`/`patch` statuses
-are threshold-based. So are `Build devcontainer and smoke test`, `Base image (all platforms)` and
-`Action self-test` from the two paragraphs before this section - and `Detect devcontainer changes`,
-the path-diff job the first two hang off, since two required checks carry it in `needs:` and a
-classification nothing requires puts two merge gates downstream of an unguarded job.
+are threshold-based. Required too, from the two paragraphs before this section: `Build devcontainer
+and smoke test`, `Base image (all platforms)`, `Action self-test`, and the path-diff job the first
+two hang off, `Detect devcontainer changes` - both of those carry it in `needs:`, so leaving it
+unrequired would put two merge gates downstream of an unguarded job.
 
 Three jobs gate nothing for a different reason: they are automated tasks rather than checks, acting
 on the repo's behalf instead of verifying it, so there is no verdict for a merge to wait on.
