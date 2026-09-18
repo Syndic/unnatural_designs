@@ -130,11 +130,12 @@ check.
   `//meta/scripts:test_ci_fan_ins` holds ci.yml's two to that shape, and fails a matrix job added
   with no fan-in at all — the state `golangci-lint` was in, which is what blocked requiring it.
 - **`meta/scripts/ci_enforcement_manifest.py` records the list**, and
-  `//meta/scripts:test_ci_enforcement_manifest` fails a job that is in neither of its two lists —
-  so a job added here is no longer un-enforced by default and silently. Two axes cross in that
-  file and the lists divide on only one: *check vs. automated task* (side effects) is vocabulary,
-  while *blocking vs. not* is what the lists are. A matrix job is in neither list, because a
-  row-carrying check name is one no ruleset can hold; its status is derived from its fan-in.
+  `//meta/scripts:test_ci_enforcement_manifest` fails when it finds a job that is in neither of
+  its two lists — so a job added here is no longer un-enforced by default and silently. Two axes
+  cross in that file and the lists divide on only one: *check vs. automated task* (side effects)
+  is vocabulary, while *blocking vs. not* is what the lists are. A matrix job is in neither list,
+  because a row-carrying check name is one no ruleset can hold; its status is derived from its
+  fan-in.
 - **The manifest is not self-verifying, and a green test is not a verified ruleset.** It is a
   tree-local claim about settings nothing here can read, so editing the ruleset in the UI and not
   the manifest leaves the test asserting a fiction — this section's own failure one level up. The
@@ -154,8 +155,9 @@ indefinitely. So a check named in the `main` ruleset has to belong to a workflow
 PR, and the path filter moves inside the job — where skipping the work still lets the job report
 success.
 
-Two workflows are shaped by this, and both classify with `meta/scripts/classify_changed_paths.py`
-rather than a filter GitHub applies before the run:
+Multiple workflows are shaped by this. They classify changed files with
+`meta/scripts/classify_changed_paths.py` to determine if they should take action rather than
+using a filter GitHub applies before the run:
 
 - `devcontainer.yml` — `Build devcontainer and smoke test`, `Base image (all platforms)` and the
   `Detect devcontainer changes` job they hang off, all three named in the ruleset.
