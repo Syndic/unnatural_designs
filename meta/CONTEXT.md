@@ -57,18 +57,17 @@ feedback, but it must also run in CI, the only place enforcement does not rely o
 _Avoid_: gate, guard, linter, validator
 
 **Advisory check**:
-A check deliberately not named in the ruleset, so its failure does not block a merge. `Coverage` is
-the only one: its verdict is a judgement call rather than a defect. The distinction is recorded in
+A check deliberately not named in the ruleset, so its failure does not block a merge. Its verdict
+is a judgement call rather than a defect. The distinction is recorded in
 `meta/scripts/ci_enforcement_manifest.py`, because a check that gates nothing by decision and one
 that gates nothing by omission are indistinguishable from the workflow.
 _Avoid_: soft check, warning, non-required check
 
 **Automated task**:
-A job that acts on the repo's behalf and has side effects, rather than verifying something. Tasks
-gate nothing because there is no verdict to gate on, which is what separates them from advisory
-checks. Six of the seven pre-commit hooks are tasks — they rewrite derived files rather than
-reporting on them — as are `Publish the shared base image`, `Re-derive lock files` and `Request a
-Renovate run`.
+A job that acts on the repo's behalf through side effects. Six of the seven pre-commit hooks are
+automated tasks — they rewrite files that don't satisfy project standards — as are
+`Publish the shared base image`, `Re-derive lock files` and `Request a Renovate run`.  Automated
+Tasks may be required or advisory. Blocking or non-blocking.
 _Avoid_: action, automation, fixer
 
 **Fan-in**:
