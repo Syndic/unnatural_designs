@@ -257,7 +257,8 @@ two hang off, `Detect devcontainer changes` - both of those carry it in `needs:`
 unrequired would put two merge gates downstream of an unguarded job.
 
 Three jobs gate nothing for a different reason: they are automated tasks rather than checks, acting
-on the repo's behalf instead of verifying it, so there is no verdict for a merge to wait on.
+on the repo's behalf instead of verifying it. That is not what makes them non-blocking - an
+automated task can be required - it is that each one is gated to a situation no ordinary PR is in.
 `Publish the shared base image` pushes the image to GHCR where `Syndic/.dotfiles` expects it,
 `Re-derive lock files` regenerates what Mend-hosted Renovate cannot and commits it back to the PR,
 and `Request a Renovate run` ticks the Dependency Dashboard box after an automerge. That is also

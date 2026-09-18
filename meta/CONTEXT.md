@@ -66,7 +66,7 @@ _Avoid_: soft check, warning, non-required check
 **Automated task**:
 A job that acts on the repo's behalf through side effects. Six of the seven pre-commit hooks are
 automated tasks — they rewrite files that don't satisfy project standards — as are
-`Publish the shared base image`, `Re-derive lock files` and `Request a Renovate run`.  Automated
+`Publish the shared base image`, `Re-derive lock files` and `Request a Renovate run`. Automated
 Tasks may be required or advisory. Blocking or non-blocking.
 _Avoid_: action, automation, fixer
 
