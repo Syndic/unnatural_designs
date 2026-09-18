@@ -144,11 +144,6 @@ check.
   pulled *into* a required job's `needs` so its failure now takes a merge gate down. Direction is
   easy to invert when reading a workflow — `Coverage` sitting *downstream* of a required check is
   fine, and what the rule forbids is `Coverage` appearing inside one's `needs:`.
-- **`Detect devcontainer changes` is required because of that rule** (#313). Two required checks
-  carry it in `needs:`, so leaving it unrequired put two merge gates downstream of an unguarded
-  job. The explicit `needs.changes.result` reads #316 added stay: the ruleset entry blocks the
-  merge, and those reads are what keep a green check from claiming to have verified something it
-  never looked at. Removing them would move the enforcement of three checks into repo settings.
 
 ## A required check cannot be filtered at the trigger
 
