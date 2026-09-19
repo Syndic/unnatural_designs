@@ -277,7 +277,7 @@ jobs:
       - name: ty check
         env:
           # renovate: datasource=pypi depName=ty
-          TY_VERSION: "0.0.81"
+          TY_VERSION: "0.0.82"
         run: uvx "ty@${TY_VERSION}" check
 
   # Build and test runs once per supported target platform, on a runner whose host matches
