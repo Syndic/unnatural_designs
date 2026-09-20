@@ -136,10 +136,15 @@ check.
   is vocabulary, while *blocking vs. not* is what the lists are. A matrix job is in neither list,
   because a row-carrying check name is one no ruleset can hold; its status is derived from its
   fan-in.
-- **The manifest is not self-verifying, and a green test is not a verified ruleset.** It is a
-  tree-local claim about settings nothing here can read, so editing the ruleset in the UI and not
-  the manifest leaves the test asserting a fiction — this section's own failure one level up. The
-  gap is accepted and recorded rather than papered over; #314 reconciles the two against the API.
+- **The manifest is a claim, and `Repository constraint enforcement manifest consistency check`
+  is what holds it to the live rules.** Every other guard here is tree-local and assumes the claim;
+  that one asks GitHub, on every PR and on the Monday cron, and fails when the two disagree in
+  either direction. It reads the *effective* rules on `main` rather than a ruleset named by id, so
+  a second ruleset reaching the branch cannot move the gate unseen.
+  `meta/docs/adr/0003-the-enforcement-manifest-is-a-claim-not-a-mirror.md` has that reasoning and
+  the two blind spots it accepts (`bypass_actors`, and the tag ruleset). **Nothing automated may
+  write the manifest** — a machine that can update the claim to match reality leaves no claim
+  behind.
 - **A blocking job must require only blocking jobs**, which is the one rule covering both
   directions: a required check unhooked from `needs` to parallelise it, and a non-required job
   pulled *into* a required job's `needs` so its failure now takes a merge gate down. Direction is
@@ -381,9 +386,12 @@ configuration that runs CodeQL with no workflow file in the repo. Load-bearing f
   enforced. With only the status check, a run that finds something still merges; with only the
   alert gate, a run whose extractor read only half the tree reports green. The alert gate
   is confirmed to fire — #279 injected two `security-severity 7.5` findings and the `CodeQL` check
-  run concluded `failure` with the PR `BLOCKED`. Unlike the fan-in name, no test can hold this:
-  the rule is repo settings, and the tool name it matches on comes from the action's upload rather
-  than from anything this repo writes.
+  run concluded `failure` with the PR `BLOCKED`. The `code_scanning` rule is mirrored in the
+  enforcement manifest and held there by `Repository constraint enforcement manifest consistency
+  check`, so both thresholds moving is a red rather than a silent widening — which is part of why
+  that manifest mirrors every rule and not just the check-name list. What no test holds is the
+  tool name it matches on, which comes from the action's upload rather than from anything this
+  repo writes.
 
 ## Renovate auto-commit helper (`Renovate helper` app)
 

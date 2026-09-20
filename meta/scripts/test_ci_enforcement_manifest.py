@@ -23,8 +23,9 @@ The properties, and why each one is not implied by the others:
     report. Without this the manifest proves a check is *reachable* from a required name, not that
     reaching it has any consequence — and "reachable but inconsequential" was #310.
 
-What none of it can do is read the ruleset, so none of it can tell you the manifest is true —
-see that file's own header for the gap and #314 for closing it.
+What none of it can do is read the rules, so none of it can tell you the manifest is true.
+`check_repository_constraints.py` is what asks GitHub; this file assumes the answer and holds the
+workflows to it.
 
 Scope is every workflow with `pull_request` in `on:`, discovered by glob. Jobs elsewhere — a
 `schedule`-only workflow, say — cannot hold a PR merge and are not this file's business.
@@ -42,9 +43,15 @@ import yaml
 from meta.scripts.ci_enforcement_manifest import (
     FAN_IN_EXEMPTIONS,
     NOT_REQUIRED,
-    REQUIRED,
+    PROTECTED_BRANCH,
     FanInExemption,
+    required_check_names,
 )
+
+# Projected out of the manifest's RULES rather than kept as a list of its own. A second copy of
+# these names could disagree with the one the repository is actually held to, and the whole point
+# of the manifest is that there is one claim to check.
+_REQUIRED = required_check_names()
 
 # Not .resolve(): the workflows and README are cross-package data deps, so they live in the
 # runfiles tree beside this file rather than at the source path a resolved symlink leads back to.
@@ -72,8 +79,9 @@ _WRAPPED_RE = re.compile(r"^\$\{\{(.*)\}\}$", re.S)
 # `!cancelled()` is what `build-and-smoke-test` carries.
 _ALWAYS_RUN = frozenset({"always()", "!cancelled()"})
 
-# The branch the ruleset protects, and so the one a required check has to report on.
-_PROTECTED_BRANCH = "main"
+# The branch the rules protect, and so the one a required check has to report on. Read from the
+# manifest, which is also what the comparison against GitHub asks about.
+_PROTECTED_BRANCH = PROTECTED_BRANCH
 
 # GitHub's filter-pattern characters. A branch list using any of them needs glob semantics to
 # resolve, which this file refuses to guess at rather than approximate.
@@ -186,7 +194,7 @@ def is_blocking(job: Job) -> bool:
     inherits from its fan-in — which is non-matrix by construction, so this recurs exactly once.
     """
     if not job.is_matrix:
-        return job.check in REQUIRED
+        return job.check in _REQUIRED
     fan_ins = fan_ins_of(job)
     return len(fan_ins) == 1 and is_blocking(fan_ins[0])
 
@@ -343,7 +351,7 @@ class VacuityTest(unittest.TestCase):
         self.assertTrue(blocking_fan_ins(), "no fan-in sits on a required path")
 
     def test_the_manifest_is_populated(self):
-        self.assertTrue(REQUIRED, "the required list is empty")
+        self.assertTrue(_REQUIRED, "the rules require no checks")
         self.assertTrue(NOT_REQUIRED, "the not-required list is empty")
 
 
@@ -355,7 +363,7 @@ class AccountingTest(unittest.TestCase):
             with self.subTest(job=str(job)):
                 listed = [
                     label
-                    for label, names in (("required", REQUIRED), ("not-required", NOT_REQUIRED))
+                    for label, names in (("required", _REQUIRED), ("not-required", NOT_REQUIRED))
                     if job.check in names
                 ]
                 if job.is_matrix:
@@ -371,22 +379,22 @@ class AccountingTest(unittest.TestCase):
                     len(listed),
                     1,
                     f"`{job.check}` ({job}) is in {listed or 'neither list'}. Put it in exactly "
-                    "one. If it must block a merge, name it in REQUIRED *and* add it to the "
-                    "ruleset — the ruleset is repo settings and this test cannot read it. "
-                    "Otherwise put it in NOT_REQUIRED with a reason.",
+                    "one. If it must block a merge, add it to the repository's rules *and* to "
+                    "RULES, which is the claim about them. Otherwise put it in NOT_REQUIRED with "
+                    "a reason.",
                 )
 
     def test_the_manifest_names_only_jobs_that_exist(self):
         """A renamed job leaves a manifest entry naming nothing — ruleset drift, one level down."""
         checks = {job.check for job in _JOBS if not job.is_matrix}
-        for name in sorted(REQUIRED | set(NOT_REQUIRED)):
+        for name in sorted(_REQUIRED | set(NOT_REQUIRED)):
             with self.subTest(check=name):
                 self.assertIn(
                     name,
                     checks,
                     f"the manifest names `{name}`, which no `pull_request` job reports. If the "
-                    "job was renamed, the ruleset holds the old string too and is now naming a "
-                    "check that never arrives — fix both.",
+                    "job was renamed, the repository's rules hold the old string too and are now "
+                    "naming a check that never arrives — fix both.",
                 )
 
     def test_every_not_required_entry_records_a_reason(self):
@@ -415,7 +423,7 @@ class ClosureTest(unittest.TestCase):
                         f"has `{needed_id}` in its `needs:` ({job.workflow}). So a failure there "
                         "now takes a merge gate down with it, and the recorded decision that it "
                         "is not binding was overturned by an edit that never mentioned it. "
-                        "Either delete the edge or move the job to REQUIRED — and note the "
+                        "Either delete the edge or make the job blocking — and note the "
                         "direction: a non-blocking job *downstream* of a blocking one is fine, "
                         "which is the opposite arrangement to this one.",
                     )
@@ -436,7 +444,7 @@ class RequiredReachTest(unittest.TestCase):
         return triggers(_WORKFLOWS[job.workflow]).get(_PULL_REQUEST) or {}
 
     def required_jobs(self) -> list[Job]:
-        return [job for job in _JOBS if job.check in REQUIRED]
+        return [job for job in _JOBS if job.check in _REQUIRED]
 
     def test_no_required_check_is_filtered_by_path(self):
         for job in self.required_jobs():

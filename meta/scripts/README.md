@@ -134,14 +134,25 @@ rather than quietly becoming a check nothing can name — the gap
 
 `test_ci_enforcement_manifest.py` has no script half either, and generalises the fan-in test above
 across every workflow that runs on `pull_request`. Its data sits beside it in
-`ci_enforcement_manifest.py` — the check names the `main` ruleset requires, and the four jobs that
-deliberately gate nothing with a reason each — as a library rather than constants in the test,
-because [#314](https://github.com/Syndic/unnatural_designs/issues/314) reconciles the same lists
-against the live ruleset and is a second consumer by construction. The test fails a job in neither
+`ci_enforcement_manifest.py` — every rule the repository enforces on `main`, and the four jobs
+that deliberately gate nothing with a reason each — as a library rather than constants in the test,
+because `check_repository_constraints.py` holds the same data to the live rules and is a second
+consumer by construction. The test fails a job in neither
 list, a blocking job that `needs:` a non-blocking one (enforcement moved by a scheduling edit, in
 either direction), a required check that cannot report on every PR or reports without having run, a
 matrix with no fan-in or no rows, and a fan-in accepting a result no recorded exemption covers. It
-cannot read the ruleset; that gap and what closes it are in the manifest's own header.
+cannot read the rules itself; the guard below is what does.
+
+`check_repository_constraints.py` is the one guard here with a script half that reads outside the
+tree, and so the only one that cannot ride `bazel test //...` — its verdict moves with repo
+settings rather than with the commit, which is why it runs as `security.yml`'s
+`Repository constraint enforcement manifest consistency check` and on that workflow's Monday cron.
+It compares the manifest against the rules GitHub reports for `main` and fails on any disagreement
+in either direction, naming the contexts that moved rather than printing two lists. Every
+unreadable answer fails too: a `4xx` at once, a `5xx` or timeout after a bounded retry, and a `200`
+of unexpected shape without retrying — a guard that could not check has not passed. Its own test
+exercises that policy with an injected opener rather than trusting the comment. It never writes the
+manifest; see [ADR 0003](../docs/adr/0003-the-enforcement-manifest-is-a-claim-not-a-mirror.md).
 
 `test_semgrep_budget.py` has no script half either. It holds `security.yml`'s Semgrep job to the
 per-rule `--timeout` it was measured to need, and holds `MODULE.bazel.lock` to a size that budget
