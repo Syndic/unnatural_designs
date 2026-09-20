@@ -1,30 +1,17 @@
-# The enforcement manifest is a claim about the effective rules, not a mirror of a ruleset
+# The enforcement manifest is a demand about the effective rules, not a mirror of a ruleset
 
-`ci_enforcement_manifest` records what must pass before a merge to `main`. It is a **claim**: a
-human writes it, CI compares it against what GitHub reports, and nothing automated may write any
-part of it. Its subject is every rule effectively applying to `main` — the union of whatever
-rulesets reach the branch — rather than the contents of a ruleset named by id.
+`ci_enforcement_manifest` records what must pass before a merge to `main`. It is a **demand**: it
+blocks anything that isn't being validated the way we expect. Its subject is every rule
+effectively applying to `main` — the union of whatever rulesets reach the branch — rather than the
+contents of a specific ruleset.
 
 ## Considered options
 
 ### A mirror synced from the API — rejected
 
-`.devcontainer/Dockerfile`'s `FROM` digest is a derived file with a sync script, a pre-commit hook
-and a CI check, and reaching for that pattern here is the obvious move. It is wrong twice over.
-
-`meta/CONTEXT.md` defines a **derived file** as one reproducible from other *checked-in sources*,
-and distinguishes it from a **dependency**, whose value comes from outside the repo. The rules are
-the second, so a synced manifest is not a derived file at all — it is a vendored copy, and a
-freshness check over it verifies only that the copy is current, never that the value is right.
-
-The failure that follows is the one this repo refuses everywhere else. Someone drops a required
-check in the UI; the next sync rewrites the manifest to agree, commits it, and the gate is gone
-behind a green tick and an auto-commit nobody reads. Under a claim the same edit turns CI red, and
-accepting it costs a deliberate edit that a reviewer sees in the diff. A machine that can update
-the claim to match reality leaves no claim behind, only a slower way of reading the API.
-
-A human-invoked `--write` helper is a different thing and stays available if hand-editing ever
-chafes. Frequent churn here is itself a signal something is wrong, so it is not built in advance.
+An automatically updated/synced mirror merely records an audit trail of how the rules changed over
+time. While that could be useful to an extent, actually blocking until the rules match the manifest
+leaves an audit trail AND ensures semantics enforced.
 
 ### Reading a ruleset by id — rejected
 
@@ -47,7 +34,9 @@ The `code_scanning` rule is what gates on CodeQL's and Trivy's *findings* rather
 having run, and `.claude/CLAUDE.md` records that nothing could hold it. Both would have stayed
 outside the manifest.
 
-### A claim compared for equality against the effective rules — accepted
+It's also just strictly less safe than we could be. No reason to be lazy about this.
+
+### A demand compared for equality against the effective rules — accepted
 
 `GET /repos/{owner}/{repo}/rules/branches/main` needs only `Metadata: read`, which an Actions token
 carries unconditionally, and returns every rule reaching the branch with its parameters. The
@@ -60,9 +49,6 @@ equality it is a loud red that one edit closes.
 
 ## Consequences
 
-- `REQUIRED` stops existing as hand-written data. `//meta/scripts:test_ci_enforcement_manifest`
-  reads the mirror instead, keeping all five of its properties; `NOT_REQUIRED` stays hand-written,
-  because what gates nothing *by decision* is a judgement the API cannot hold.
 - GitHub ships new response fields inside an API version and treats them as non-breaking, so
   pinning `X-GitHub-Api-Version` does not help. Expect the check to go red on an untouched commit
   when a parameter is added, with no local cause. That is the accepted price of the paragraph
@@ -79,9 +65,3 @@ equality it is a loud red that one edit closes.
 - The check name is a string in repo settings, so renaming it costs a settings edit and a second
   pass through the ordering below. *Reconcile* is the wrong verb for what it does — it reports
   disagreement and refuses to act on it — and is avoided in the implementation.
-- Enabling it is settings-first: the name joins the required list before the workflow lands, as
-  with CodeQL's advanced setup. Until a branch carries the job, its check never reports and the PR
-  waits, so open PRs rebase.
-- The repo README, `meta/scripts/README.md` and the manifest's own header each state that a green
-  test is not a verified ruleset. That stops being true here and the three copies are corrected
-  together.
