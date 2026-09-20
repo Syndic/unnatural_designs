@@ -298,7 +298,7 @@ jobs:
 
   # ── Enforcement consistency ──────────────────────────────────────────────────
   # Every other guard over the enforcement manifest is tree-local: they hold the workflows to the
-  # claim without being able to ask whether the claim is true. This is the one that asks, and it
+  # demand without asking whether the repository meets it. This is the one that asks, and it
   # is here rather than in ci.yml for the reason .claude/CLAUDE.md "Which workflow a check belongs
   # in" gives — its verdict moves with repo settings, so the same commit does not give the same
   # answer forever. Riding this workflow's Monday cron is the point as much as the PR run: rules

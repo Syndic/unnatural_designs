@@ -136,15 +136,15 @@ check.
   is vocabulary, while *blocking vs. not* is what the lists are. A matrix job is in neither list,
   because a row-carrying check name is one no ruleset can hold; its status is derived from its
   fan-in.
-- **The manifest is a claim, and `Repository constraint enforcement manifest consistency check`
-  is what holds it to the live rules.** Every other guard here is tree-local and assumes the claim;
-  that one asks GitHub, on every PR and on the Monday cron, and fails when the two disagree in
-  either direction. It reads the *effective* rules on `main` rather than a ruleset named by id, so
-  a second ruleset reaching the branch cannot move the gate unseen.
-  `meta/docs/adr/0003-the-enforcement-manifest-is-a-claim-not-a-mirror.md` has that reasoning and
-  the two blind spots it accepts (`bypass_actors`, and the tag ruleset). **Nothing automated may
-  write the manifest** — a machine that can update the claim to match reality leaves no claim
-  behind.
+- **The manifest is a demand, and `Repository constraint enforcement manifest consistency check`
+  is what holds the repository to it.** Every other guard here is tree-local and assumes the
+  demand; that one asks GitHub, on every PR and on the Monday cron, and fails when the two
+  disagree in either direction. It reads the *effective* rules on `main` rather than a ruleset
+  named by id, so a second ruleset reaching the branch cannot move the gate unseen.
+  `meta/docs/adr/0003-the-enforcement-manifest-is-a-demand-not-a-mirror.md` has that reasoning and
+  the two blind spots it accepts (`bypass_actors`, and the tag ruleset). **A change to the demand
+  goes through review**, which is what separates a decision from a drift; nothing merges such a
+  change without one. Drafting it is unconstrained — #329 is about generating the PR.
 - **A blocking job must require only blocking jobs**, which is the one rule covering both
   directions: a required check unhooked from `needs` to parallelise it, and a non-required job
   pulled *into* a required job's `needs` so its failure now takes a merge gate down. Direction is

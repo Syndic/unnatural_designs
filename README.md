@@ -245,11 +245,11 @@ however many jobs wait on it.
 
 [`meta/scripts/ci_enforcement_manifest.py`](meta/scripts/ci_enforcement_manifest.py) is that list
 written down where something can read it, and `//meta/scripts:test_ci_enforcement_manifest` fails a
-job classified as neither required nor deliberately not. The manifest is a claim, and
-`Repository constraint enforcement manifest consistency check` in `security.yml` is what holds it
-to the live rules: it reads what GitHub enforces on `main` and fails when the two disagree either
-way. Nothing automated writes the manifest - see
-[ADR 0003](meta/docs/adr/0003-the-enforcement-manifest-is-a-claim-not-a-mirror.md).
+job classified as neither required nor deliberately not. The manifest is a demand, and
+`Repository constraint enforcement manifest consistency check` in `security.yml` is what holds the
+repository to it: it reads what GitHub enforces on `main` and fails when the two disagree either
+way. Changing the demand goes through review like any other change - see
+[ADR 0003](meta/docs/adr/0003-the-enforcement-manifest-is-a-demand-not-a-mirror.md).
 
 Every job in the two tables above is required except `Coverage`, which is advisory deliberately:
 its failure is a judgement call rather than a defect, and Codecov's own `project`/`patch` statuses

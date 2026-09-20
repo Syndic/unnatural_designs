@@ -133,8 +133,8 @@ class DifferencesTest(unittest.TestCase):
 
     def test_the_manifest_as_committed_agrees_with_itself(self):
         """Guards the mirror against being unreadable by its own comparison."""
-        claimed = comparable(list(RULES))
-        self.assertEqual(differences(claimed, claimed), [])
+        demanded = comparable(list(RULES))
+        self.assertEqual(differences(demanded, demanded), [])
 
     def test_a_context_the_repository_dropped_is_reported(self):
         found = differences(comparable([_status_rule("a", "b")]), comparable([_status_rule("a")]))

@@ -1,7 +1,7 @@
 """Holds every `pull_request` job to the enforcement manifest, and the manifest to the workflows.
 
-`ci_enforcement_manifest.py` is a claim about repo settings. This file is what makes the claim do
-work: it fails a job nobody classified, an edge that moved enforcement without saying so, a
+`ci_enforcement_manifest.py` is a demand about repo settings. This file is what makes the demand
+do work: it fails a job nobody classified, an edge that moved enforcement without saying so, a
 required check that cannot report, a matrix nothing can require, and a fan-in that accepts a result
 it should refuse.
 
@@ -23,9 +23,9 @@ The properties, and why each one is not implied by the others:
     report. Without this the manifest proves a check is *reachable* from a required name, not that
     reaching it has any consequence — and "reachable but inconsequential" was #310.
 
-What none of it can do is read the rules, so none of it can tell you the manifest is true.
-`check_repository_constraints.py` is what asks GitHub; this file assumes the answer and holds the
-workflows to it.
+What none of it can do is read the rules, so none of it can tell you the repository meets the
+demand. `check_repository_constraints.py` is what asks GitHub; this file assumes the answer and
+holds the workflows to it.
 
 Scope is every workflow with `pull_request` in `on:`, discovered by glob. Jobs elsewhere — a
 `schedule`-only workflow, say — cannot hold a PR merge and are not this file's business.
@@ -50,7 +50,7 @@ from meta.scripts.ci_enforcement_manifest import (
 
 # Projected out of the manifest's RULES rather than kept as a list of its own. A second copy of
 # these names could disagree with the one the repository is actually held to, and the whole point
-# of the manifest is that there is one claim to check.
+# of the manifest is that there is one demand to check.
 _REQUIRED = required_check_names()
 
 # Not .resolve(): the workflows and README are cross-package data deps, so they live in the
@@ -380,7 +380,7 @@ class AccountingTest(unittest.TestCase):
                     1,
                     f"`{job.check}` ({job}) is in {listed or 'neither list'}. Put it in exactly "
                     "one. If it must block a merge, add it to the repository's rules *and* to "
-                    "RULES, which is the claim about them. Otherwise put it in NOT_REQUIRED with "
+                    "RULES, which is the demand on them. Otherwise put it in NOT_REQUIRED with "
                     "a reason.",
                 )
 

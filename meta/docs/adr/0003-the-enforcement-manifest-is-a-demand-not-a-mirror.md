@@ -5,6 +5,18 @@ blocks anything that isn't being validated the way we expect. Its subject is eve
 effectively applying to `main` — the union of whatever rulesets reach the branch — rather than the
 contents of a specific ruleset.
 
+What the demand protects is that a change to it is **reviewed and intentional**. The rules moving
+is not evidence that anyone meant them to move, so the manifest's job is to stop a drift from
+passing as a decision. Review is what supplies the intent, and review is already enforced: the
+`pull_request` rule this manifest mirrors carries `required_review_thread_resolution` and
+`require_extra_approval_for_unattributed_changes`, so the demand is guarded by the same mechanism
+it describes.
+
+**Who reviews is deliberately not a rule here.** Nothing in this repo can tell a person from an
+agent acting with their account, so a requirement that a *human* approve would be a policy with no
+enforcement behind it — and this repo does not write those. The requirement is that a change to
+the demand passes through review at all.
+
 ## Considered options
 
 ### A mirror synced from the API — rejected
@@ -12,6 +24,12 @@ contents of a specific ruleset.
 An automatically updated/synced mirror merely records an audit trail of how the rules changed over
 time. While that could be useful to an extent, actually blocking until the rules match the manifest
 leaves an audit trail AND ensures semantics enforced.
+
+Note what is and is not rejected here. A mirror that updates *itself* is: the rules moving would
+carry the manifest along with them and nothing would ever block, so the audit trail would record a
+change nobody chose. Generating the update is a different thing — a proposal that lands through
+review is a decision, whoever drafted it — and making that proposal cheap does not weaken the
+gate. #329 covers automating it.
 
 ### Reading a ruleset by id — rejected
 
@@ -65,3 +83,5 @@ equality it is a loud red that one edit closes.
 - The check name is a string in repo settings, so renaming it costs a settings edit and a second
   pass through the ordering below. *Reconcile* is the wrong verb for what it does — it reports
   disagreement and refuses to act on it — and is avoided in the implementation.
+- Nothing may merge a change to the demand without review, which rules out auto-merge on such a PR
+  and any path that writes the manifest straight to `main`. Drafting the change is unconstrained.

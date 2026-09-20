@@ -4,17 +4,18 @@ Enforcement is repo settings. The rules hold a list of check-name strings and a 
 nothing in this tree can read them, so a reader of ci.yml cannot tell whether `ruff` failing blocks
 a merge, and an author adding a job cannot tell whether they added a check or a decoration. The
 default outcome for a new job is "enforces nothing", and it is silent — #310, #311 and #312 were
-three instances of that one defect. This module is the claim.
+three instances of that one defect. This module is the demand.
 `//meta/scripts:test_ci_enforcement_manifest` holds the workflows to it, and
 `check_repository_constraints.py` holds *it* to what GitHub reports.
 
-**This is a claim, not a mirror: nothing automated may write any part of it.** A machine that can
-update the claim to match reality leaves no claim behind — a required check dropped in the UI would
-be adopted on the next run and the gate would vanish behind a green tick. See
-`meta/docs/adr/0003-the-enforcement-manifest-is-a-claim-not-a-mirror.md` for that decision, for why
-the rules are read as the effective set on the branch rather than as a ruleset named by id, and for
-why the comparison is equality over every rule rather than an allowlist of the ones that seem to
-matter.
+**This is a demand, not a mirror.** A mirror that updated itself would be carried along by the
+rules it describes: a required check dropped in the UI would be adopted on the next run and the
+gate would vanish behind a green tick. Changing the demand is therefore a change like any other,
+and has to pass through review to become a decision rather than a drift. Drafting that change is
+unconstrained — see #329. ADR 0003, `the-enforcement-manifest-is-a-demand-not-a-mirror`, carries
+that decision, why the rules are read as the effective set on the branch rather than as a ruleset
+named by id, and why the comparison is equality over every rule rather than an allowlist of the
+ones that seem to matter.
 
 Two exclusions are known and named rather than closed, both for want of `Administration: read`:
 `bypass_actors`, which the branch endpoint does not return without write access, so these rules can

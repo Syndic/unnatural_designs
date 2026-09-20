@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Holds the enforcement manifest to what GitHub reports for the protected branch.
 
-`ci_enforcement_manifest.py` is a claim about repo settings, and every other guard over it is
-tree-local: they hold the workflows to the claim without being able to ask whether the claim is
-true. This is the one that asks. It reads the rules effectively applying to the branch and fails
-when they and the manifest disagree in either direction.
+`ci_enforcement_manifest.py` is a demand about repo settings, and every other guard over it is
+tree-local: they hold the workflows to the demand without being able to ask whether the repository
+meets it. This is the one that asks. It reads the rules effectively applying to the branch and
+fails when they and the manifest disagree in either direction.
 
 Read as the *effective* rules on the branch — the union of whatever rulesets reach it — rather
 than as a ruleset named by id. A read keyed on one id answers "what is in ruleset N", which equals
@@ -12,8 +12,9 @@ than as a ruleset named by id. A read keyed on one id answers "what is in rulese
 read reports green while the gate moved. `meta/docs/adr/0003-...` carries that decision, and the
 two blind spots it accepts.
 
-Nothing here writes the manifest, and nothing should be added that does. A guard that can update
-the claim to match reality has stopped being a guard.
+Nothing here writes the manifest. A guard that quietly brought the demand into line with the
+repository would have stopped being a guard — the change has to go through review to count as a
+decision. Generating that change elsewhere, as a PR, is a different thing and is #329.
 
 **Every unreadable answer is a failure, never a pass.** A `4xx` means the token lost a permission
 or the repository moved, which is exactly when a guard that shrugged would be worthless, so it
@@ -129,7 +130,7 @@ def _without_contexts(rule: dict) -> dict:
     return {**rule, "parameters": parameters}
 
 
-def _status_check_differences(claimed: dict, enforced: dict) -> list[str]:
+def _status_check_differences(demanded: dict, enforced: dict) -> list[str]:
     """Name the contexts that moved, rather than printing two lists and leaving the diff to a human.
 
     This is the rule that changes, so it is the one worth spelling out. Its other parameters still
@@ -137,7 +138,7 @@ def _status_check_differences(claimed: dict, enforced: dict) -> list[str]:
     reported once by name beats the same change reported twice with a dump of all 23 around it.
     """
     found = []
-    ours, theirs = _contexts(claimed), _contexts(enforced)
+    ours, theirs = _contexts(demanded), _contexts(enforced)
     for context in sorted(ours - theirs):
         found.append(
             f"the manifest requires `{context}`, which the repository does not. Either the check "
@@ -145,21 +146,21 @@ def _status_check_differences(claimed: dict, enforced: dict) -> list[str]:
         )
     for context in sorted(theirs - ours):
         found.append(
-            f"the repository requires `{context}`, which the manifest does not claim. A check "
+            f"the repository requires `{context}`, which the manifest does not demand. A check "
             "became a merge gate without being written down"
         )
     return found
 
 
-def differences(claimed: list[dict], enforced: list[dict]) -> list[str]:
+def differences(demanded: list[dict], enforced: list[dict]) -> list[str]:
     """Every way the two disagree, in both directions.
 
-    Both directions matter and for different reasons. A rule enforced but unclaimed means the gate
-    moved without anyone recording it; a rule claimed but unenforced means the manifest — which the
-    rest of the guards trust — is asserting a gate that is not there.
+    Both directions matter and for different reasons. A rule enforced but undemanded means the
+    gate moved without anyone deciding it should; a rule demanded but unenforced means the manifest
+    — which the rest of the guards trust — is asking for a gate that is not there.
     """
     found = []
-    ours, theirs = _by_type(claimed), _by_type(enforced)
+    ours, theirs = _by_type(demanded), _by_type(enforced)
 
     for rule_type in sorted(set(ours) | set(theirs)):
         # Absence is the empty list rather than None, which is what every branch below already
@@ -168,12 +169,12 @@ def differences(claimed: list[dict], enforced: list[dict]) -> list[str]:
         mine, yours = ours.get(rule_type, []), theirs.get(rule_type, [])
         if mine and not yours:
             found.append(
-                f"the manifest claims a `{rule_type}` rule that the repository does not enforce"
+                f"the manifest demands a `{rule_type}` rule that the repository does not enforce"
             )
             continue
         if yours and not mine:
             found.append(
-                f"the repository enforces a `{rule_type}` rule the manifest does not claim"
+                f"the repository enforces a `{rule_type}` rule the manifest does not demand"
             )
             continue
         if mine == yours:
@@ -290,7 +291,7 @@ def main(argv: list[str] | None = None) -> int:
         print(
             f"\n{len(found)} disagreement(s) between the manifest and `{args.branch}`. "
             "Nothing here rewrites the manifest: decide which side is wrong, then either change "
-            "the repository's rules or edit RULES so the claim matches what you meant.",
+            "the repository's rules or edit RULES so the demand matches what you meant.",
             file=sys.stderr,
         )
     return exit_status(len(found))
