@@ -9,11 +9,18 @@ transport is exercised with an injected opener rather than described in a commen
 
 from __future__ import annotations
 
+import contextlib
 import email.message
+import io
 import json
+import os
+import tempfile
 import unittest
 import urllib.error
+from pathlib import Path
+from unittest import mock
 
+from meta.scripts import check_repository_constraints
 from meta.scripts.check_repository_constraints import (
     UnreadableRules,
     canonical,
@@ -228,6 +235,107 @@ class FetchTest(unittest.TestCase):
         with self.assertRaises(UnreadableRules):
             self._fetch(opener)
         self.assertEqual(opener.calls, 3)
+
+
+class MainExitStatusTest(unittest.TestCase):
+    """main() reports pass/fail, and every way of not knowing the answer is fail.
+
+    The comparison and the transport are covered above; this covers the wiring that turns their
+    results into an exit status. Untested, a guard can do all of its work correctly and still
+    return 0 — which is the failure the whole manifest exists to prevent, one layer down.
+    """
+
+    def setUp(self):
+        # `_problem` reads the manifest to anchor a finding at the RULES line, so main() needs a
+        # root with one. A tempdir keeps the assertions off the real file's line numbers.
+        self.tmp = tempfile.TemporaryDirectory()
+        root = Path(self.tmp.name)
+        manifest = root / check_repository_constraints.MANIFEST
+        manifest.parent.mkdir(parents=True)
+        manifest.write_text('"""doc."""\n\nRULES = ()\n')
+        self.root = root
+        self.addCleanup(self.tmp.cleanup)
+
+    def _run(self, env, fetch):
+        """main() with a fake workspace and a scripted fetch, stdout captured."""
+        with (
+            mock.patch.object(
+                check_repository_constraints, "workspace_root", return_value=self.root
+            ),
+            mock.patch.object(check_repository_constraints, "fetch_rules", fetch),
+            mock.patch.dict(os.environ, env, clear=True),
+            contextlib.redirect_stdout(io.StringIO()) as out,
+            contextlib.redirect_stderr(io.StringIO()),
+        ):
+            return check_repository_constraints.main([]), out.getvalue()
+
+    @staticmethod
+    def _returning(rules):
+        return lambda *args, **kwargs: rules
+
+    @staticmethod
+    def _raising(error):
+        def fetch(*args, **kwargs):
+            raise error
+
+        return fetch
+
+    def test_a_missing_token_fails(self):
+        """No token is not "nothing to check"; it is not having checked."""
+        code, out = self._run(
+            {"GITHUB_REPOSITORY": "Syndic/unnatural_designs"},
+            self._returning(list(RULES)),
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("GITHUB_TOKEN", out)
+
+    def test_a_missing_repository_fails(self):
+        code, out = self._run({"GITHUB_TOKEN": "t"}, self._returning(list(RULES)))
+        self.assertEqual(code, 1)
+        self.assertIn("GITHUB_REPOSITORY", out)
+
+    def test_an_unreadable_answer_fails(self):
+        """The transport raising must reach the exit status rather than being swallowed."""
+        code, out = self._run(
+            {"GITHUB_TOKEN": "t", "GITHUB_REPOSITORY": "Syndic/unnatural_designs"},
+            self._raising(UnreadableRules("403 Forbidden")),
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("403 Forbidden", out)
+
+    def test_agreement_passes(self):
+        code, out = self._run(
+            {"GITHUB_TOKEN": "t", "GITHUB_REPOSITORY": "Syndic/unnatural_designs"},
+            self._returning(list(RULES)),
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(out, "")
+
+    def test_a_dropped_required_check_fails(self):
+        """The case the guard exists for, driven all the way through main()."""
+        rules = json.loads(json.dumps(list(RULES)))
+        for rule in rules:
+            if rule["type"] == "required_status_checks":
+                dropped = rule["parameters"]["required_status_checks"].pop()["context"]
+                break
+        code, out = self._run(
+            {"GITHUB_TOKEN": "t", "GITHUB_REPOSITORY": "Syndic/unnatural_designs"},
+            self._returning(rules),
+        )
+        self.assertEqual(code, 1)
+        self.assertIn(dropped, out)
+
+    def test_a_finding_is_anchored_at_the_manifest(self):
+        """The `file:line:start-end:` shape .vscode/tasks.json's problem matcher parses."""
+        code, out = self._run(
+            {"GITHUB_REPOSITORY": "Syndic/unnatural_designs"},
+            self._returning(list(RULES)),
+        )
+        self.assertEqual(code, 1)
+        self.assertTrue(
+            out.startswith(f"{check_repository_constraints.MANIFEST}:3:1-6: "),
+            out,
+        )
 
 
 if __name__ == "__main__":
