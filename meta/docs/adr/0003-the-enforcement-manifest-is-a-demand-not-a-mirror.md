@@ -80,8 +80,9 @@ equality it is a loud red that one edit closes.
   mean a GitHub outage blocks merges for a reason unrelated to the tree. Transient failures retry
   a bounded number of times and then fail; a `4xx` and an unexpected shape fail at once, because
   those are the signal rather than noise.
-- The check name is a string in repo settings, so renaming it costs a settings edit and a second
-  pass through the ordering below. *Reconcile* is the wrong verb for what it does — it reports
-  disagreement and refuses to act on it — and is avoided in the implementation.
+- The check name is a string in repo settings, so renaming it costs a settings edit, and the order
+  is fixed: the new name reaches the rules first, because until a branch carries the job its check
+  never reports and every open PR waits on it. *Reconcile* is the wrong verb for what it does — it
+  reports disagreement and refuses to act on it — and is avoided in the implementation.
 - Nothing may merge a change to the demand without review, which rules out auto-merge on such a PR
   and any path that writes the manifest straight to `main`. Drafting the change is unconstrained.

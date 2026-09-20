@@ -47,8 +47,9 @@ def _status_rule(*contexts: str, strict: bool = True) -> dict:
 
 
 class _Response:
-    def __init__(self, body: bytes):
+    def __init__(self, body: bytes, headers: dict | None = None):
         self._body = body
+        self.headers = headers or {}
 
     def read(self) -> bytes:
         return self._body
@@ -72,6 +73,8 @@ class _Opener:
         outcome = self.outcomes.pop(0)
         if isinstance(outcome, Exception):
             raise outcome
+        if isinstance(outcome, tuple):
+            return _Response(*outcome)
         return _Response(outcome)
 
 
@@ -157,6 +160,51 @@ class DifferencesTest(unittest.TestCase):
         self.assertEqual(len(found), 1, found)
         self.assertIn("`b`", found[0])
 
+    def test_an_integration_id_change_is_a_difference(self):
+        """The names match, so only the entry objects can carry this — and they must."""
+        ours = _status_rule("a")
+        theirs = _status_rule("a")
+        theirs["parameters"]["required_status_checks"][0]["integration_id"] = 99
+        found = differences(comparable([ours]), comparable([theirs]))
+        self.assertTrue(found, "a check reported by a different app read as agreement")
+
+    def test_a_duplicated_entry_is_a_difference(self):
+        """`_contexts` is a set, so a duplicate is invisible to a name-only comparison."""
+        ours = _status_rule("a")
+        theirs = _status_rule("a")
+        theirs["parameters"]["required_status_checks"].append(
+            dict(theirs["parameters"]["required_status_checks"][0])
+        )
+        found = differences(comparable([ours]), comparable([theirs]))
+        self.assertTrue(found, "a duplicated context entry read as agreement")
+
+    def test_unequal_rules_always_produce_a_finding(self):
+        """The invariant the two tests above are instances of: no silent disagreement.
+
+        `differences` returning nothing for rules that do not compare equal is the fail-open this
+        guard exists to prevent, one level down. Asserting the general form stops the next field
+        GitHub adds inside an entry from reopening it.
+        """
+        cases = []
+        for mutate in (
+            lambda r: r["parameters"]["required_status_checks"][0].update(integration_id=99),
+            lambda r: r["parameters"]["required_status_checks"][0].update(unknown_future="x"),
+            lambda r: r["parameters"]["required_status_checks"].append(
+                dict(r["parameters"]["required_status_checks"][0])
+            ),
+            lambda r: r["parameters"].update(strict_required_status_checks_policy=False),
+        ):
+            theirs = _status_rule("a", "b")
+            mutate(theirs)
+            cases.append(theirs)
+
+        for theirs in cases:
+            ours = comparable([_status_rule("a", "b")])
+            enforced = comparable([theirs])
+            with self.subTest(rule=theirs):
+                self.assertNotEqual(ours, enforced, "test case does not differ")
+                self.assertTrue(differences(ours, enforced), "unequal rules reported agreement")
+
     def test_a_parameter_change_still_shows_the_rule(self):
         """The dump is not gone, only reserved for what a name cannot describe."""
         found = differences(
@@ -223,6 +271,25 @@ class FetchTest(unittest.TestCase):
         with self.assertRaises(UnreadableRules):
             self._fetch(opener)
         self.assertEqual(opener.calls, 3)
+
+    def test_a_paginated_answer_is_unreadable(self):
+        """A page is not the rule set, and comparing one against the whole manifest is a verdict
+        over rules nobody looked at."""
+        link = '<https://api.github.com/x?page=2>; rel="next"'
+        opener = _Opener((json.dumps([_status_rule("a")]).encode(), {"Link": link}))
+        with self.assertRaises(UnreadableRules) as caught:
+            self._fetch(opener)
+        self.assertIn("paginated", str(caught.exception))
+
+    def test_a_last_page_link_alone_is_fine(self):
+        """`rel="prev"`/`rel="last"` without a `next` means this is the end of the walk."""
+        link = '<https://api.github.com/x?page=1>; rel="last"'
+        opener = _Opener((json.dumps([_status_rule("a")]).encode(), {"Link": link}))
+        self.assertEqual(len(self._fetch(opener)), 1)
+
+    def test_the_request_asks_for_the_largest_page(self):
+        """Left at GitHub's default of 30, the window is narrower than the union can grow."""
+        self.assertIn("per_page=100", check_repository_constraints._ENDPOINT)
 
     def test_a_body_that_is_not_json_is_unreadable(self):
         opener = _Opener(b"<html>maintenance</html>")

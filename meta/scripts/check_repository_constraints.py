@@ -46,7 +46,10 @@ from meta.scripts.ci_enforcement_manifest import IGNORED_RULE_FIELDS, PROTECTED_
 MANIFEST = Path("meta/scripts") / "ci_enforcement_manifest.py"
 _ANCHOR = "RULES"
 
-_ENDPOINT = "https://api.github.com/repos/{repo}/rules/branches/{branch}"
+# `per_page` is set to the maximum rather than left at GitHub's default of 30. The subject is the
+# union of every ruleset reaching the branch, which is the premise the endpoint was chosen on, so
+# the count is not bounded by anything this repo controls.
+_ENDPOINT = "https://api.github.com/repos/{repo}/rules/branches/{branch}?per_page=100"
 _API_VERSION = "2022-11-28"
 
 # Three attempts over roughly six seconds. The budget exists to absorb a blip, not to wait out an
@@ -130,6 +133,34 @@ def _without_contexts(rule: dict) -> dict:
     return {**rule, "parameters": parameters}
 
 
+def _entries(rule: dict) -> list[dict]:
+    """The `required_status_checks` entry objects, which carry more than a context name."""
+    return list((rule.get("parameters") or {}).get(_STATUS_CHECKS) or [])
+
+
+def _names_are_the_whole_difference(demanded: dict, enforced: dict) -> bool:
+    """Whether naming the added and removed contexts accounts for the entire disagreement.
+
+    Only then may the rule dump be suppressed. An entry object carries `integration_id` as well as
+    a context, so a check that started being reported by a different app changes the rule without
+    changing the set of names — and a duplicated entry does the same. Comparing only the names and
+    the non-context parameters would call both of those agreement and exit 0, which is the
+    fail-open this function exists to close.
+    """
+    if _without_contexts(demanded) != _without_contexts(enforced):
+        return False
+    shared = _contexts(demanded) & _contexts(enforced)
+
+    def kept(rule: dict) -> list[dict]:
+        """The entries whose context both sides have, so only their contents are compared."""
+        return sorted(
+            (entry for entry in _entries(rule) if entry.get("context") in shared),
+            key=ordering_key,
+        )
+
+    return kept(demanded) == kept(enforced)
+
+
 def _status_check_differences(demanded: dict, enforced: dict) -> list[str]:
     """Name the contexts that moved, rather than printing two lists and leaving the diff to a human.
 
@@ -181,7 +212,7 @@ def differences(demanded: list[dict], enforced: list[dict]) -> list[str]:
             continue
         if rule_type == _STATUS_CHECKS and len(mine) == len(yours) == 1:
             found.extend(_status_check_differences(mine[0], yours[0]))
-            if _without_contexts(mine[0]) == _without_contexts(yours[0]):
+            if _names_are_the_whole_difference(mine[0], yours[0]):
                 continue
         found.append(
             f"the `{rule_type}` rule differs.\n"
@@ -219,6 +250,7 @@ def fetch_rules(
         try:
             with opener(request, timeout=_TIMEOUT_SECONDS) as response:
                 body = response.read()
+                link = (getattr(response, "headers", None) or {}).get("Link", "")
             break
         except urllib.error.HTTPError as error:
             # A 4xx is the signal, not the noise: the token lost a permission, or the repository
@@ -238,6 +270,17 @@ def fetch_rules(
                     f"could not reach GitHub on {_ATTEMPTS} attempts: {error}"
                 ) from error
         sleep(_BACKOFF_SECONDS * attempt)
+
+    # A page we did not follow is a rule we did not compare, and the manifest matching one page of
+    # several would report agreement over a gate it never saw. Raising rather than paginating is
+    # the same posture as the rest of this module: an answer that might be partial is not an
+    # answer. It also cannot happen quietly — `per_page=100` means reaching it takes a hundred
+    # rules on one branch, which is worth a human look rather than a loop.
+    if 'rel="next"' in link:
+        raise UnreadableRules(
+            "GitHub paginated the rules, so this read is partial. Comparing a page against the "
+            "whole manifest would be a verdict over rules nobody looked at"
+        )
 
     try:
         return json.loads(body)

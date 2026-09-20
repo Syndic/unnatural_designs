@@ -204,15 +204,16 @@ between them — see [What makes a check binding](#what-makes-a-check-binding) b
 
 **Security** - also runs on a weekly schedule (Mondays at 02:00 UTC):
 
-| Job                               | Purpose                                                                         |
-| --------------------------------- | ------------------------------------------------------------------------------- |
-| Semgrep                           | SAST - scans for injection flaws, insecure API usage, and hardcoded secrets     |
-| `CodeQL Analysis (<language>)`    | SAST - one job per language: actions, Go, Python                                |
-| `CodeQL Analysis (all languages)` | Fan-in over the per-language jobs - the name to require in the ruleset          |
-| `govulncheck (<module>)`          | Dependency CVE scanning - reachable call paths against the Go vuln DB           |
-| `govulncheck (all modules)`       | Fan-in over the per-module jobs - the name to require in the ruleset            |
-| pip-audit                         | Dependency CVE scanning for Python - manifest-based scan over the uv resolution |
-| Trivy                             | Supply chain and filesystem scanning - secrets, CVEs across all ecosystems      |
+| Job                                                            | Purpose                                                                         |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| Semgrep                                                        | SAST - scans for injection flaws, insecure API usage, and hardcoded secrets     |
+| `CodeQL Analysis (<language>)`                                 | SAST - one job per language: actions, Go, Python                                |
+| `CodeQL Analysis (all languages)`                              | Fan-in over the per-language jobs - the name to require in the ruleset          |
+| `govulncheck (<module>)`                                       | Dependency CVE scanning - reachable call paths against the Go vuln DB           |
+| `govulncheck (all modules)`                                    | Fan-in over the per-module jobs - the name to require in the ruleset            |
+| pip-audit                                                      | Dependency CVE scanning for Python - manifest-based scan over the uv resolution |
+| Trivy                                                          | Supply chain and filesystem scanning - secrets, CVEs across all ecosystems      |
+| `Repository constraint enforcement manifest consistency check` | Holds the enforcement manifest to the rules GitHub enforces on `main`           |
 
 **Devcontainer** - builds the devcontainer image and smoke-tests the toolchain it ships
 (`bazel --version`, `go version`, `python3 --version`). The job is gated on a path diff against
