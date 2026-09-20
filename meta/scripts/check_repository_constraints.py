@@ -162,7 +162,10 @@ def differences(claimed: list[dict], enforced: list[dict]) -> list[str]:
     ours, theirs = _by_type(claimed), _by_type(enforced)
 
     for rule_type in sorted(set(ours) | set(theirs)):
-        mine, yours = ours.get(rule_type), theirs.get(rule_type)
+        # Absence is the empty list rather than None, which is what every branch below already
+        # treats it as. `rule_type` comes from the union of both key sets, so both being empty is
+        # unreachable — but saying so in the types beats asserting it in a comment.
+        mine, yours = ours.get(rule_type, []), theirs.get(rule_type, [])
         if mine and not yours:
             found.append(
                 f"the manifest claims a `{rule_type}` rule that the repository does not enforce"

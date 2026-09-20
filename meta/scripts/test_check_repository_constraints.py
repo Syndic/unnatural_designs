@@ -9,6 +9,7 @@ transport is exercised with an injected opener rather than described in a commen
 
 from __future__ import annotations
 
+import email.message
 import json
 import unittest
 import urllib.error
@@ -68,7 +69,11 @@ class _Opener:
 
 
 def _http_error(code: int) -> urllib.error.HTTPError:
-    return urllib.error.HTTPError("https://api.github.com", code, "boom", {}, None)
+    # `hdrs` is a Message rather than a mapping. Nothing here reads it, but an empty dict is the
+    # wrong type and ty says so.
+    return urllib.error.HTTPError(
+        "https://api.github.com", code, "boom", email.message.Message(), None
+    )
 
 
 class CanonicalTest(unittest.TestCase):
