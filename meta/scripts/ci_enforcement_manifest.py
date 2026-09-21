@@ -1,80 +1,201 @@
-"""What the `main` ruleset requires, written down where something can read it.
+"""What constrains `main`, written down where something can read it.
 
-Enforcement is repo settings. The ruleset holds a list of check-name strings and nothing in this
-tree can read it, so a reader of ci.yml cannot tell whether `ruff` failing blocks a merge, and an
-author adding a job cannot tell whether they added a check or a decoration. The default outcome for
-a new job is "enforces nothing", and it is silent — #310, #311 and #312 were three instances of
-that one defect. This module is the claim; //meta/scripts:test_ci_enforcement_manifest is what
-holds the workflows to it.
+Enforcement is repo settings. The rules hold a list of check-name strings and a merge policy, and
+nothing in this tree can read them, so a reader of ci.yml cannot tell whether `ruff` failing blocks
+a merge, and an author adding a job cannot tell whether they added a check or a decoration. The
+default outcome for a new job is "enforces nothing", and it is silent — #310, #311 and #312 were
+three instances of that one defect. This module is the demand.
+`//meta/scripts:test_ci_enforcement_manifest` holds the workflows to it, and
+`check_repository_constraints.py` holds *it* to what GitHub reports.
 
-**Not self-verifying: a green test is not a verified ruleset.** This is a tree-local claim about
-settings nothing here can read, so editing the ruleset in the GitHub UI and not this file leaves
-the test asserting a fiction — the same failure class it exists to prevent, one level up. That gap
-is accepted and recorded rather than papered over; closing it against the live API is #314.
+**This is a demand, not a mirror.** A mirror that updated itself would be carried along by the
+rules it describes: a required check dropped in the UI would be adopted on the next run and the
+gate would vanish behind a green tick. Changing the demand is therefore a change like any other,
+and has to pass through review to become a decision rather than a drift. Drafting that change is
+unconstrained — see #329. ADR 0003, `the-enforcement-manifest-is-a-demand-not-a-mirror`, carries
+that decision, why the rules are read as the effective set on the branch rather than as a ruleset
+named by id, and why the comparison is equality over every rule rather than an allowlist of the
+ones that seem to matter.
 
-Two axes cross here, and the lists divide on only one of them:
+Two exclusions are known and named rather than closed, both for want of `Administration: read`:
+`bypass_actors`, which the branch endpoint does not return without write access, so these rules can
+match exactly while an actor may bypass them; and the `Basic Tag Rules` ruleset, which a branch
+endpoint cannot reach at all and which gates no merge.
+
+Two axes cross here, and NOT_REQUIRED divides on only one of them:
 
   - A **check** verifies an invariant and has no side effects. An **automated task** acts on the
     repo's behalf and does. Three of the four NOT_REQUIRED entries are tasks, which is why they
     gate nothing without being decorations. Nothing branches on the distinction, so it is not a
     field — each reason string says which it is.
   - **Blocking** or not, relative to the gate of the context a job runs in. In CI that means named
-    in the ruleset. This is the axis REQUIRED and NOT_REQUIRED divide on.
+    in the rules. RULES answers this for a job; NOT_REQUIRED records the jobs for which the answer
+    is deliberately no.
 
-Matrix jobs are in neither list, deliberately. A row-carrying check name — `golangci-lint
-(tools/foo)` — is one a ruleset cannot hold, so "named in REQUIRED" is not a category a matrix job
+Matrix jobs are in neither place, deliberately. A row-carrying check name — `golangci-lint
+(tools/foo)` — is one a ruleset cannot hold, so "named in the rules" is not a category a matrix job
 can fail to be in; it is one it cannot express. A matrix job's status is *derived* from its fan-in
 instead, which is why the test insists every matrix job has exactly one.
 """
 
 from __future__ import annotations
 
-from typing import NamedTuple
+from typing import Final, NamedTuple
 
-# The ruleset these lists mirror, for #314 and for anyone reaching for the API by hand:
-# `gh api repos/Syndic/unnatural_designs/rulesets/14538709`. Writable nowhere in this tree.
-RULESET_ID = 14538709
+# The branch these rules govern, and so the one a required check has to report on. Both consumers
+# read it here: the comparison asks GitHub for this branch, and the workflow test refuses a
+# required check that a `branches:` filter could keep off it.
+PROTECTED_BRANCH: Final = "main"
 
-# Check names, not job ids: the ruleset holds strings, and a job's check name is its `name:` with
-# `${{ }}` interpolated. Keying by the string is what lets #314 diff this against the live list
-# without first having to agree with it about what a job is called.
-REQUIRED = frozenset(
-    {
-        # ci.yml
-        "ADR number uniqueness check",
-        "Build and test (all targets)",
-        "Gazelle BUILD file check",
-        "MODULE.bazel.lock freshness",
-        "Module completeness check",
-        "No-cgo policy check",
-        "Python version consistency check",
-        "Secrets check",
-        "go.work consistency/completeness check",
-        "golangci-lint (all modules)",
-        "ruff",
-        "shellcheck",
-        "ty",
-        # commit-file-via-app-selftest.yml
-        "Action self-test",
-        # devcontainer.yml
-        "Base image (all platforms)",
-        "Build devcontainer and smoke test",
-        # Both jobs above carry it in `needs:`, so the closure rule requires it too.
-        "Detect devcontainer changes",
-        # security.yml
-        "CodeQL Analysis (all languages)",
-        "Semgrep",
-        "Trivy",
-        "govulncheck (all modules)",
-        "pip-audit",
-    }
+# Dropped from every rule before comparison. `ruleset_id` says which ruleset a rule arrived from,
+# which is not a constraint on anything: it changes if the ruleset is deleted and recreated with
+# identical rules, and asserting it would reinstate the id coupling ADR 0003 removed.
+# `ruleset_source` is kept — a repo rename is worth a red — and so is each context's
+# `integration_id`, which asserts that these checks come from Actions rather than from some other
+# app installed later and posting statuses under the same names.
+IGNORED_RULE_FIELDS: Final = frozenset({"ruleset_id"})
+
+# Every rule effectively applying to PROTECTED_BRANCH — the union of whatever rulesets reach it,
+# not one ruleset's contents. Stored sorted, and compared without regard to order, because the
+# API's order is storage order and nothing here depends on it.
+#
+# Two parameters are load-bearing beyond the check-name list, and are the reason this mirrors every
+# rule rather than just `required_status_checks`:
+# `required_status_checks.strict_required_status_checks_policy` is why a `BEHIND` branch cannot
+# merge, which is the premise `renovate-run-after-automerge.yml` exists on; and `code_scanning`
+# gates on what CodeQL and Trivy *found* rather than on their having run.
+RULES: Final[tuple[dict, ...]] = tuple(
+    [
+        {
+            "parameters": {
+                "allowed_merge_methods": ["squash"],
+                "dismiss_stale_reviews_on_push": True,
+                "require_code_owner_review": True,
+                "require_extra_approval_for_unattributed_changes": True,
+                "require_last_push_approval": False,
+                "required_approving_review_count": 0,
+                "required_review_thread_resolution": True,
+                "required_reviewers": [],
+            },
+            "ruleset_source": "Syndic/unnatural_designs",
+            "ruleset_source_type": "Repository",
+            "type": "pull_request",
+        },
+        {
+            "parameters": {
+                "code_scanning_tools": [
+                    {
+                        "alerts_threshold": "errors",
+                        "security_alerts_threshold": "high_or_higher",
+                        "tool": "CodeQL",
+                    },
+                    {
+                        "alerts_threshold": "errors",
+                        "security_alerts_threshold": "high_or_higher",
+                        "tool": "Trivy",
+                    },
+                ]
+            },
+            "ruleset_source": "Syndic/unnatural_designs",
+            "ruleset_source_type": "Repository",
+            "type": "code_scanning",
+        },
+        {
+            "parameters": {
+                "do_not_enforce_on_create": True,
+                "required_status_checks": [
+                    {"context": "ADR number uniqueness check", "integration_id": 15368},
+                    {"context": "Action self-test", "integration_id": 15368},
+                    {"context": "Base image (all platforms)", "integration_id": 15368},
+                    {"context": "Build and test (all targets)", "integration_id": 15368},
+                    {"context": "Build devcontainer and smoke test", "integration_id": 15368},
+                    {"context": "CodeQL Analysis (all languages)", "integration_id": 15368},
+                    {"context": "Detect devcontainer changes", "integration_id": 15368},
+                    {"context": "Gazelle BUILD file check", "integration_id": 15368},
+                    {"context": "MODULE.bazel.lock freshness", "integration_id": 15368},
+                    {"context": "Module completeness check", "integration_id": 15368},
+                    {"context": "No-cgo policy check", "integration_id": 15368},
+                    {"context": "Python version consistency check", "integration_id": 15368},
+                    {
+                        "context": "Repository constraint enforcement manifest consistency check",
+                        "integration_id": 15368,
+                    },
+                    {"context": "Secrets check", "integration_id": 15368},
+                    {"context": "Semgrep", "integration_id": 15368},
+                    {"context": "Trivy", "integration_id": 15368},
+                    {"context": "go.work consistency/completeness check", "integration_id": 15368},
+                    {"context": "golangci-lint (all modules)", "integration_id": 15368},
+                    {"context": "govulncheck (all modules)", "integration_id": 15368},
+                    {"context": "pip-audit", "integration_id": 15368},
+                    {"context": "ruff", "integration_id": 15368},
+                    {"context": "shellcheck", "integration_id": 15368},
+                    {"context": "ty", "integration_id": 15368},
+                ],
+                "strict_required_status_checks_policy": True,
+            },
+            "ruleset_source": "Syndic/unnatural_designs",
+            "ruleset_source_type": "Repository",
+            "type": "required_status_checks",
+        },
+        {
+            "parameters": {"review_draft_pull_requests": False, "review_on_push": True},
+            "ruleset_source": "Syndic/unnatural_designs",
+            "ruleset_source_type": "Repository",
+            "type": "copilot_code_review",
+        },
+        {
+            "parameters": {"severity": "errors"},
+            "ruleset_source": "Syndic/unnatural_designs",
+            "ruleset_source_type": "Repository",
+            "type": "code_quality",
+        },
+        {
+            "ruleset_source": "Syndic/unnatural_designs",
+            "ruleset_source_type": "Repository",
+            "type": "creation",
+        },
+        {
+            "ruleset_source": "Syndic/unnatural_designs",
+            "ruleset_source_type": "Repository",
+            "type": "deletion",
+        },
+        {
+            "ruleset_source": "Syndic/unnatural_designs",
+            "ruleset_source_type": "Repository",
+            "type": "non_fast_forward",
+        },
+        {
+            "ruleset_source": "Syndic/unnatural_designs",
+            "ruleset_source_type": "Repository",
+            "type": "required_linear_history",
+        },
+        {
+            "ruleset_source": "Syndic/unnatural_designs",
+            "ruleset_source_type": "Repository",
+            "type": "required_signatures",
+        },
+    ]
 )
+
+
+def required_check_names() -> frozenset[str]:
+    """The check names the rules require, projected out of RULES.
+
+    Raises rather than returning an empty set when no `required_status_checks` rule is present: a
+    manifest that requires nothing is not a manifest whose consumers should quietly pass.
+    """
+    for rule in RULES:
+        if rule["type"] == "required_status_checks":
+            contexts = rule["parameters"]["required_status_checks"]
+            return frozenset(entry["context"] for entry in contexts)
+    raise AssertionError("RULES carries no `required_status_checks` rule")
+
 
 # Deliberately not binding, one reason each. This is the load-bearing list: it is where "this does
 # not block a merge" becomes a decision someone wrote down instead of an omission nobody made on
 # purpose. Membership is decided statically, by workflow trigger, so a job that never runs on an
 # ordinary PR still needs an entry — and saying why is the only place that fact is recorded.
-NOT_REQUIRED = {
+NOT_REQUIRED: Final = {
     "Coverage": (
         "Advisory check. Its failure is a judgement call rather than a defect, and Codecov's own "
         "project/patch statuses are threshold-based."
@@ -114,7 +235,7 @@ class FanInExemption(NamedTuple):
 # counts as a pass. One exemption exists. It lives here as data rather than inside whichever test
 # was written first, so the generalised strictness check can see it and so a second one cannot be
 # added without appearing in this file.
-FAN_IN_EXEMPTIONS = (
+FAN_IN_EXEMPTIONS: Final = (
     FanInExemption(
         fan_in="base-image-all",
         upstream="base-image",

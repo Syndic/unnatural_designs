@@ -1,7 +1,7 @@
 """Holds every `pull_request` job to the enforcement manifest, and the manifest to the workflows.
 
-`ci_enforcement_manifest.py` is a claim about repo settings. This file is what makes the claim do
-work: it fails a job nobody classified, an edge that moved enforcement without saying so, a
+`ci_enforcement_manifest.py` is a demand about repo settings. This file is what makes the demand
+do work: it fails a job nobody classified, an edge that moved enforcement without saying so, a
 required check that cannot report, a matrix nothing can require, and a fan-in that accepts a result
 it should refuse.
 
@@ -23,8 +23,9 @@ The properties, and why each one is not implied by the others:
     report. Without this the manifest proves a check is *reachable* from a required name, not that
     reaching it has any consequence — and "reachable but inconsequential" was #310.
 
-What none of it can do is read the ruleset, so none of it can tell you the manifest is true —
-see that file's own header for the gap and #314 for closing it.
+What none of it can do is read the rules, so none of it can tell you the repository meets the
+demand. `check_repository_constraints.py` is what asks GitHub; this file assumes the answer and
+holds the workflows to it.
 
 Scope is every workflow with `pull_request` in `on:`, discovered by glob. Jobs elsewhere — a
 `schedule`-only workflow, say — cannot hold a PR merge and are not this file's business.
@@ -42,9 +43,15 @@ import yaml
 from meta.scripts.ci_enforcement_manifest import (
     FAN_IN_EXEMPTIONS,
     NOT_REQUIRED,
-    REQUIRED,
+    PROTECTED_BRANCH,
     FanInExemption,
+    required_check_names,
 )
+
+# Projected out of the manifest's RULES rather than kept as a list of its own. A second copy of
+# these names could disagree with the one the repository is actually held to, and the whole point
+# of the manifest is that there is one demand to check.
+_REQUIRED = required_check_names()
 
 # Not .resolve(): the workflows and README are cross-package data deps, so they live in the
 # runfiles tree beside this file rather than at the source path a resolved symlink leads back to.
@@ -72,8 +79,9 @@ _WRAPPED_RE = re.compile(r"^\$\{\{(.*)\}\}$", re.S)
 # `!cancelled()` is what `build-and-smoke-test` carries.
 _ALWAYS_RUN = frozenset({"always()", "!cancelled()"})
 
-# The branch the ruleset protects, and so the one a required check has to report on.
-_PROTECTED_BRANCH = "main"
+# The branch the rules protect, and so the one a required check has to report on. Read from the
+# manifest, which is also what the comparison against GitHub asks about.
+_PROTECTED_BRANCH = PROTECTED_BRANCH
 
 # GitHub's filter-pattern characters. A branch list using any of them needs glob semantics to
 # resolve, which this file refuses to guess at rather than approximate.
@@ -82,6 +90,22 @@ _GLOB_RE = re.compile(r"[*?\[\]!+]")
 # Matrix sections rather than axes: neither is a dimension of the cross product.
 _INCLUDE = "include"
 _EXCLUDE = "exclude"
+
+# Required checks README documents in the paragraphs above its job tables rather than in a row,
+# because those paragraphs are where their workflow's path gating is explained and a table cell
+# cannot carry it. README names all four in one sentence directly under the tables.
+#
+# Data rather than a loosened assertion, for the reason FAN_IN_EXEMPTIONS is: a fifth cannot be
+# added without appearing here, where it is visible and needs a reason. Adding a name to quiet a
+# red is the failure mode; the tests below make a stale or untrue entry its own failure.
+_DOCUMENTED_IN_PROSE = frozenset(
+    {
+        "Action self-test",
+        "Base image (all platforms)",
+        "Build devcontainer and smoke test",
+        "Detect devcontainer changes",
+    }
+)
 
 
 def _load_workflows() -> dict[str, dict]:
@@ -186,7 +210,7 @@ def is_blocking(job: Job) -> bool:
     inherits from its fan-in — which is non-matrix by construction, so this recurs exactly once.
     """
     if not job.is_matrix:
-        return job.check in REQUIRED
+        return job.check in _REQUIRED
     fan_ins = fan_ins_of(job)
     return len(fan_ins) == 1 and is_blocking(fan_ins[0])
 
@@ -327,6 +351,41 @@ def collapsed_readme() -> str:
     return re.sub(r"\s+", " ", _README.read_text(encoding="utf-8"))
 
 
+def readme_job_table_checks() -> set[str]:
+    """The check names in the first column of README's job tables.
+
+    Three narrowings, each closing a way the assertion could pass without meaning anything.
+
+    *The job tables only*, identified by their own `| Job |` header rather than by section
+    position. README has nine tables and two of them enumerate jobs; a name in the pre-commit hook
+    table says nothing about whether a merge gate is documented.
+
+    *The first column only*, because that is where a job is named — a check mentioned in a
+    neighbouring cell's prose is not a row.
+
+    *Whole cells, not substrings*. `ty` is two characters and occurs inside ordinary words, so a
+    substring search over the tables would pass for it no matter what they contained.
+    """
+    checks: set[str] = set()
+    in_job_table = False
+    for line in _README.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            in_job_table = False
+            continue
+        row = [
+            re.sub(r"\s+", " ", cell).strip().strip("`").strip()
+            for cell in stripped.strip("|").split("|")
+        ]
+        if not in_job_table:
+            # The header names the column; the separator row below it is skipped by the same test.
+            in_job_table = bool(row) and row[0] == "Job"
+            continue
+        if row and not set("".join(row)) <= set("-: "):
+            checks.add(row[0])
+    return checks
+
+
 class VacuityTest(unittest.TestCase):
     """Every assertion below iterates something, and an empty something passes them all."""
 
@@ -343,7 +402,7 @@ class VacuityTest(unittest.TestCase):
         self.assertTrue(blocking_fan_ins(), "no fan-in sits on a required path")
 
     def test_the_manifest_is_populated(self):
-        self.assertTrue(REQUIRED, "the required list is empty")
+        self.assertTrue(_REQUIRED, "the rules require no checks")
         self.assertTrue(NOT_REQUIRED, "the not-required list is empty")
 
 
@@ -355,7 +414,7 @@ class AccountingTest(unittest.TestCase):
             with self.subTest(job=str(job)):
                 listed = [
                     label
-                    for label, names in (("required", REQUIRED), ("not-required", NOT_REQUIRED))
+                    for label, names in (("required", _REQUIRED), ("not-required", NOT_REQUIRED))
                     if job.check in names
                 ]
                 if job.is_matrix:
@@ -371,22 +430,22 @@ class AccountingTest(unittest.TestCase):
                     len(listed),
                     1,
                     f"`{job.check}` ({job}) is in {listed or 'neither list'}. Put it in exactly "
-                    "one. If it must block a merge, name it in REQUIRED *and* add it to the "
-                    "ruleset — the ruleset is repo settings and this test cannot read it. "
-                    "Otherwise put it in NOT_REQUIRED with a reason.",
+                    "one. If it must block a merge, add it to the repository's rules *and* to "
+                    "RULES, which is the demand on them. Otherwise put it in NOT_REQUIRED with "
+                    "a reason.",
                 )
 
     def test_the_manifest_names_only_jobs_that_exist(self):
         """A renamed job leaves a manifest entry naming nothing — ruleset drift, one level down."""
         checks = {job.check for job in _JOBS if not job.is_matrix}
-        for name in sorted(REQUIRED | set(NOT_REQUIRED)):
+        for name in sorted(_REQUIRED | set(NOT_REQUIRED)):
             with self.subTest(check=name):
                 self.assertIn(
                     name,
                     checks,
                     f"the manifest names `{name}`, which no `pull_request` job reports. If the "
-                    "job was renamed, the ruleset holds the old string too and is now naming a "
-                    "check that never arrives — fix both.",
+                    "job was renamed, the repository's rules hold the old string too and are now "
+                    "naming a check that never arrives — fix both.",
                 )
 
     def test_every_not_required_entry_records_a_reason(self):
@@ -415,7 +474,7 @@ class ClosureTest(unittest.TestCase):
                         f"has `{needed_id}` in its `needs:` ({job.workflow}). So a failure there "
                         "now takes a merge gate down with it, and the recorded decision that it "
                         "is not binding was overturned by an edit that never mentioned it. "
-                        "Either delete the edge or move the job to REQUIRED — and note the "
+                        "Either delete the edge or make the job blocking — and note the "
                         "direction: a non-blocking job *downstream* of a blocking one is fine, "
                         "which is the opposite arrangement to this one.",
                     )
@@ -436,7 +495,7 @@ class RequiredReachTest(unittest.TestCase):
         return triggers(_WORKFLOWS[job.workflow]).get(_PULL_REQUEST) or {}
 
     def required_jobs(self) -> list[Job]:
-        return [job for job in _JOBS if job.check in REQUIRED]
+        return [job for job in _JOBS if job.check in _REQUIRED]
 
     def test_no_required_check_is_filtered_by_path(self):
         for job in self.required_jobs():
@@ -618,14 +677,58 @@ class ExemptionTest(unittest.TestCase):
 
 
 class DocumentedTest(unittest.TestCase):
-    """README is where a reader learns the exceptions; the manifest is where they are decided.
+    """README is where a reader learns what gates a merge; the manifest is where it is decided.
 
-    Deliberately narrow. This asserts the exceptions and the fan-in names survive in the prose, not
-    that every sentence in README agrees with the manifest — README's classification is three
-    sentences with the exceptions embedded in them, and parsing that would either restate it or
-    accept anything. What it catches is the drift that actually happens: an entry added to
-    NOT_REQUIRED and never written up, so the only record of it is a file nobody reads for prose.
+    Deliberately narrow: this asserts the names survive in the prose, not that every sentence in
+    README agrees with the manifest. README's classification is three sentences with the
+    exceptions embedded in them, and parsing that would either restate it or accept anything.
+
+    What it catches is the drift that actually happens — a check added to one side and never
+    written up on the other, leaving the only record in a file nobody reads for prose. That runs
+    in both directions and both are covered: an entry added to NOT_REQUIRED without a mention, and
+    a required check that README's tables never list while the sentence under them still claims
+    every job in them is required. The second is how
+    `Repository constraint enforcement manifest consistency check` shipped in #328 — the 23rd
+    required context, named nowhere a reader enumerating the gates would find it.
     """
+
+    def test_every_required_check_is_in_a_table_or_recorded_as_an_exception(self):
+        listed = readme_job_table_checks()
+        for name in sorted(_REQUIRED):
+            with self.subTest(check=name):
+                self.assertTrue(
+                    name in listed or name in _DOCUMENTED_IN_PROSE,
+                    f"README's job tables do not list `{name}`, which blocks a merge, and it is "
+                    "not in _DOCUMENTED_IN_PROSE. The sentence under those tables says every job "
+                    "in them is required, so a reader enumerating the gates comes up short. Add "
+                    "the row, or add the name here with the reason it lives in prose instead.",
+                )
+
+    def test_the_job_tables_were_found(self):
+        """A parse that found nothing would make the assertion above unfalsifiable-looking."""
+        self.assertTrue(readme_job_table_checks(), "README's job tables did not parse")
+
+    def test_no_prose_exception_has_gone_stale(self):
+        """An exception for a check that is no longer required would hide the next omission."""
+        for name in sorted(_DOCUMENTED_IN_PROSE):
+            with self.subTest(check=name):
+                self.assertIn(
+                    name,
+                    _REQUIRED,
+                    f"`{name}` is recorded as documented in prose but no longer blocks a merge",
+                )
+
+    def test_every_prose_exception_is_actually_in_the_readme(self):
+        """The exception says "documented elsewhere", which is only true if it is."""
+        readme = collapsed_readme()
+        for name in sorted(_DOCUMENTED_IN_PROSE):
+            with self.subTest(check=name):
+                self.assertIn(
+                    name,
+                    readme,
+                    f"`{name}` is exempt from the table rule on the grounds that README's prose "
+                    "names it, and README's prose does not name it",
+                )
 
     def test_readme_names_every_not_required_check(self):
         readme = collapsed_readme()

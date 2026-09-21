@@ -204,15 +204,16 @@ between them — see [What makes a check binding](#what-makes-a-check-binding) b
 
 **Security** - also runs on a weekly schedule (Mondays at 02:00 UTC):
 
-| Job                               | Purpose                                                                         |
-| --------------------------------- | ------------------------------------------------------------------------------- |
-| Semgrep                           | SAST - scans for injection flaws, insecure API usage, and hardcoded secrets     |
-| `CodeQL Analysis (<language>)`    | SAST - one job per language: actions, Go, Python                                |
-| `CodeQL Analysis (all languages)` | Fan-in over the per-language jobs - the name to require in the ruleset          |
-| `govulncheck (<module>)`          | Dependency CVE scanning - reachable call paths against the Go vuln DB           |
-| `govulncheck (all modules)`       | Fan-in over the per-module jobs - the name to require in the ruleset            |
-| pip-audit                         | Dependency CVE scanning for Python - manifest-based scan over the uv resolution |
-| Trivy                             | Supply chain and filesystem scanning - secrets, CVEs across all ecosystems      |
+| Job                                                            | Purpose                                                                         |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| Semgrep                                                        | SAST - scans for injection flaws, insecure API usage, and hardcoded secrets     |
+| `CodeQL Analysis (<language>)`                                 | SAST - one job per language: actions, Go, Python                                |
+| `CodeQL Analysis (all languages)`                              | Fan-in over the per-language jobs - the name to require in the ruleset          |
+| `govulncheck (<module>)`                                       | Dependency CVE scanning - reachable call paths against the Go vuln DB           |
+| `govulncheck (all modules)`                                    | Fan-in over the per-module jobs - the name to require in the ruleset            |
+| pip-audit                                                      | Dependency CVE scanning for Python - manifest-based scan over the uv resolution |
+| Trivy                                                          | Supply chain and filesystem scanning - secrets, CVEs across all ecosystems      |
+| `Repository constraint enforcement manifest consistency check` | Holds the enforcement manifest to the rules GitHub enforces on `main`           |
 
 **Devcontainer** - builds the devcontainer image and smoke-tests the toolchain it ships
 (`bazel --version`, `go version`, `python3 --version`). The job is gated on a path diff against
@@ -245,9 +246,11 @@ however many jobs wait on it.
 
 [`meta/scripts/ci_enforcement_manifest.py`](meta/scripts/ci_enforcement_manifest.py) is that list
 written down where something can read it, and `//meta/scripts:test_ci_enforcement_manifest` fails a
-job classified as neither required nor deliberately not. It is not self-verifying - it is a
-tree-local claim about settings nothing here can read - so a green test is not a verified ruleset.
-#314 closes that.
+job classified as neither required nor deliberately not. The manifest is a demand, and
+`Repository constraint enforcement manifest consistency check` in `security.yml` is what holds the
+repository to it: it reads what GitHub enforces on `main` and fails when the two disagree either
+way. Changing the demand goes through review like any other change - see
+[ADR 0003](meta/docs/adr/0003-the-enforcement-manifest-is-a-demand-not-a-mirror.md).
 
 Every job in the two tables above is required except `Coverage`, which is advisory deliberately:
 its failure is a judgement call rather than a defect, and Codecov's own `project`/`patch` statuses

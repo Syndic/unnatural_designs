@@ -175,12 +175,45 @@ py_test(
     deps = [requirement("pyyaml")],
 )
 
-# The enforcement manifest: check names the `main` ruleset holds, plus what deliberately gates
-# nothing. A library because #314 reconciles it against the live ruleset and is a second consumer
-# by construction — data with two consumers does not live inside one of them.
+# The enforcement manifest: every rule the repository enforces on `main`, plus what deliberately
+# gates nothing. A library because it has two consumers — the workflow guard below, which assumes
+# the claim, and check_repository_constraints, which asks GitHub whether it is true.
 py_library(
     name = "ci_enforcement_manifest_lib",
     srcs = ["ci_enforcement_manifest.py"],
+)
+
+# The one guard here whose verdict comes from outside the tree, so the one that cannot ride
+# `bazel test //...`: it reads the live rules. The library and binary split lets the test import
+# the comparison and the retry policy without either reaching the network.
+py_library(
+    name = "check_repository_constraints_lib",
+    srcs = ["check_repository_constraints.py"],
+    deps = [
+        ":_workspace_lib",
+        ":ci_enforcement_manifest_lib",
+    ],
+)
+
+py_binary(
+    name = "check_repository_constraints",
+    srcs = ["check_repository_constraints.py"],
+    main = "check_repository_constraints.py",
+    deps = [
+        ":_workspace_lib",
+        ":ci_enforcement_manifest_lib",
+    ],
+)
+
+py_test(
+    name = "test_check_repository_constraints",
+    size = "small",
+    srcs = ["test_check_repository_constraints.py"],
+    main = "test_check_repository_constraints.py",
+    deps = [
+        ":check_repository_constraints_lib",
+        ":ci_enforcement_manifest_lib",
+    ],
 )
 
 # `//:workflows` rather than a list of files, and the glob is load-bearing: this is the guard that
