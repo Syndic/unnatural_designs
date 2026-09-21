@@ -128,6 +128,19 @@ class ComparableTest(unittest.TestCase):
         with self.assertRaises(UnreadableRules):
             comparable(["required_status_checks"])
 
+    def test_a_status_check_entry_without_a_context_is_unreadable(self):
+        """An entry that names no check cannot be compared, so it is refused at the shape gate."""
+        rule = _status_rule("a")
+        rule["parameters"]["required_status_checks"].append({"integration_id": 777})
+        with self.assertRaises(UnreadableRules):
+            comparable([rule])
+
+    def test_a_status_check_entry_that_is_not_an_object_is_unreadable(self):
+        rule = _status_rule("a")
+        rule["parameters"]["required_status_checks"].append("ruff")
+        with self.assertRaises(UnreadableRules):
+            comparable([rule])
+
     def test_no_status_check_rule_is_unreadable_rather_than_agreement(self):
         """An empty answer is the shape a token without the permission produces."""
         with self.assertRaises(UnreadableRules):
@@ -204,6 +217,26 @@ class DifferencesTest(unittest.TestCase):
             with self.subTest(rule=theirs):
                 self.assertNotEqual(ours, enforced, "test case does not differ")
                 self.assertTrue(differences(ours, enforced), "unequal rules reported agreement")
+
+    def test_an_unnameable_difference_still_reports(self):
+        """The backstop, exercised by blinding the naming logic it backs up.
+
+        Every named case is a chance to call unequal rules equal; this is the guarantee that the
+        guard fails closed anyway. Forcing `_names_are_the_whole_difference` to agree simulates
+        the defect class directly rather than waiting for the next instance of it.
+        """
+        ours = comparable([_status_rule("a")])
+        theirs = comparable([_status_rule("b")])
+        with mock.patch.object(
+            check_repository_constraints, "_names_are_the_whole_difference", return_value=True
+        ):
+            found = differences(ours, theirs)
+        self.assertTrue(found, "unequal rules reported agreement with the naming logic blinded")
+
+    def test_equal_rules_never_trip_the_backstop(self):
+        """The backstop must not turn agreement into a finding."""
+        rules = comparable([_status_rule("a", "b")])
+        self.assertEqual(differences(rules, rules), [])
 
     def test_a_parameter_change_still_shows_the_rule(self):
         """The dump is not gone, only reserved for what a name cannot describe."""

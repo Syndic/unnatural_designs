@@ -107,6 +107,13 @@ def comparable(rules: Any) -> list[dict]:
         if "type" not in rule:
             raise UnreadableRules(f"a rule carries no `type`: {rule!r}")
         stripped.append({k: v for k, v in rule.items() if k not in IGNORED_RULE_FIELDS})
+    for rule in stripped:
+        for entry in (rule.get("parameters") or {}).get(_STATUS_CHECKS) or []:
+            # An entry names the check it requires. One without a context cannot be attributed to
+            # any check, so there is nothing a comparison could say about it — the same reason a
+            # rule with no `type` is refused above.
+            if not isinstance(entry, dict) or "context" not in entry:
+                raise UnreadableRules(f"a status-check entry carries no `context`: {entry!r}")
     if not any(rule["type"] == _STATUS_CHECKS for rule in stripped):
         raise UnreadableRules(
             f"no `{_STATUS_CHECKS}` rule came back. Either the branch enforces none — which no "
@@ -189,6 +196,10 @@ def differences(demanded: list[dict], enforced: list[dict]) -> list[str]:
     Both directions matter and for different reasons. A rule enforced but undemanded means the
     gate moved without anyone deciding it should; a rule demanded but unenforced means the manifest
     — which the rest of the guards trust — is asking for a gate that is not there.
+
+    Guarantees that rules which do not compare equal always produce at least one finding, falling
+    back to an unexplained-difference report rather than to silence. The named cases are for a
+    human reading the failure; the guarantee is what the guard is for.
     """
     found = []
     ours, theirs = _by_type(demanded), _by_type(enforced)
@@ -218,6 +229,19 @@ def differences(demanded: list[dict], enforced: list[dict]) -> list[str]:
             f"the `{rule_type}` rule differs.\n"
             f"    manifest:   {ordering_key(mine)}\n"
             f"    repository: {ordering_key(yours)}"
+        )
+
+    # Everything above names a *kind* of difference, so every one of them is a chance to describe
+    # the rules as agreeing when they do not — twice already, both times by a comparison that
+    # looked only at context names. This makes the property structural rather than a thing the
+    # tests below have to enumerate their way to: whatever the naming logic failed to account for,
+    # unequal rules never report agreement.
+    if not found and demanded != enforced:
+        found.append(
+            "the rules differ in a way this comparison could not name, which is a defect in it "
+            "rather than a reason to pass.\n"
+            f"    manifest:   {ordering_key(demanded)}\n"
+            f"    repository: {ordering_key(enforced)}"
         )
     return found
 

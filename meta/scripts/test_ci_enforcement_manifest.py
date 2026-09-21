@@ -351,15 +351,39 @@ def collapsed_readme() -> str:
     return re.sub(r"\s+", " ", _README.read_text(encoding="utf-8"))
 
 
-def readme_table_rows() -> str:
-    """Just README's table rows, collapsed.
+def readme_job_table_checks() -> set[str]:
+    """The check names in the first column of README's job tables.
 
-    The job tables are where a reader enumerates the gates, and "named somewhere in README" is a
-    weaker property than it sounds: a check can be discussed in a paragraph and still be missing
-    from the tables that the sentence under them calls complete.
+    Three narrowings, each closing a way the assertion could pass without meaning anything.
+
+    *The job tables only*, identified by their own `| Job |` header rather than by section
+    position. README has nine tables and two of them enumerate jobs; a name in the pre-commit hook
+    table says nothing about whether a merge gate is documented.
+
+    *The first column only*, because that is where a job is named — a check mentioned in a
+    neighbouring cell's prose is not a row.
+
+    *Whole cells, not substrings*. `ty` is two characters and occurs inside ordinary words, so a
+    substring search over the tables would pass for it no matter what they contained.
     """
-    lines = _README.read_text(encoding="utf-8").splitlines()
-    return re.sub(r"\s+", " ", " ".join(line for line in lines if line.lstrip().startswith("|")))
+    checks: set[str] = set()
+    in_job_table = False
+    for line in _README.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            in_job_table = False
+            continue
+        row = [
+            re.sub(r"\s+", " ", cell).strip().strip("`").strip()
+            for cell in stripped.strip("|").split("|")
+        ]
+        if not in_job_table:
+            # The header names the column; the separator row below it is skipped by the same test.
+            in_job_table = bool(row) and row[0] == "Job"
+            continue
+        if row and not set("".join(row)) <= set("-: "):
+            checks.add(row[0])
+    return checks
 
 
 class VacuityTest(unittest.TestCase):
@@ -669,16 +693,20 @@ class DocumentedTest(unittest.TestCase):
     """
 
     def test_every_required_check_is_in_a_table_or_recorded_as_an_exception(self):
-        rows = readme_table_rows()
+        listed = readme_job_table_checks()
         for name in sorted(_REQUIRED):
             with self.subTest(check=name):
                 self.assertTrue(
-                    name in rows or name in _DOCUMENTED_IN_PROSE,
+                    name in listed or name in _DOCUMENTED_IN_PROSE,
                     f"README's job tables do not list `{name}`, which blocks a merge, and it is "
                     "not in _DOCUMENTED_IN_PROSE. The sentence under those tables says every job "
                     "in them is required, so a reader enumerating the gates comes up short. Add "
                     "the row, or add the name here with the reason it lives in prose instead.",
                 )
+
+    def test_the_job_tables_were_found(self):
+        """A parse that found nothing would make the assertion above unfalsifiable-looking."""
+        self.assertTrue(readme_job_table_checks(), "README's job tables did not parse")
 
     def test_no_prose_exception_has_gone_stale(self):
         """An exception for a check that is no longer required would hide the next omission."""
