@@ -91,6 +91,22 @@ _GLOB_RE = re.compile(r"[*?\[\]!+]")
 _INCLUDE = "include"
 _EXCLUDE = "exclude"
 
+# Required checks README documents in the paragraphs above its job tables rather than in a row,
+# because those paragraphs are where their workflow's path gating is explained and a table cell
+# cannot carry it. README names all four in one sentence directly under the tables.
+#
+# Data rather than a loosened assertion, for the reason FAN_IN_EXEMPTIONS is: a fifth cannot be
+# added without appearing here, where it is visible and needs a reason. Adding a name to quiet a
+# red is the failure mode; the tests below make a stale or untrue entry its own failure.
+_DOCUMENTED_IN_PROSE = frozenset(
+    {
+        "Action self-test",
+        "Base image (all platforms)",
+        "Build devcontainer and smoke test",
+        "Detect devcontainer changes",
+    }
+)
+
 
 def _load_workflows() -> dict[str, dict]:
     """Every workflow in the tree, by filename.
@@ -333,6 +349,17 @@ def collapsed_readme() -> str:
     someone to "fix" the README by unwrapping a line.
     """
     return re.sub(r"\s+", " ", _README.read_text(encoding="utf-8"))
+
+
+def readme_table_rows() -> str:
+    """Just README's table rows, collapsed.
+
+    The job tables are where a reader enumerates the gates, and "named somewhere in README" is a
+    weaker property than it sounds: a check can be discussed in a paragraph and still be missing
+    from the tables that the sentence under them calls complete.
+    """
+    lines = _README.read_text(encoding="utf-8").splitlines()
+    return re.sub(r"\s+", " ", " ".join(line for line in lines if line.lstrip().startswith("|")))
 
 
 class VacuityTest(unittest.TestCase):
@@ -626,14 +653,54 @@ class ExemptionTest(unittest.TestCase):
 
 
 class DocumentedTest(unittest.TestCase):
-    """README is where a reader learns the exceptions; the manifest is where they are decided.
+    """README is where a reader learns what gates a merge; the manifest is where it is decided.
 
-    Deliberately narrow. This asserts the exceptions and the fan-in names survive in the prose, not
-    that every sentence in README agrees with the manifest — README's classification is three
-    sentences with the exceptions embedded in them, and parsing that would either restate it or
-    accept anything. What it catches is the drift that actually happens: an entry added to
-    NOT_REQUIRED and never written up, so the only record of it is a file nobody reads for prose.
+    Deliberately narrow: this asserts the names survive in the prose, not that every sentence in
+    README agrees with the manifest. README's classification is three sentences with the
+    exceptions embedded in them, and parsing that would either restate it or accept anything.
+
+    What it catches is the drift that actually happens — a check added to one side and never
+    written up on the other, leaving the only record in a file nobody reads for prose. That runs
+    in both directions and both are covered: an entry added to NOT_REQUIRED without a mention, and
+    a required check that README's tables never list while the sentence under them still claims
+    every job in them is required. The second is how
+    `Repository constraint enforcement manifest consistency check` shipped in #328 — the 23rd
+    required context, named nowhere a reader enumerating the gates would find it.
     """
+
+    def test_every_required_check_is_in_a_table_or_recorded_as_an_exception(self):
+        rows = readme_table_rows()
+        for name in sorted(_REQUIRED):
+            with self.subTest(check=name):
+                self.assertTrue(
+                    name in rows or name in _DOCUMENTED_IN_PROSE,
+                    f"README's job tables do not list `{name}`, which blocks a merge, and it is "
+                    "not in _DOCUMENTED_IN_PROSE. The sentence under those tables says every job "
+                    "in them is required, so a reader enumerating the gates comes up short. Add "
+                    "the row, or add the name here with the reason it lives in prose instead.",
+                )
+
+    def test_no_prose_exception_has_gone_stale(self):
+        """An exception for a check that is no longer required would hide the next omission."""
+        for name in sorted(_DOCUMENTED_IN_PROSE):
+            with self.subTest(check=name):
+                self.assertIn(
+                    name,
+                    _REQUIRED,
+                    f"`{name}` is recorded as documented in prose but no longer blocks a merge",
+                )
+
+    def test_every_prose_exception_is_actually_in_the_readme(self):
+        """The exception says "documented elsewhere", which is only true if it is."""
+        readme = collapsed_readme()
+        for name in sorted(_DOCUMENTED_IN_PROSE):
+            with self.subTest(check=name):
+                self.assertIn(
+                    name,
+                    readme,
+                    f"`{name}` is exempt from the table rule on the grounds that README's prose "
+                    "names it, and README's prose does not name it",
+                )
 
     def test_readme_names_every_not_required_check(self):
         readme = collapsed_readme()
