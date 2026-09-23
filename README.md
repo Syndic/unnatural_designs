@@ -223,14 +223,14 @@ definition, the shared base image beneath it, the Bazel manifests that assemble 
 module defining the set itself; membership asks whether a path *can* reach the built image rather
 than whether a given commit did, so it errs wide by design, and the `CHANGED` set in
 [`path_classification_pattern_sets.py`](meta/scripts/path_classification_pattern_sets.py) is the
-list, with each member's cost argued beside it. The path diff is its own job and a required check in
-its own right, and the two jobs that hang off it fail when *it* fails: an unevaluated gate skips its
-consumers exactly the way a gate that ran and said no does, and GitHub counts a skipped required
-check as passed. Both guards are wanted - one blocks the merge, the other keeps a green check from
-claiming to have verified something it never looked at. The same workflow builds the shared base
-image on its own narrower path gate - one job per architecture, behind the
-`Base image (all platforms)` fan-in, where a skipped row passes because most PRs legitimately do not
-touch the image.
+list - composed by union over `BASE`, itself over `BAZEL`, with the members that cost something
+argued beside them. The path diff is its own job and a required check in its own right, and the two
+jobs that hang off it fail when *it* fails: an unevaluated gate skips its consumers exactly the way
+a gate that ran and said no does, and GitHub counts a skipped required check as passed. Both guards
+are wanted - one blocks the merge, the other keeps a green check from claiming to have verified
+something it never looked at. The same workflow builds the shared base image on its own narrower
+path gate - one job per architecture, behind the `Base image (all platforms)` fan-in, where a
+skipped row passes because most PRs legitimately do not touch the image.
 
 **Self-test - commit-file-via-app** (`Action self-test`) - exercises the
 [`commit-file-via-app`](.github/actions/commit-file-via-app/README.md) composite action end-to-end
