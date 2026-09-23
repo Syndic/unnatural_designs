@@ -217,15 +217,20 @@ between them — see [What makes a check binding](#what-makes-a-check-binding) b
 
 **Devcontainer** - builds the devcontainer image and smoke-tests the toolchain it ships
 (`bazel --version`, `go version`, `python3 --version`). The job is gated on a path diff against
-the PR base: it only runs the build when `.devcontainer/` or `.github/workflows/devcontainer.yml`
-changed in this PR, and reports success otherwise so the status check always reports. The path
-diff is its own job and a required check in its own right, and the two jobs that hang off it fail
-when *it* fails: an unevaluated gate skips its consumers exactly the way a gate that ran and said
-no does, and GitHub counts a skipped required check as passed. Both guards are wanted - one blocks
-the merge, the other keeps a green check from claiming to have verified something it never looked
-at. The same workflow builds the shared base image on its own narrower path gate - one
-job per architecture, behind the `Base image (all platforms)` fan-in, where a skipped row passes
-because most PRs legitimately do not touch the image.
+the PR base: it runs the build when the PR touched anything that can change what the devcontainer
+builds, and reports success otherwise so the status check always reports. That covers its own
+definition, the shared base image beneath it, the Bazel manifests that assemble that image, and the
+module defining the set itself; membership asks whether a path *can* reach the built image rather
+than whether a given commit did, so it errs wide by design, and the `CHANGED` set in
+[`path_classification_pattern_sets.py`](meta/scripts/path_classification_pattern_sets.py) is the
+list, with each member's cost argued beside it. The path diff is its own job and a required check in
+its own right, and the two jobs that hang off it fail when *it* fails: an unevaluated gate skips its
+consumers exactly the way a gate that ran and said no does, and GitHub counts a skipped required
+check as passed. Both guards are wanted - one blocks the merge, the other keeps a green check from
+claiming to have verified something it never looked at. The same workflow builds the shared base
+image on its own narrower path gate - one job per architecture, behind the
+`Base image (all platforms)` fan-in, where a skipped row passes because most PRs legitimately do not
+touch the image.
 
 **Self-test - commit-file-via-app** (`Action self-test`) - exercises the
 [`commit-file-via-app`](.github/actions/commit-file-via-app/README.md) composite action end-to-end
