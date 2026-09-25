@@ -127,10 +127,11 @@ check.
 - **A matrix job is requirable only through a fan-in**, since its own check name carries the row
   that produced it. The fan-in carries `if: always()` for the reason the section below gives: a
   failed matrix would otherwise skip it, and a skipped required check reads as a pass.
-  `//meta/scripts:test_ci_enforcement_manifest` holds every fan-in in every workflow to that
-  shape, and fails a matrix job added with no fan-in at all — the state `golangci-lint` was in,
-  which is what blocked requiring it. It is the one home for that shape: a per-workflow test earns
-  a place beside it only for what it cannot see, and says so in its docstring.
+  `//meta/scripts:test_ci_enforcement_manifest` holds every fan-in on a required path, in every
+  workflow that runs on `pull_request`, to that shape, and fails a matrix job added with no fan-in
+  at all — the state `golangci-lint` was in, which is what blocked requiring it. It is the one home
+  for that shape: a per-workflow test earns a place beside it only for what it cannot see, and says
+  so in its docstring.
 - **`meta/scripts/ci_enforcement_manifest.py` records the list**, and
   `//meta/scripts:test_ci_enforcement_manifest` fails when it finds a job that is in neither of
   its two lists — so a job added here is no longer un-enforced by default and silently. Two axes
