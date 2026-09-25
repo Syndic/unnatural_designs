@@ -3,6 +3,7 @@ package progress
 import (
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -12,6 +13,30 @@ import (
 	netbox "github.com/Syndic/unnatural_designs/tools/network_infrastructure_maintenance/internal/netbox"
 	"github.com/Syndic/unnatural_designs/tools/network_infrastructure_maintenance/internal/shared"
 )
+
+// brandTagline is the second-row text inside the hairline startup banner.
+const brandTagline = "validates the netbox model for internal consistency"
+
+// spinnerFrames are mpb's default braille frames, replicated here so each
+// frame can be wrapped in the accent SGR when colors are enabled.
+var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
+// accentBarStyle builds an mpb bar style from the styler's rune set. The
+// styler chooses Unicode-block-with-accent or ASCII-without internally.
+func accentBarStyle(styler shared.Styler) mpb.BarStyleComposer {
+	l, f, t, p, r := styler.BarRunes()
+	return mpb.BarStyle().Lbound(l).Filler(f).Tip(t).Padding(p).Rbound(r)
+}
+
+// accentSpinnerStyle wraps each braille frame in Accent. When the styler
+// is disabled, Accent is the identity, so the frames render plain.
+func accentSpinnerStyle(styler shared.Styler) mpb.BarFillerBuilder {
+	colored := make([]string, len(spinnerFrames))
+	for i, f := range spinnerFrames {
+		colored[i] = styler.Accent(f)
+	}
+	return mpb.SpinnerStyle(colored...).PositionLeft()
+}
 
 // taskNameWidth is how wide the task-name decorator on per-task bars is. Wide
 // enough to fit every snapshot collection name without truncation; narrow
@@ -38,7 +63,7 @@ const taskNameWidth = 30
 // checks phase typically completes in microseconds).
 type richReporter struct {
 	w      *os.File
-	colors shared.Colorizer
+	styler shared.Styler
 	p      *mpb.Progress
 
 	mu       sync.Mutex
@@ -49,10 +74,10 @@ type richReporter struct {
 	closeErr error
 }
 
-func newRichReporter(stderr *os.File, colors shared.Colorizer) *richReporter {
+func newRichReporter(stderr *os.File, styler shared.Styler) *richReporter {
 	return &richReporter{
 		w:      stderr,
-		colors: colors,
+		styler: styler,
 		bars:   make(map[string]*mpb.Bar),
 		p: mpb.New(
 			mpb.WithOutput(stderr),
@@ -64,8 +89,43 @@ func newRichReporter(stderr *os.File, colors shared.Colorizer) *richReporter {
 
 func (r *richReporter) Startupf(format string, args ...any) {
 	// Startup banner is printed before any bars exist; write directly to
-	// stderr so it appears at the top of the run output.
+	// stderr so it appears at the top of the run output. renderBannerBox
+	// returns "" when the styler is disabled, so the box only appears on
+	// a colorized stream — the plain `[netbox-audit] …` line below is the
+	// pipe-safe form for NO_COLOR / non-TTY / -progress plain.
+	_, _ = fmt.Fprint(r.w, renderBannerBox(r.styler))
 	_, _ = fmt.Fprintf(r.w, "[netbox-audit] "+format+"\n", args...)
+}
+
+// renderBannerBox builds the startup banner — a hairline box with
+// `netbox-audit` accented on the left, `UNNATURAL_DESIGNS` on the right
+// with the underscore in accent color, and the tagline on the second row.
+// Returns "" when the styler is disabled (styler.Box handles that branch).
+func renderBannerBox(styler shared.Styler) string {
+	const (
+		left     = "netbox-audit"
+		rightL   = "UNNATURAL"
+		rightU   = "_"
+		rightR   = "DESIGNS"
+		innerPad = 2 // spaces of padding inside the box borders
+		gap      = 2 // minimum gap between left label and right brand
+	)
+	right := rightL + rightU + rightR
+	titleVisible := len(left) + gap + len(right)
+	contentWidth := titleVisible
+	if len(brandTagline) > contentWidth {
+		contentWidth = len(brandTagline)
+	}
+
+	pad := strings.Repeat(" ", innerPad)
+	titleSpaces := strings.Repeat(" ", contentWidth-len(left)-len(right))
+	taglineSpaces := strings.Repeat(" ", contentWidth-len(brandTagline))
+	rightColored := rightL + styler.Accent(rightU) + rightR
+
+	return styler.Box(contentWidth+2*innerPad, []string{
+		pad + styler.Accent(left) + titleSpaces + rightColored + pad,
+		pad + brandTagline + taglineSpaces + pad,
+	})
 }
 
 func (r *richReporter) AnnounceChecks(ids []string) {
@@ -83,7 +143,7 @@ func (r *richReporter) SnapshotAttemptStart(attempt, max, totalTasks int) {
 		_, _ = fmt.Fprintf(r.p, "Snapshot attempt %d/%d (previous attempt detected a mid-load change)\n", attempt, max)
 	}
 	r.agg = r.p.New(int64(totalTasks),
-		mpb.BarStyle().Lbound("[").Filler("=").Tip(">").Padding(" ").Rbound("]"),
+		accentBarStyle(r.styler),
 		mpb.BarPriority(-1),
 		mpb.PrependDecorators(
 			decor.Name("Snapshot ", decor.WC{C: decor.DindentRight}),
@@ -101,7 +161,7 @@ func (r *richReporter) SnapshotAttemptStart(attempt, max, totalTasks int) {
 // that genuinely return zero items).
 func (r *richReporter) SnapshotTaskStart(name string) netbox.TaskProgress {
 	bar := r.p.New(0,
-		mpb.SpinnerStyle().PositionLeft(),
+		accentSpinnerStyle(r.styler),
 		mpb.BarRemoveOnComplete(),
 		mpb.PrependDecorators(decor.Name(fmt.Sprintf("  %-*s", taskNameWidth, name))),
 		mpb.AppendDecorators(
@@ -128,7 +188,7 @@ func (r *richReporter) SnapshotTaskComplete(_, _ int, stats netbox.FetchTiming, 
 	// bar complete (which removes it via BarRemoveOnComplete), and advance
 	// the aggregate bar.
 	_, _ = fmt.Fprintf(r.p, "  %s %-*s %5d items  %2d req  %7s\n",
-		r.colors.Pass("✓"),
+		r.styler.PassBlock("✓"),
 		taskNameWidth,
 		stats.Name,
 		stats.Items,
@@ -151,7 +211,7 @@ func (r *richReporter) SnapshotTaskComplete(_, _ int, stats netbox.FetchTiming, 
 
 func (r *richReporter) SnapshotLoadError(attempt, maxAttempts int, err error) {
 	_, _ = fmt.Fprintf(r.p, "  %s snapshot attempt %d/%d failed: %v\n",
-		r.colors.Fail("✗"), attempt, maxAttempts, err)
+		r.styler.FailBlock("✗"), attempt, maxAttempts, err)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	// Drop any per-task bars that are still alive — on retry the loader will
@@ -206,7 +266,7 @@ func (r *richReporter) CheckCompleted(_, _ int, name string, findings int, dur t
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	_, _ = fmt.Fprintf(r.w, "  %s %s  %d finding(s)  %s\n",
-		r.colors.Warn("!"),
+		r.styler.WarnBlock("!"),
 		name,
 		findings,
 		shared.FormatDuration(dur),
@@ -214,9 +274,9 @@ func (r *richReporter) CheckCompleted(_, _ int, name string, findings int, dur t
 }
 
 func (r *richReporter) ChecksComplete(total, withFindings int, dur time.Duration) {
-	marker := r.colors.Pass("✓")
+	marker := r.styler.PassBlock("✓")
 	if withFindings > 0 {
-		marker = r.colors.Warn("!")
+		marker = r.styler.WarnBlock("!")
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
