@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"sync"
 	"time"
 )
@@ -25,54 +26,132 @@ type LoadObserver interface {
 	// need per-page updates).
 	SnapshotTaskStart(name string) TaskProgress
 	SnapshotTaskComplete(completed, total int, stats FetchTiming, totalRequests int)
+	// SnapshotLoadError reports a failed attempt, whether or not a retry
+	// follows it.
 	SnapshotLoadError(attempt, maxAttempts int, err error)
 	SnapshotLoadRetryDelay(delay time.Duration)
 }
 
+// NopObserver is a LoadObserver that ignores every notification.
+type NopObserver struct{}
+
+func (NopObserver) SnapshotAttemptStart(int, int, int)              {}
+func (NopObserver) SnapshotTaskStart(string) TaskProgress           { return nil }
+func (NopObserver) SnapshotTaskComplete(int, int, FetchTiming, int) {}
+func (NopObserver) SnapshotLoadError(int, int, error)               {}
+func (NopObserver) SnapshotLoadRetryDelay(time.Duration)            {}
+
+// errStateChanged marks an attempt whose start and end change IDs differ.
+var errStateChanged = errors.New("NetBox state changed during load")
+
 // LoadConsistentSnapshot fetches a consistent snapshot from NetBox, retrying
-// up to maxAttempts times if the data changes during the fetch.
+// up to maxAttempts times, retryDelay apart, if a request fails in a way a
+// retry may fix (see retryable) or the data changes during the fetch.
+// Cancelling ctx or any other failure stops it without a retry. A nil
+// interface obs receives no notifications; a typed-nil obs is called as-is.
 func LoadConsistentSnapshot(ctx context.Context, client *Client, maxAttempts int, retryDelay time.Duration, obs LoadObserver) (Snapshot, error) {
+	if obs == nil {
+		obs = NopObserver{}
+	}
 	var lastErr error
 	var totalStart = time.Now()
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		startChange, err := client.LatestChange(ctx)
-		if err != nil {
-			return Snapshot{}, err
-		}
-		if obs != nil {
-			obs.SnapshotAttemptStart(attempt, maxAttempts, SnapshotTaskCount())
-		}
-		snap, err := loadSnapshot(ctx, client, obs)
-		if err != nil {
-			if obs != nil {
-				obs.SnapshotLoadError(attempt, maxAttempts, err)
+		if attempt > 1 {
+			obs.SnapshotLoadRetryDelay(retryDelay)
+			if err := sleepCtx(ctx, retryDelay); err != nil {
+				return Snapshot{}, cancelled(err, lastErr)
 			}
-			lastErr = err
-			continue
 		}
-		endChange, err := client.LatestChange(ctx)
-		if err != nil {
-			return Snapshot{}, err
-		}
-		if startChange.ID == endChange.ID {
-			snap.LatestChange = endChange
+		obs.SnapshotAttemptStart(attempt, maxAttempts, SnapshotTaskCount())
+		snap, err := loadAttempt(ctx, client, obs)
+		if err == nil {
 			snap.SnapshotAttempts = attempt
 			snap.LoadStats.Duration = time.Since(totalStart)
 			return snap, nil
 		}
-		lastErr = fmt.Errorf("NetBox state changed during load (%d -> %d)", startChange.ID, endChange.ID)
-		if obs != nil {
-			obs.SnapshotLoadError(attempt, maxAttempts, lastErr)
+		obs.SnapshotLoadError(attempt, maxAttempts, err)
+		// A request that failed because ctx ended is not worth retrying.
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return Snapshot{}, cancelled(ctxErr, lastErr)
 		}
-		if attempt < maxAttempts {
-			obs.SnapshotLoadRetryDelay(retryDelay)
-			time.Sleep(retryDelay)
+		if !retryable(err) {
+			return Snapshot{}, err
 		}
+		lastErr = err
 	}
 	if lastErr == nil {
 		lastErr = errors.New("ran out of attempts to capture a coherent snapshot and gave up")
 	}
 	return Snapshot{}, lastErr
+}
+
+// retryable reports whether a later attempt may succeed where err failed: a
+// state change, a transport failure, or an HTTP 5xx, 408 or 429. A joined
+// error is retryable only if all of its errors are, so one permanent failure
+// among parallel fetches (a 401, a bad URL, an undecodable body) ends the load.
+func retryable(err error) bool {
+	if err == errStateChanged {
+		return true
+	}
+	switch e := err.(type) {
+	case *HTTPError:
+		return e.StatusCode >= 500 || e.StatusCode == http.StatusRequestTimeout || e.StatusCode == http.StatusTooManyRequests
+	case transientError:
+		return true
+	case interface{ Unwrap() []error }:
+		for _, inner := range e.Unwrap() {
+			if !retryable(inner) {
+				return false
+			}
+		}
+		return true
+	case interface{ Unwrap() error }:
+		return retryable(e.Unwrap())
+	}
+	return false
+}
+
+// loadAttempt brackets one snapshot load with change-ID reads, failing with
+// errStateChanged if they differ.
+func loadAttempt(ctx context.Context, client *Client, obs LoadObserver) (Snapshot, error) {
+	startChange, err := client.LatestChange(ctx)
+	if err != nil {
+		return Snapshot{}, fmt.Errorf("reading latest change: %w", err)
+	}
+	snap, err := loadSnapshot(ctx, client, obs)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	endChange, err := client.LatestChange(ctx)
+	if err != nil {
+		return Snapshot{}, fmt.Errorf("reading latest change: %w", err)
+	}
+	if startChange.ID != endChange.ID {
+		return Snapshot{}, fmt.Errorf("%w (%d -> %d)", errStateChanged, startChange.ID, endChange.ID)
+	}
+	snap.LatestChange = endChange
+	return snap, nil
+}
+
+// cancelled returns ctxErr, wrapping cause (the failure that led to a retry)
+// when there is one, so a cancelled retry still says why it was retrying.
+func cancelled(ctxErr, cause error) error {
+	if cause == nil {
+		return ctxErr
+	}
+	return fmt.Errorf("%w while retrying after: %w", ctxErr, cause)
+}
+
+// sleepCtx waits for d, returning ctx's error early if ctx is done first.
+func sleepCtx(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
 }
 
 type snapshotTask struct {
@@ -136,6 +215,7 @@ func SnapshotTaskCount() int {
 	return len(tasks)
 }
 
+// loadSnapshot requires a non-nil obs; LoadConsistentSnapshot supplies one.
 func loadSnapshot(ctx context.Context, c *Client, obs LoadObserver) (Snapshot, error) {
 	var snap Snapshot
 	tasks := snapshotTasks()
@@ -148,10 +228,7 @@ func loadSnapshot(ctx context.Context, c *Client, obs LoadObserver) (Snapshot, e
 	var wg sync.WaitGroup
 	for _, task := range tasks {
 		task := task
-		var progress PageProgressFunc
-		if obs != nil {
-			progress = obs.SnapshotTaskStart(task.name)
-		}
+		progress := obs.SnapshotTaskStart(task.name)
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -180,9 +257,7 @@ func loadSnapshot(ctx context.Context, c *Client, obs LoadObserver) (Snapshot, e
 		completedTasks++
 		totalRequests += result.stats.Requests
 		fetches = append(fetches, result.stats)
-		if obs != nil {
-			obs.SnapshotTaskComplete(completedTasks, len(tasks), result.stats, totalRequests)
-		}
+		obs.SnapshotTaskComplete(completedTasks, len(tasks), result.stats, totalRequests)
 	}
 	if len(errs) > 0 {
 		return Snapshot{}, errors.Join(errs...)

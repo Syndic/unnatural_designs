@@ -366,3 +366,13 @@ func TestRunAudit_RuledCheckReceivesRules(t *testing.T) {
 		t.Error("ruledCheck did not receive rules from config")
 	}
 }
+
+func TestValidateBaseURL(t *testing.T) {
+	if err := validateBaseURL(&netbox.Client{BaseURL: "http://mini.dev.yanch.ar:8000"}); err != nil {
+		t.Errorf("validateBaseURL(valid) = %v, want nil", err)
+	}
+	err := validateBaseURL(&netbox.Client{BaseURL: "mini.dev.yanch.ar:8000"})
+	if err == nil || !strings.Contains(err.Error(), "-"+flagBaseURL) {
+		t.Errorf("validateBaseURL(no scheme) = %v, want an error naming -%s", err, flagBaseURL)
+	}
+}

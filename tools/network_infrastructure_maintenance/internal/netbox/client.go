@@ -15,6 +15,8 @@ const DefaultPageSize = 1000
 const (
 	protocolHTTP        = "http://"
 	protocolHTTPS       = "https://"
+	schemeHTTP          = "http"
+	schemeHTTPS         = "https"
 	queryLimit          = "limit"
 	headerAuthorization = "Authorization"
 	headerAccept        = "Accept"
@@ -30,6 +32,23 @@ type Client struct {
 	Token      string
 	HTTPClient *http.Client
 }
+
+// HTTPError is a non-2xx response from NetBox.
+type HTTPError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *HTTPError) Error() string {
+	return fmt.Sprintf("HTTP %d: %s", e.StatusCode, e.Body)
+}
+
+// transientError marks a failure to reach NetBox or read its response, which
+// a later request need not repeat. It carries the wrapped error's message.
+type transientError struct{ err error }
+
+func (e transientError) Error() string { return e.err.Error() }
+func (e transientError) Unwrap() error { return e.err }
 
 type ObjectChange struct {
 	ID      int    `json:"id"`
@@ -112,16 +131,21 @@ func FetchAllWithProgress[T any](
 	return
 }
 
+// ResolveURL resolves path against BaseURL (or takes it as-is if absolute)
+// and adds the default page size. It rejects a URL without an http or https
+// scheme and a host, which url.Parse accepts (a missing "http://" makes the
+// host the scheme) but no request could succeed against.
 func (c *Client) ResolveURL(path string) (string, error) {
-	var u *url.URL
-	var err error
-	if strings.HasPrefix(path, protocolHTTP) || strings.HasPrefix(path, protocolHTTPS) {
-		u, err = url.Parse(path)
-	} else {
-		u, err = url.Parse(strings.TrimRight(c.BaseURL, "/") + path)
+	raw := path
+	if !strings.HasPrefix(path, protocolHTTP) && !strings.HasPrefix(path, protocolHTTPS) {
+		raw = strings.TrimRight(c.BaseURL, "/") + path
 	}
+	u, err := url.Parse(raw)
 	if err != nil {
 		return "", err
+	}
+	if (u.Scheme != schemeHTTP && u.Scheme != schemeHTTPS) || u.Host == "" {
+		return "", fmt.Errorf("URL %q needs an http:// or https:// scheme and a host", raw)
 	}
 	q := u.Query()
 	if q.Get(queryLimit) == "" {
@@ -142,15 +166,15 @@ func (c *Client) DoRequest(ctx context.Context, urlStr string) ([]byte, error) {
 	req.Header.Set(headerPragma, headerValueNoCache)
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, transientError{err}
 	}
 	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, transientError{err}
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return nil, &HTTPError{StatusCode: resp.StatusCode, Body: strings.TrimSpace(string(body))}
 	}
 	return body, nil
 }

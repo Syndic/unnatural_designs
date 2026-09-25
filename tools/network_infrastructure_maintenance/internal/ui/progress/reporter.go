@@ -90,19 +90,14 @@ func New(stderr *os.File, mode Mode, colors shared.Colorizer) Reporter {
 }
 
 // offReporter discards every event. Used for ModeOff.
-type offReporter struct{}
+type offReporter struct{ netbox.NopObserver }
 
-func (offReporter) SnapshotAttemptStart(int, int, int)                              {}
-func (offReporter) SnapshotTaskStart(string) netbox.TaskProgress                    { return nil }
-func (offReporter) SnapshotTaskComplete(int, int, netbox.FetchTiming, int)          {}
-func (offReporter) SnapshotLoadError(int, int, error)                               {}
-func (offReporter) SnapshotLoadRetryDelay(time.Duration)                            {}
-func (offReporter) Startupf(string, ...any)                                         {}
-func (offReporter) AnnounceChecks([]string)                                         {}
-func (offReporter) ChecksStart(int)                                                 {}
-func (offReporter) CheckCompleted(int, int, string, int, time.Duration)             {}
-func (offReporter) ChecksComplete(int, int, time.Duration)                          {}
-func (offReporter) Close() error                                                    { return nil }
+func (offReporter) Startupf(string, ...any)                             {}
+func (offReporter) AnnounceChecks([]string)                             {}
+func (offReporter) ChecksStart(int)                                     {}
+func (offReporter) CheckCompleted(int, int, string, int, time.Duration) {}
+func (offReporter) ChecksComplete(int, int, time.Duration)              {}
+func (offReporter) Close() error                                        { return nil }
 
 // Resolve collapses ModeAuto to a concrete mode based on the runtime
 // environment. Other modes are returned unchanged.

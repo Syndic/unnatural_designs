@@ -22,6 +22,15 @@ func fatalf(format string, args ...any) {
 	os.Exit(1)
 }
 
+// validateBaseURL checks the base URL once at startup, so a malformed flag
+// fails naming the flag rather than on the first request.
+func validateBaseURL(c *netbox.Client) error {
+	if _, err := c.ResolveURL("/"); err != nil {
+		return fmt.Errorf("invalid -%s %q: %w", flagBaseURL, c.BaseURL, err)
+	}
+	return nil
+}
+
 func main() {
 	configEnvValue := strings.TrimSpace(os.Getenv(envNetBoxAuditCfg))
 	var (
@@ -92,6 +101,9 @@ func main() {
 				MaxIdleConnsPerHost: netbox.SnapshotTaskCount(),
 			},
 		},
+	}
+	if err := validateBaseURL(client); err != nil {
+		fatalf("%v", err)
 	}
 
 	mode, err := progress.ParseMode(*progressMode)
