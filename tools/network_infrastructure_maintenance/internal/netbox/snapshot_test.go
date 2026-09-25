@@ -66,13 +66,10 @@ func (o *recordingObserver) SnapshotLoadRetryDelay(d time.Duration) {
 func TestSnapshotTaskProgressPlumbing(t *testing.T) {
 	// Empty NetBox: every collection returns zero items in a single page.
 	// One page still triggers exactly one progress callback per task.
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"count":0,"next":null,"results":[]}`))
 	}))
-	defer srv.Close()
-
 	obs := newRecordingObserver()
-	client := &Client{BaseURL: srv.URL, Token: "x", HTTPClient: srv.Client()}
 
 	// LatestChange is called twice (start/end) by LoadConsistentSnapshot;
 	// since the same handler answers everything with count:0, both calls
@@ -102,47 +99,49 @@ func TestSnapshotTaskProgressPlumbing(t *testing.T) {
 	}
 }
 
-// TestSnapshotTaskProgressNilObserver confirms loadSnapshot tolerates a nil
-// observer (passes nil progress through cleanly).
+// TestSnapshotTaskProgressNilObserver confirms a nil observer is accepted on
+// the single-attempt path.
 func TestSnapshotTaskProgressNilObserver(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"count":0,"next":null,"results":[]}`))
 	}))
-	defer srv.Close()
-
-	client := &Client{BaseURL: srv.URL, Token: "x", HTTPClient: srv.Client()}
 	if _, err := LoadConsistentSnapshot(context.Background(), client, 1, 0, nil); err != nil {
 		t.Fatalf("LoadConsistentSnapshot with nil observer: %v", err)
 	}
 }
 
-// newChangeServer answers the nth LatestChange read (from 1) with change ID
+// newTestClient serves h for the life of the test and returns a Client for it.
+func newTestClient(t *testing.T, h http.Handler) *Client {
+	t.Helper()
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+	return &Client{BaseURL: srv.URL, Token: "x", HTTPClient: srv.Client()}
+}
+
+// newChangeClient answers the nth LatestChange read (from 1) with change ID
 // changeID(n), and every other endpoint with an empty page.
-func newChangeServer(t *testing.T, changeID func(n int32) int32) *httptest.Server {
+func newChangeClient(t *testing.T, changeID func(n int32) int32) *Client {
 	t.Helper()
 	var changeReads atomic.Int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/core/object-changes/" {
 			_, _ = fmt.Fprintf(w, `{"count":1,"next":null,"results":[{"id":%d}]}`, changeID(changeReads.Add(1)))
 			return
 		}
 		_, _ = w.Write([]byte(`{"count":0,"next":null,"results":[]}`))
 	}))
-	t.Cleanup(srv.Close)
-	return srv
 }
 
-// newChangeMovingServer reports change ID 1 on attempt 1's start read and 2 on
+// newChangeMovingClient reports change ID 1 on attempt 1's start read and 2 on
 // every read after, so attempt 1 sees NetBox move and attempt 2 sees it stable.
-func newChangeMovingServer(t *testing.T) *httptest.Server {
-	return newChangeServer(t, func(n int32) int32 { return min(n, 2) })
+func newChangeMovingClient(t *testing.T) *Client {
+	return newChangeClient(t, func(n int32) int32 { return min(n, 2) })
 }
 
 // TestLoadConsistentSnapshotRetriesNilObserver covers the retry path with a nil
 // observer, which must not be dereferenced before the retry delay.
 func TestLoadConsistentSnapshotRetriesNilObserver(t *testing.T) {
-	srv := newChangeMovingServer(t)
-	client := &Client{BaseURL: srv.URL, Token: "x", HTTPClient: srv.Client()}
+	client := newChangeMovingClient(t)
 
 	snap, err := LoadConsistentSnapshot(context.Background(), client, 2, 0, nil)
 	if err != nil {
@@ -157,8 +156,7 @@ func TestLoadConsistentSnapshotRetriesNilObserver(t *testing.T) {
 // between an attempt's start and end reads is reported once as a load error
 // and once as a retry delay carrying the configured duration.
 func TestLoadConsistentSnapshotRetriesReportsToObserver(t *testing.T) {
-	srv := newChangeMovingServer(t)
-	client := &Client{BaseURL: srv.URL, Token: "x", HTTPClient: srv.Client()}
+	client := newChangeMovingClient(t)
 	obs := newRecordingObserver()
 
 	snap, err := LoadConsistentSnapshot(context.Background(), client, 2, time.Millisecond, obs)
@@ -182,8 +180,7 @@ func TestLoadConsistentSnapshotRetriesReportsToObserver(t *testing.T) {
 // every read, so no attempt is coherent: each attempt reports an error, only
 // the gaps between attempts are delayed, and the last error is returned.
 func TestLoadConsistentSnapshotGivesUpAfterMaxAttempts(t *testing.T) {
-	srv := newChangeServer(t, func(n int32) int32 { return n })
-	client := &Client{BaseURL: srv.URL, Token: "x", HTTPClient: srv.Client()}
+	client := newChangeClient(t, func(n int32) int32 { return n })
 	obs := newRecordingObserver()
 
 	_, err := LoadConsistentSnapshot(context.Background(), client, 3, time.Millisecond, obs)
@@ -205,15 +202,13 @@ func TestLoadConsistentSnapshotGivesUpAfterMaxAttempts(t *testing.T) {
 // and checks that attempt 2 runs after the retry delay and succeeds.
 func TestLoadConsistentSnapshotRetriesAfterFetchError(t *testing.T) {
 	var deviceReads atomic.Int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/dcim/devices/" && deviceReads.Add(1) == 1 {
 			http.Error(w, "boom", http.StatusInternalServerError)
 			return
 		}
 		_, _ = w.Write([]byte(`{"count":0,"next":null,"results":[]}`))
 	}))
-	defer srv.Close()
-	client := &Client{BaseURL: srv.URL, Token: "x", HTTPClient: srv.Client()}
 	obs := newRecordingObserver()
 
 	snap, err := LoadConsistentSnapshot(context.Background(), client, 2, time.Millisecond, obs)
@@ -243,8 +238,7 @@ func (o cancellingObserver) SnapshotLoadRetryDelay(time.Duration) { o.cancel() }
 // start of an hour-long retry delay; the load must return context.Canceled
 // rather than wait the delay out.
 func TestLoadConsistentSnapshotRetryDelayHonoursCancel(t *testing.T) {
-	srv := newChangeMovingServer(t)
-	client := &Client{BaseURL: srv.URL, Token: "x", HTTPClient: srv.Client()}
+	client := newChangeMovingClient(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	obs := cancellingObserver{newRecordingObserver(), cancel}
@@ -259,7 +253,7 @@ func TestLoadConsistentSnapshotRetryDelayHonoursCancel(t *testing.T) {
 // the returned error annotates each failure with its task name and exposes the
 // underlying HTTP error through the unwrap chain (errors.Join + %w).
 func TestLoadSnapshotJoinsTaskErrors(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Fail two task endpoints with HTTP 500; respond empty to everything else
 		// (including LatestChange's /api/core/object-changes/).
 		if strings.Contains(r.URL.Path, "/api/dcim/devices/") || strings.Contains(r.URL.Path, "/api/dcim/cables/") {
@@ -268,9 +262,6 @@ func TestLoadSnapshotJoinsTaskErrors(t *testing.T) {
 		}
 		_, _ = w.Write([]byte(`{"count":0,"next":null,"results":[]}`))
 	}))
-	defer srv.Close()
-
-	client := &Client{BaseURL: srv.URL, Token: "x", HTTPClient: srv.Client()}
 	_, err := LoadConsistentSnapshot(context.Background(), client, 1, 0, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
