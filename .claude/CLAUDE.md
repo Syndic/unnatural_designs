@@ -127,8 +127,10 @@ check.
 - **A matrix job is requirable only through a fan-in**, since its own check name carries the row
   that produced it. The fan-in carries `if: always()` for the reason the section below gives: a
   failed matrix would otherwise skip it, and a skipped required check reads as a pass.
-  `//meta/scripts:test_ci_fan_ins` holds ci.yml's two to that shape, and fails a matrix job added
-  with no fan-in at all — the state `golangci-lint` was in, which is what blocked requiring it.
+  `//meta/scripts:test_ci_enforcement_manifest` holds every fan-in in every workflow to that
+  shape, and fails a matrix job added with no fan-in at all — the state `golangci-lint` was in,
+  which is what blocked requiring it. It is the one home for that shape: a per-workflow test earns
+  a place beside it only for what it cannot see, and says so in its docstring.
 - **`meta/scripts/ci_enforcement_manifest.py` records the list**, and
   `//meta/scripts:test_ci_enforcement_manifest` fails when it finds a job that is in neither of
   its two lists — so a job added here is no longer un-enforced by default and silently. Two axes
@@ -240,7 +242,8 @@ for each set lives beside it — this section carries only what is invisible fro
   what `select` does, but asserts nothing about their contents.
   `:test_path_classification_pattern_sets` covers the sets. The suites used to be one, reading
   `--rule` arguments back out of the workflows to hold two copies together — a job that exists only
-  while there are two copies.
+  while there are two copies. What a workflow's `--emit` names is
+  `:test_classify_changed_paths_callers`'s, which finds every caller by glob.
 
 ## Superseding CI runs
 
@@ -276,7 +279,9 @@ it would start work on the run this group just superseded — which for devconta
 fan-ins are the exception, and `always()` there is load-bearing: it is what lets one see a
 `cancelled` result and refuse it, so a cancelled run still blocks the merge even though the
 `!cancelled()` job beside it reported a passing `skipped`.
-//meta/scripts:test_devcontainer_required_checks holds one of each.
+//meta/scripts:test_ci_enforcement_manifest holds the fan-ins to `always()`; it accepts either
+condition on a required job, so //meta/scripts:test_devcontainer_required_checks is what holds
+`build-and-smoke-test` to `!cancelled()`.
 
 ## CodeQL runs as advanced setup
 
@@ -374,9 +379,9 @@ configuration that runs CodeQL with no workflow file in the repo. Load-bearing f
   whose analysis has to build, and so the one that needs a toolchain on PATH.
 - **`CodeQL Analysis (all languages)` is the name for the ruleset to require**, not the
   per-language jobs — the rule and its reasoning are under "Enforcement lives in the ruleset, not
-  in `needs`". What is local to this job: an added language needs no ruleset edit, and
-  `//meta/scripts:test_codeql_toolchain` rather than `:test_ci_fan_ins` is what holds this
-  workflow and the docs that quote it to the one string.
+  in `needs`". What is local to this job: an added language needs no ruleset edit.
+  `//meta/scripts:test_ci_enforcement_manifest` holds the workflow and README to the one string,
+  and `:test_codeql_toolchain` holds this file's copy.
 - **What the analysis *found* is gated by a second, separate rule.** Requiring `CodeQL Analysis
   (all languages)` gates on the analysis running and succeeding, not on its results. Those are
   gated by the `code_scanning` ruleset rule, where `CodeQL` sits alongside `Trivy` at

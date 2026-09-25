@@ -40,6 +40,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 import yaml
+from meta.scripts._workflows import job_condition, job_needs
 from meta.scripts.ci_enforcement_manifest import (
     FAN_IN_EXEMPTIONS,
     NOT_REQUIRED,
@@ -67,10 +68,6 @@ _NOT_SUCCESS = ("failure", "cancelled", "skipped")
 
 # GitHub treats these as the same condition, and a fan-in written either way behaves identically.
 _ALWAYS = ("always()", "${{ always() }}")
-
-# The `${{ }}` wrapper is optional on `if:` and carries no meaning, so it is normalised away
-# before a condition is compared.
-_WRAPPED_RE = re.compile(r"^\$\{\{(.*)\}\}$", re.S)
 
 # The two conditions that run whatever happened upstream. A required job may carry one of these
 # and nothing else: GitHub reports a job skipped by a false `if:` as `skipped`, and branch
@@ -156,12 +153,6 @@ class Job(NamedTuple):
         return f"{self.workflow}:{self.job_id}"
 
 
-def _needs(body: dict) -> tuple[str, ...]:
-    """A job's `needs:`. GitHub takes a bare scalar too, which `tuple()` would shred into chars."""
-    declared = body.get("needs", [])
-    return (declared,) if isinstance(declared, str) else tuple(declared)
-
-
 def _pull_request_jobs() -> list[Job]:
     """Every job in every workflow that runs on `pull_request`.
 
@@ -180,7 +171,7 @@ def _pull_request_jobs() -> list[Job]:
         if _PULL_REQUEST not in triggers(workflow):
             continue
         for job_id, body in (workflow.get("jobs") or {}).items():
-            found.append(Job(name, job_id, body.get("name") or job_id, _needs(body), body))
+            found.append(Job(name, job_id, body.get("name") or job_id, job_needs(body), body))
     return found
 
 
@@ -268,10 +259,9 @@ def matrix_rows(job: Job) -> int:
 def run_fan_in(job: Job, results: dict[str, str]) -> subprocess.CompletedProcess:
     """Run a fan-in's real shell with each `needs.<job>.result` replaced by a given outcome.
 
-    Executed rather than pattern-matched, for the reason //meta/scripts:test_codeql_toolchain
-    gives: asserting on the spelling would fail an idiom that behaves identically and pass one that
-    does not. The tree holds two idioms — four `if` fan-ins and `base-image-all`'s `case` — and
-    neither is privileged here.
+    Executed rather than pattern-matched: asserting on the spelling would fail an idiom that behaves
+    identically and pass one that does not. The tree holds two idioms — `if` fan-ins and
+    `base-image-all`'s `case` — and neither is privileged here.
     """
     scripts = [step["run"] for step in job.body.get("steps", []) if "run" in step]
     if len(scripts) != 1:
@@ -288,20 +278,6 @@ def run_fan_in(job: Job, results: dict[str, str]) -> subprocess.CompletedProcess
             raise AssertionError(f"{job} does not read {expression}")
         script = script.replace(expression, result)
     return subprocess.run(["bash", "-c", script], capture_output=True, text=True)
-
-
-def condition(job: Job) -> str | None:
-    """A job's `if:`, with an optional `${{ }}` wrapper and surrounding whitespace removed.
-
-    GitHub evaluates this, not bash, so it is the one thing here with no runnable equivalent and
-    has to be compared rather than exercised. Only the wrapper is normalised away, since it is
-    optional and carries no meaning; anything past that is a different condition.
-    """
-    declared = job.body.get("if")
-    if not isinstance(declared, str):
-        return declared
-    hit = _WRAPPED_RE.match(declared.strip())
-    return (hit.group(1) if hit else declared).strip()
 
 
 def branch_filter_problem(filters: dict) -> str | None:
@@ -339,6 +315,17 @@ def exemption_for(job: Job, upstream: str, result: str) -> FanInExemption | None
     return next(
         (e for e in FAN_IN_EXEMPTIONS if (e.fan_in, e.upstream, e.accepted) == wanted), None
     )
+
+
+def exempted_fan_in(exemption: FanInExemption) -> Job:
+    """The one blocking fan-in an exemption names. Job ids are per workflow, so two is a failure."""
+    found = [job for job in blocking_fan_ins() if job.job_id == exemption.fan_in]
+    if len(found) != 1:
+        raise AssertionError(
+            f"FAN_IN_EXEMPTIONS names `{exemption.fan_in}`, which matches {len(found)} blocking "
+            "fan-ins; it has to name exactly one"
+        )
+    return found[0]
 
 
 def collapsed_readme() -> str:
@@ -525,7 +512,7 @@ class RequiredReachTest(unittest.TestCase):
     def test_no_required_check_is_gated_by_its_own_condition(self):
         """The trigger decides whether the workflow runs; this decides whether the job does."""
         for job in self.required_jobs():
-            gate = condition(job)
+            gate = job_condition(job.body)
             if gate is None:
                 continue
             with self.subTest(check=job.check):
@@ -654,6 +641,35 @@ class FanInStrictnessTest(unittest.TestCase):
                                 f"`{upstream}`, but it refuses it. The exemption claims more than "
                                 f"the shell does — delete it. Recorded reason: {exemption.reason}",
                             )
+
+    def test_an_exemption_never_hides_another_upstreams_failure(self):
+        """Failures arrive together: a gate that fails skips the matrix it gates.
+
+        The test above changes one upstream at a time, holding the rest at `success`, so it never
+        sees the exempted result arrive *with* a failure. A fan-in that stops at the exempted
+        result — `skipped` from `base-image`, say — before asking about the others passes it, and
+        passes exactly the run where `changes` failed and left `base-image` skipped behind it.
+        """
+        for exemption in FAN_IN_EXEMPTIONS:
+            job = exempted_fan_in(exemption)
+            for upstream in job.needs:
+                if upstream == exemption.upstream:
+                    continue
+                for result in _NOT_SUCCESS:
+                    if exemption_for(job, upstream, result) is not None:
+                        continue
+                    results = dict.fromkeys(job.needs, "success")
+                    results[exemption.upstream] = exemption.accepted
+                    results[upstream] = result
+                    done = run_fan_in(job, results)
+                    with self.subTest(job=str(job), upstream=upstream, result=result):
+                        self.assertNotEqual(
+                            done.returncode,
+                            0,
+                            f"`{job}` accepts `{result}` from `{upstream}` whenever "
+                            f"`{exemption.upstream}` reports `{exemption.accepted}`, so the "
+                            "exemption waives more than the one edge it names",
+                        )
 
 
 class ExemptionTest(unittest.TestCase):

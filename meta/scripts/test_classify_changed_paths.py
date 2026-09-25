@@ -1,6 +1,7 @@
 """Tests for classify_changed_paths.py.
 
-Scoped to the script: the pure functions (is_branch_creation, select, classify, format_outputs)
+Scoped to the script: the pure functions (is_branch_creation, select, classify, format_outputs,
+emitted_sets)
 carry all the non-I/O logic, and the git diff and $GITHUB_OUTPUT wiring is exercised end-to-end by
 the caller workflows on real PRs.
 """
@@ -9,6 +10,7 @@ import unittest
 
 from meta.scripts.classify_changed_paths import (
     classify,
+    emitted_sets,
     format_outputs,
     is_branch_creation,
     select,
@@ -118,6 +120,29 @@ class TestFormatOutputs(unittest.TestCase):
 
     def test_empty(self):
         self.assertEqual(format_outputs({}), "")
+
+
+class TestEmittedSets(unittest.TestCase):
+    """Reading a caller's command line back, the way the workflow guards need to."""
+
+    def test_continued_lines_are_one_command(self):
+        command = (
+            "python3 meta/scripts/classify_changed_paths.py \\\n"
+            '  --base "$base" \\\n'
+            "  --emit changed \\\n"
+            "  --emit base\n"
+        )
+        self.assertEqual(emitted_sets(command), ["changed", "base"])
+
+    def test_the_equals_spelling_counts_too(self):
+        # argparse accepts it, so a guard that missed it would pass a name it never checked.
+        self.assertEqual(emitted_sets("x.py --base b --emit=python --emit go"), ["python", "go"])
+
+    def test_the_base_argument_is_not_a_set(self):
+        self.assertEqual(emitted_sets("x.py --base origin/main"), [])
+
+    def test_a_trailing_flag_with_no_value_names_nothing(self):
+        self.assertEqual(emitted_sets("x.py --emit"), [])
 
 
 if __name__ == "__main__":

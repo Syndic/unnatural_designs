@@ -13,21 +13,18 @@ rather than a hand-copy of anything in the repo, so it is not asserted; the buil
 a language that cannot use `none` is a language that needs a toolchain installed for it — and an
 entry that names no mode at all is the same case wearing a default.
 
-The `codeql-all` fan-in is here for the same reason. It is the name the ruleset requires, so it is
-what makes every matrix row required — but only while it depends on the matrix and runs when the
-matrix fails. Drop `if: always()` and the job is skipped rather than failed, which branch
-protection reads as a pass: the gate is still listed, still green, and no longer gating.
+The `codeql-all` fan-in is not here: its name, `if: always()` and how its shell answers each result
+are `//meta/scripts:test_ci_enforcement_manifest`'s, which holds every fan-in in every workflow.
+What stays is CLAUDE.md's copy of its name, which that file does not read.
 
-The extraction report is the third: it is what turns "the analysis succeeded" back into a claim
-about whether the code was read, and it can only do that from the SARIF the analyze step wrote —
-so its position after that step, and the `id:` it reads the path from, are held here. What the
-report *says*, and the file-coverage gate it fails on, are
+The extraction report is the other coupling: it is what turns "the analysis succeeded" back into
+a claim about whether the code was read, and it can only do that from the SARIF the analyze step
+wrote — so its position after that step, and the `id:` it reads the path from, are held here. What
+the report *says*, and the file-coverage gate it fails on, are
 `//meta/scripts:test_codeql_extraction_report`'s half.
 """
 
 import re
-import subprocess
-import textwrap
 import unittest
 from pathlib import Path
 
@@ -54,10 +51,9 @@ _PINNED_FEATURE_ENV = {
     "CODEQL_ACTION_EXPORT_DIAGNOSTICS": "true",
 }
 
-# The context branch protection requires. It is a string in repo settings, which nothing here can
-# read, so the coupling this file can hold is between the job and the docs that quote it.
-_FAN_IN_NAME = "CodeQL Analysis (all languages)"
-_DOCS_NAMING_THE_FAN_IN = (_ROOT / "README.md", _ROOT / ".claude" / "CLAUDE.md")
+# README's copy of the fan-in's name is the manifest test's; CLAUDE.md's is only held here.
+_CLAUDE_MD = _ROOT / ".claude" / "CLAUDE.md"
+_JOB_NAME_RE = re.compile(r"^    name: (.+)$", re.M)
 
 
 # Trailing comments introduce the *next* job rather than closing this one, and this file writes
@@ -82,20 +78,6 @@ def step_block(block: str, uses: str) -> str:
     rest = block[start:]
     end = re.search(r"^      - ", rest[1:], re.M)
     return rest[: end.start() + 1] if end else rest
-
-
-# The `run: |` body, dedented. Asserting on the shell's *spelling* would fail the `case` form
-# devcontainer.yml uses for the same job while it behaved identically, so the tests run it instead.
-_RUN_SCRIPT_RE = re.compile(r"^ +run: \|\n((?:^ {10}.*\n|^\n)+)", re.M)
-
-
-def run_fan_in(result: str) -> subprocess.CompletedProcess:
-    """Run the fan-in's shell with `result` standing in for the matrix job's outcome."""
-    script = _RUN_SCRIPT_RE.search(job_block(_WORKFLOW.read_text(encoding="utf-8"), "codeql-all"))
-    if script is None:
-        raise AssertionError("no `run: |` script in the codeql-all job")
-    body = textwrap.dedent(script.group(1)).replace("${{ needs.codeql.result }}", result)
-    return subprocess.run(["bash", "-c", body], capture_output=True, text=True)
 
 
 _CODEQL = job_block(_WORKFLOW.read_text(encoding="utf-8"), "codeql")
@@ -154,54 +136,6 @@ class MatrixTest(unittest.TestCase):
             "codeql-action/init, the way the setup-go step does for Go — wire one up (and widen "
             "that step's `if:`) before adding it here",
         )
-
-
-class FanInTest(unittest.TestCase):
-    """The job the ruleset names, and the properties that make requiring it mean something."""
-
-    def setUp(self):
-        self.fan_in = job_block(_WORKFLOW.read_text(encoding="utf-8"), "codeql-all")
-
-    def test_fan_in_depends_on_the_matrix_job(self):
-        self.assertIn(
-            "needs: [codeql]",
-            self.fan_in,
-            "`codeql-all` is the required check; a matrix row it does not depend on is a row "
-            "nothing gates",
-        )
-
-    def test_fan_in_runs_even_when_the_matrix_fails(self):
-        self.assertIn(
-            "if: always()",
-            self.fan_in,
-            "without `if: always()` a failed matrix skips `codeql-all`, and branch protection "
-            "counts a skipped required check as passed",
-        )
-
-    def test_fan_in_is_named_what_branch_protection_names(self):
-        """The ruleset holds this string literally, and no test can read the ruleset."""
-        self.assertIn(
-            f"name: {_FAN_IN_NAME}",
-            self.fan_in,
-            "renaming this job silently decouples it from the required-status-check context, "
-            "which is repo settings — rename both, or neither",
-        )
-
-    def test_fan_in_passes_when_every_row_succeeded(self):
-        done = run_fan_in("success")
-        self.assertEqual(done.returncode, 0, f"{done.stdout}{done.stderr}".strip())
-
-    def test_fan_in_fails_on_anything_else(self):
-        """Ran against the real shell, so the `case` idiom next door would pass this too."""
-        for result in ("failure", "cancelled", "skipped"):
-            with self.subTest(result=result):
-                self.assertNotEqual(
-                    run_fan_in(result).returncode,
-                    0,
-                    f"a matrix that reports `{result}` is a language that was not analysed; "
-                    "unlike devcontainer.yml's path-gated `base-image-all`, nothing gates this "
-                    "matrix, so there is no benign reason for a row to go missing",
-                )
 
 
 class ToolchainStepTest(unittest.TestCase):
@@ -285,12 +219,14 @@ class ExtractionReportStepTest(unittest.TestCase):
 
 
 class DocumentedNameTest(unittest.TestCase):
-    """Three files quote the required check by name; none of them is the ruleset."""
+    """CLAUDE.md names the check to require; the manifest test reads README, not this."""
 
-    def test_docs_name_the_fan_in(self):
-        for doc in _DOCS_NAMING_THE_FAN_IN:
-            with self.subTest(doc=doc.name):
-                self.assertIn(_FAN_IN_NAME, doc.read_text(encoding="utf-8"))
+    def test_claude_md_names_the_fan_in(self):
+        """Read off the job, so a rename the manifest and README follow cannot leave this behind."""
+        found = _JOB_NAME_RE.search(job_block(_WORKFLOW.read_text(encoding="utf-8"), "codeql-all"))
+        if found is None:
+            self.fail(f"no job-level `name:` on `codeql-all` in {_WORKFLOW.name}")
+        self.assertIn(found.group(1), _CLAUDE_MD.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

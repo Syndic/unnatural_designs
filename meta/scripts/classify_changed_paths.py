@@ -45,6 +45,10 @@ from meta.scripts.path_classification_pattern_sets import SETS
 # that first creates a branch. Any length of zeros counts (abbreviated or full 40/64 hex).
 _NULL_OID_RE = re.compile(r"\A0+\Z")
 
+# This script's own flag, so a caller's command line can be read back by the one file that parses
+# it for real.
+EMIT = "--emit"
+
 
 # ── Pure functions (the part the tests exercise) ──────────────────────────────
 
@@ -70,6 +74,22 @@ def select(names: list[str]) -> dict[str, tuple[str, ...]]:
     if missing:
         raise SystemExit(f"no such pattern set(s): {', '.join(missing)}")
     return {name: SETS[name] for name in names}
+
+
+def emitted_sets(command: str) -> list[str]:
+    """The set names a shell command asks this script for, in order, read off its `--emit`s.
+
+    Line continuations are joined first, since every caller splits the invocation across lines.
+    Both argparse spellings count: `--emit NAME` and `--emit=NAME`.
+    """
+    words = command.replace("\\\n", " ").split()
+    names = []
+    for index, word in enumerate(words):
+        if word == EMIT and index + 1 < len(words):
+            names.append(words[index + 1])
+        elif word.startswith(EMIT + "="):
+            names.append(word.removeprefix(EMIT + "="))
+    return names
 
 
 def format_outputs(result: dict[str, bool]) -> str:
@@ -108,7 +128,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base", required=True, help="Base ref or SHA to diff HEAD against.")
     parser.add_argument(
-        "--emit",
+        EMIT,
         action="append",
         default=[],
         required=True,

@@ -169,7 +169,7 @@ jobs:
   # Strict on `skipped` like security.yml's siblings: a row that never ran is a module that was
   # never linted, and `needs: [modules-check]` is the way that happens here. `if: always()` is
   # load-bearing — without it a failed matrix skips this job, and a skipped check counts as
-  # passing. //meta/scripts:test_ci_fan_ins keeps both.
+  # passing. //meta/scripts:test_ci_enforcement_manifest keeps both.
   golangci-lint-all:
     name: golangci-lint (all modules)
     runs-on: ubuntu-latest

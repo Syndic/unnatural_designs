@@ -81,15 +81,11 @@ class TestFindCgoInSources(unittest.TestCase):
             self.assertEqual(offenders, [Path("a/foo.go"), Path("b/bar.go")])
 
     def test_excludes_bazel_dirs(self):
+        # Wiring only: that the scan walks through find_files. The skip list itself is
+        # test__workspace.py's.
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             write(root, "bazel-out/pkg/foo.go", 'package foo\nimport "C"\n')
-            self.assertEqual(find_cgo_in_sources(root), [])
-
-    def test_excludes_git_dir(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            write(root, ".git/hooks/foo.go", 'package foo\nimport "C"\n')
             self.assertEqual(find_cgo_in_sources(root), [])
 
 
