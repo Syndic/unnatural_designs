@@ -65,7 +65,9 @@ func LoadConsistentSnapshot(ctx context.Context, client *Client, maxAttempts int
 			obs.SnapshotLoadError(attempt, maxAttempts, lastErr)
 		}
 		if attempt < maxAttempts {
-			obs.SnapshotLoadRetryDelay(retryDelay)
+			if obs != nil {
+				obs.SnapshotLoadRetryDelay(retryDelay)
+			}
 			time.Sleep(retryDelay)
 		}
 	}

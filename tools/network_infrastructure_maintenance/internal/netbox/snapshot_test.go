@@ -2,10 +2,12 @@ package netbox
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -17,6 +19,8 @@ type recordingObserver struct {
 	starts    []string
 	completes []string
 	ticks     map[string]int // task name -> number of progress callbacks fired
+	loadErrs  []error
+	delays    []time.Duration
 }
 
 func newRecordingObserver() *recordingObserver {
@@ -42,8 +46,17 @@ func (o *recordingObserver) SnapshotTaskComplete(_ int, _ int, stats FetchTiming
 	o.completes = append(o.completes, stats.Name)
 }
 
-func (o *recordingObserver) SnapshotLoadError(int, int, error) {}
-func (o *recordingObserver) SnapshotLoadRetryDelay(time.Duration) {}
+func (o *recordingObserver) SnapshotLoadError(_ int, _ int, err error) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.loadErrs = append(o.loadErrs, err)
+}
+
+func (o *recordingObserver) SnapshotLoadRetryDelay(d time.Duration) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.delays = append(o.delays, d)
+}
 
 // TestSnapshotTaskProgressPlumbing verifies that the per-task progress
 // callback returned from SnapshotTaskStart is plumbed all the way through
@@ -99,6 +112,67 @@ func TestSnapshotTaskProgressNilObserver(t *testing.T) {
 	client := &Client{BaseURL: srv.URL, Token: "x", HTTPClient: srv.Client()}
 	if _, err := LoadConsistentSnapshot(context.Background(), client, 1, 0, nil); err != nil {
 		t.Fatalf("LoadConsistentSnapshot with nil observer: %v", err)
+	}
+}
+
+// newChangeMovingServer answers LatestChange with change ID 1 on attempt 1's
+// start read and 2 on every read after, so attempt 1 sees NetBox move and
+// attempt 2 sees it stable. Every other endpoint returns an empty page.
+func newChangeMovingServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	var changeReads atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/core/object-changes/" {
+			id := 2
+			if changeReads.Add(1) == 1 {
+				id = 1
+			}
+			_, _ = fmt.Fprintf(w, `{"count":1,"next":null,"results":[{"id":%d}]}`, id)
+			return
+		}
+		_, _ = w.Write([]byte(`{"count":0,"next":null,"results":[]}`))
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// TestLoadConsistentSnapshotRetriesNilObserver covers the retry path with a nil
+// observer, which must not be dereferenced before the retry delay.
+func TestLoadConsistentSnapshotRetriesNilObserver(t *testing.T) {
+	srv := newChangeMovingServer(t)
+	client := &Client{BaseURL: srv.URL, Token: "x", HTTPClient: srv.Client()}
+
+	snap, err := LoadConsistentSnapshot(context.Background(), client, 2, 0, nil)
+	if err != nil {
+		t.Fatalf("LoadConsistentSnapshot: %v", err)
+	}
+	if snap.SnapshotAttempts != 2 {
+		t.Errorf("SnapshotAttempts=%d, want 2", snap.SnapshotAttempts)
+	}
+}
+
+// TestLoadConsistentSnapshotRetriesReportsToObserver checks that a change
+// between an attempt's start and end reads is reported once as a load error
+// and once as a retry delay.
+func TestLoadConsistentSnapshotRetriesReportsToObserver(t *testing.T) {
+	srv := newChangeMovingServer(t)
+	client := &Client{BaseURL: srv.URL, Token: "x", HTTPClient: srv.Client()}
+	obs := newRecordingObserver()
+
+	snap, err := LoadConsistentSnapshot(context.Background(), client, 2, 0, obs)
+	if err != nil {
+		t.Fatalf("LoadConsistentSnapshot: %v", err)
+	}
+	if snap.SnapshotAttempts != 2 {
+		t.Errorf("SnapshotAttempts=%d, want 2", snap.SnapshotAttempts)
+	}
+	if got := len(obs.loadErrs); got != 1 {
+		t.Errorf("SnapshotLoadError fired %d times, want 1: %v", got, obs.loadErrs)
+	} else if !strings.Contains(obs.loadErrs[0].Error(), "(1 -> 2)") {
+		t.Errorf("load error %q does not name the moved change IDs", obs.loadErrs[0])
+	}
+	if got := len(obs.delays); got != 1 {
+		t.Errorf("SnapshotLoadRetryDelay fired %d times, want 1", got)
 	}
 }
 
