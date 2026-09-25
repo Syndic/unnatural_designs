@@ -344,3 +344,138 @@ func TestLoadSnapshotJoinsTaskErrors(t *testing.T) {
 		t.Errorf("Unwrap() returned %d errors, want 2", got)
 	}
 }
+
+func TestRetryable(t *testing.T) {
+	permanent := &HTTPError{StatusCode: http.StatusUnauthorized}
+	transient := &HTTPError{StatusCode: http.StatusBadGateway}
+	for _, tc := range []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"state changed", fmt.Errorf("%w (1 -> 2)", errStateChanged), true},
+		{"transport failure", transientError{errors.New("connection refused")}, true},
+		{"HTTP 500", &HTTPError{StatusCode: http.StatusInternalServerError}, true},
+		{"HTTP 408", &HTTPError{StatusCode: http.StatusRequestTimeout}, true},
+		{"HTTP 429", &HTTPError{StatusCode: http.StatusTooManyRequests}, true},
+		{"HTTP 401", permanent, false},
+		{"HTTP 403", &HTTPError{StatusCode: http.StatusForbidden}, false},
+		{"HTTP 404", &HTTPError{StatusCode: http.StatusNotFound}, false},
+		{"wrapped HTTP 502", fmt.Errorf("reading latest change: %w", transient), true},
+		{"joined, all retryable", errors.Join(fmt.Errorf("a: %w", transient), transientError{errors.New("reset")}), true},
+		{"joined, one permanent", errors.Join(fmt.Errorf("a: %w", transient), fmt.Errorf("b: %w", permanent)), false},
+		{"unclassified error", errors.New("invalid character '<' looking for beginning of value"), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := retryable(tc.err); got != tc.want {
+				t.Errorf("retryable(%v) = %v, want %v", tc.err, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestLoadConsistentSnapshotPermanentFailureIsNotRetried checks that a failure
+// no retry can fix ends the load on attempt 1, with no retry delay.
+func TestLoadConsistentSnapshotPermanentFailureIsNotRetried(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		fail map[string]int // request path -> status to answer it with
+	}{
+		{"401 on the first change read", map[string]int{"/api/core/object-changes/": http.StatusUnauthorized}},
+		{"403 on a collection fetch", map[string]int{"/api/dcim/devices/": http.StatusForbidden}},
+		{"401 alongside a 500", map[string]int{"/api/dcim/devices/": http.StatusUnauthorized, "/api/dcim/cables/": http.StatusInternalServerError}},
+		{"404 on a collection fetch", map[string]int{"/api/dcim/devices/": http.StatusNotFound}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var changeReads atomic.Int32
+			client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/api/core/object-changes/" {
+					changeReads.Add(1)
+				}
+				if status, ok := tc.fail[r.URL.Path]; ok {
+					http.Error(w, "no", status)
+					return
+				}
+				_, _ = w.Write([]byte(`{"count":0,"next":null,"results":[]}`))
+			}))
+			obs := newRecordingObserver()
+
+			_, err := LoadConsistentSnapshot(context.Background(), client, 5, time.Millisecond, obs)
+			var httpErr *HTTPError
+			if !errors.As(err, &httpErr) {
+				t.Fatalf("err = %v, want an *HTTPError", err)
+			}
+			if len(obs.delays) != 0 {
+				t.Errorf("retry delays %v reported, want none", obs.delays)
+			}
+			if got := changeReads.Load(); got != 1 {
+				t.Errorf("change read %d times, want 1 (attempt 1's start read only)", got)
+			}
+		})
+	}
+}
+
+// TestLoadConsistentSnapshotMalformedURLIsNotRetried covers a failure that
+// happens before any request is sent.
+func TestLoadConsistentSnapshotMalformedURLIsNotRetried(t *testing.T) {
+	client := &Client{BaseURL: "http://[::1", Token: "x", HTTPClient: http.DefaultClient}
+	obs := newRecordingObserver()
+
+	if _, err := LoadConsistentSnapshot(context.Background(), client, 5, time.Millisecond, obs); err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if len(obs.delays) != 0 {
+		t.Errorf("retry delays %v reported, want none", obs.delays)
+	}
+}
+
+// TestLoadConsistentSnapshotRetriesThrottling checks that 408 and 429, the
+// 4xx statuses that mean "try again later", are retried.
+func TestLoadConsistentSnapshotRetriesThrottling(t *testing.T) {
+	for _, status := range []int{http.StatusRequestTimeout, http.StatusTooManyRequests} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			var changeReads atomic.Int32
+			client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/api/core/object-changes/" && changeReads.Add(1) == 1 {
+					http.Error(w, "later", status)
+					return
+				}
+				_, _ = w.Write([]byte(`{"count":0,"next":null,"results":[]}`))
+			}))
+
+			snap, err := LoadConsistentSnapshot(context.Background(), client, 2, time.Millisecond, nil)
+			if err != nil {
+				t.Fatalf("LoadConsistentSnapshot: %v", err)
+			}
+			if snap.SnapshotAttempts != 2 {
+				t.Errorf("SnapshotAttempts=%d, want 2", snap.SnapshotAttempts)
+			}
+		})
+	}
+}
+
+// TestLoadConsistentSnapshotRetriesTransportFailure drops the connection on the
+// first change read, so the client sees a transport error rather than a status.
+func TestLoadConsistentSnapshotRetriesTransportFailure(t *testing.T) {
+	var changeReads atomic.Int32
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/core/object-changes/" && changeReads.Add(1) == 1 {
+			conn, _, err := http.NewResponseController(w).Hijack()
+			if err != nil {
+				t.Errorf("hijack: %v", err)
+				return
+			}
+			_ = conn.Close()
+			return
+		}
+		_, _ = w.Write([]byte(`{"count":0,"next":null,"results":[]}`))
+	}))
+
+	snap, err := LoadConsistentSnapshot(context.Background(), client, 2, time.Millisecond, nil)
+	if err != nil {
+		t.Fatalf("LoadConsistentSnapshot: %v", err)
+	}
+	if snap.SnapshotAttempts != 2 {
+		t.Errorf("SnapshotAttempts=%d, want 2", snap.SnapshotAttempts)
+	}
+}

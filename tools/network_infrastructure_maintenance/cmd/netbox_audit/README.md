@@ -21,8 +21,10 @@ By default the tool prints a human-readable report to stdout and progress messag
 1. **Snapshot** — A snapshot of NetBox is taken: First, the latest changelog entry is read. Then all
    data is fetched in parallel. Finally, the latest changelog entry is compared to the first. If the
    two entries differ it implies NetBox has changed mid-fetch and the snapshot must be retried. This
-   guarantees that checks operate on a single consistent point-in-time view. A failed request is
-   retried the same way; see `-max-snapshot-attempts` and `-snapshot-retry-delay` in OPERATION.md.
+   guarantees that checks operate on a single consistent point-in-time view. A request that fails
+   temporarily (a network error, or HTTP 5xx, 408 or 429) is retried the same way; any other
+   failure, such as a rejected token, stops the audit at once. See `-max-snapshot-attempts` and
+   `-snapshot-retry-delay` in OPERATION.md.
 
 2. **Checks** — The configured checks run in parallel against the in-memory snapshot. Failed checks
    produce "findings". Findings are sorted before output to make reports reproducible.

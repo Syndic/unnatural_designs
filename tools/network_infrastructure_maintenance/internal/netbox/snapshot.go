@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"sync"
 	"time"
 )
@@ -42,8 +43,9 @@ func (NopObserver) SnapshotLoadRetryDelay(time.Duration)            {}
 var errStateChanged = errors.New("NetBox state changed during load")
 
 // LoadConsistentSnapshot fetches a consistent snapshot from NetBox, retrying
-// up to maxAttempts times, retryDelay apart, if any request fails or the data
-// changes during the fetch. Cancelling ctx stops it without a retry. A nil
+// up to maxAttempts times, retryDelay apart, if a request fails in a way a
+// retry may fix (see retryable) or the data changes during the fetch.
+// Cancelling ctx or any other failure stops it without a retry. A nil
 // interface obs receives no notifications; a typed-nil obs is called as-is.
 func LoadConsistentSnapshot(ctx context.Context, client *Client, maxAttempts int, retryDelay time.Duration, obs LoadObserver) (Snapshot, error) {
 	if obs == nil {
@@ -69,6 +71,9 @@ func LoadConsistentSnapshot(ctx context.Context, client *Client, maxAttempts int
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return Snapshot{}, ctxErr
 		}
+		if !retryable(err) {
+			return Snapshot{}, err
+		}
 		obs.SnapshotLoadError(attempt, maxAttempts, err)
 		lastErr = err
 	}
@@ -76,6 +81,32 @@ func LoadConsistentSnapshot(ctx context.Context, client *Client, maxAttempts int
 		lastErr = errors.New("ran out of attempts to capture a coherent snapshot and gave up")
 	}
 	return Snapshot{}, lastErr
+}
+
+// retryable reports whether a later attempt may succeed where err failed: a
+// state change, a transport failure, or an HTTP 5xx, 408 or 429. A joined
+// error is retryable only if all of its errors are, so one permanent failure
+// among parallel fetches (a 401, a bad URL, an undecodable body) ends the load.
+func retryable(err error) bool {
+	if err == errStateChanged {
+		return true
+	}
+	switch e := err.(type) {
+	case *HTTPError:
+		return e.StatusCode >= 500 || e.StatusCode == http.StatusRequestTimeout || e.StatusCode == http.StatusTooManyRequests
+	case transientError:
+		return true
+	case interface{ Unwrap() []error }:
+		for _, inner := range e.Unwrap() {
+			if !retryable(inner) {
+				return false
+			}
+		}
+		return true
+	case interface{ Unwrap() error }:
+		return retryable(e.Unwrap())
+	}
+	return false
 }
 
 // loadAttempt brackets one snapshot load with change-ID reads, failing with
