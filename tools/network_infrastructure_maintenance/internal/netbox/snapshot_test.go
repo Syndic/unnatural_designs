@@ -479,3 +479,32 @@ func TestLoadConsistentSnapshotRetriesTransportFailure(t *testing.T) {
 		t.Errorf("SnapshotAttempts=%d, want 2", snap.SnapshotAttempts)
 	}
 }
+
+// TestLoadConsistentSnapshotCancelledRetryKeepsCause fails attempt 1 with a 500
+// and cancels inside a fetch on attempt 2; the error must carry both.
+func TestLoadConsistentSnapshotCancelledRetryKeepsCause(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var cableReads, deviceReads atomic.Int32
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/dcim/cables/" && cableReads.Add(1) == 1:
+			http.Error(w, "boom", http.StatusInternalServerError)
+			return
+		case r.URL.Path == "/api/dcim/devices/" && deviceReads.Add(1) == 2:
+			cancel()
+			http.Error(w, "cancelled", http.StatusInternalServerError)
+			return
+		}
+		_, _ = w.Write([]byte(`{"count":0,"next":null,"results":[]}`))
+	}))
+
+	_, err := LoadConsistentSnapshot(ctx, client, 3, time.Millisecond, nil)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+	var httpErr *HTTPError
+	if !errors.As(err, &httpErr) || httpErr.StatusCode != http.StatusInternalServerError {
+		t.Errorf("err = %v, want it to keep attempt 1's HTTP 500", err)
+	}
+}

@@ -57,7 +57,7 @@ func LoadConsistentSnapshot(ctx context.Context, client *Client, maxAttempts int
 		if attempt > 1 {
 			obs.SnapshotLoadRetryDelay(retryDelay)
 			if err := sleepCtx(ctx, retryDelay); err != nil {
-				return Snapshot{}, fmt.Errorf("%w while waiting to retry after: %w", err, lastErr)
+				return Snapshot{}, cancelled(err, lastErr)
 			}
 		}
 		obs.SnapshotAttemptStart(attempt, maxAttempts, SnapshotTaskCount())
@@ -69,7 +69,7 @@ func LoadConsistentSnapshot(ctx context.Context, client *Client, maxAttempts int
 		}
 		// A request that failed because ctx ended is not worth retrying.
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			return Snapshot{}, ctxErr
+			return Snapshot{}, cancelled(ctxErr, lastErr)
 		}
 		if !retryable(err) {
 			return Snapshot{}, err
@@ -129,6 +129,15 @@ func loadAttempt(ctx context.Context, client *Client, obs LoadObserver) (Snapsho
 	}
 	snap.LatestChange = endChange
 	return snap, nil
+}
+
+// cancelled returns ctxErr, wrapping cause (the failure that led to a retry)
+// when there is one, so a cancelled retry still says why it was retrying.
+func cancelled(ctxErr, cause error) error {
+	if cause == nil {
+		return ctxErr
+	}
+	return fmt.Errorf("%w while retrying after: %w", ctxErr, cause)
 }
 
 // sleepCtx waits for d, returning ctx's error early if ctx is done first.
