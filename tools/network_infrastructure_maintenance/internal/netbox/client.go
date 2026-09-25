@@ -15,6 +15,8 @@ const DefaultPageSize = 1000
 const (
 	protocolHTTP        = "http://"
 	protocolHTTPS       = "https://"
+	schemeHTTP          = "http"
+	schemeHTTPS         = "https"
 	queryLimit          = "limit"
 	headerAuthorization = "Authorization"
 	headerAccept        = "Accept"
@@ -129,16 +131,21 @@ func FetchAllWithProgress[T any](
 	return
 }
 
+// ResolveURL resolves path against BaseURL (or takes it as-is if absolute)
+// and adds the default page size. It rejects a URL without an http or https
+// scheme and a host, which url.Parse accepts (a missing "http://" makes the
+// host the scheme) but no request could succeed against.
 func (c *Client) ResolveURL(path string) (string, error) {
-	var u *url.URL
-	var err error
-	if strings.HasPrefix(path, protocolHTTP) || strings.HasPrefix(path, protocolHTTPS) {
-		u, err = url.Parse(path)
-	} else {
-		u, err = url.Parse(strings.TrimRight(c.BaseURL, "/") + path)
+	raw := path
+	if !strings.HasPrefix(path, protocolHTTP) && !strings.HasPrefix(path, protocolHTTPS) {
+		raw = strings.TrimRight(c.BaseURL, "/") + path
 	}
+	u, err := url.Parse(raw)
 	if err != nil {
 		return "", err
+	}
+	if (u.Scheme != schemeHTTP && u.Scheme != schemeHTTPS) || u.Host == "" {
+		return "", fmt.Errorf("URL %q needs an http:// or https:// scheme and a host", raw)
 	}
 	q := u.Query()
 	if q.Get(queryLimit) == "" {

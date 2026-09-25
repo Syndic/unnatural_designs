@@ -4,7 +4,7 @@
 
 | Flag                     | Default                         | Description                                                                  |
 | ------------------------ | ------------------------------- | ---------------------------------------------------------------------------- |
-| `-netbox-base-url`       | `http://mini.dev.yanch.ar:8000` | NetBox server URL                                                            |
+| `-netbox-base-url`       | `http://mini.dev.yanch.ar:8000` | NetBox server URL, including `http://` or `https://`                         |
 | `-netbox-token-file`     | `.netbox_api_token`             | Path to a file containing the API token                                      |
 | `-config`                | _(none)_                        | Path to a JSON policy config file                                            |
 | `-format`                | `text`                          | Output format: `text` or `json`                                              |

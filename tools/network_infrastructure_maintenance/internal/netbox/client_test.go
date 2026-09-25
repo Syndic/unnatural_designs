@@ -76,3 +76,28 @@ func TestFetchAllWithProgress_NilCallbackBehaviorMatchesFetchAll(t *testing.T) {
 		t.Errorf("FetchAll empty: len=%d req=%d pages=%d, want 0/1/1", len(out), requests, pages)
 	}
 }
+
+func TestResolveURLRequiresHTTPSchemeAndHost(t *testing.T) {
+	for _, tc := range []struct {
+		baseURL, path string
+		wantErr       bool
+	}{
+		{"http://mini:8000", "/api/dcim/devices/", false},
+		{"https://mini:8000/", "/api/dcim/devices/", false},
+		{"ignored", "http://mini:8000/api/dcim/devices/?offset=1000", false},
+		{"localhost:8000", "/api/dcim/devices/", true},
+		{"mini.dev.yanch.ar:8000", "/api/dcim/devices/", true},
+		{"mini.dev.yanch.ar", "/api/dcim/devices/", true},
+		{"htp://mini:8000", "/api/dcim/devices/", true},
+		{"http://", "/api/dcim/devices/", true},
+		{"http://[::1", "/api/dcim/devices/", true},
+	} {
+		t.Run(tc.baseURL+tc.path, func(t *testing.T) {
+			c := &Client{BaseURL: tc.baseURL}
+			got, err := c.ResolveURL(tc.path)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("ResolveURL = %q, %v; want error %v", got, err, tc.wantErr)
+			}
+		})
+	}
+}

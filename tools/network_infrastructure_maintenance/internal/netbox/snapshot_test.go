@@ -421,20 +421,24 @@ func TestLoadConsistentSnapshotPermanentFailureIsNotRetried(t *testing.T) {
 	}
 }
 
-// TestLoadConsistentSnapshotMalformedURLIsNotRetried covers a failure that
-// happens before any request is sent.
+// TestLoadConsistentSnapshotMalformedURLIsNotRetried covers base URLs no
+// request could succeed against, whether url.Parse rejects them or not.
 func TestLoadConsistentSnapshotMalformedURLIsNotRetried(t *testing.T) {
-	client := &Client{BaseURL: "http://[::1", Token: "x", HTTPClient: http.DefaultClient}
-	obs := newRecordingObserver()
+	for _, baseURL := range []string{"http://[::1", "localhost:8000"} {
+		t.Run(baseURL, func(t *testing.T) {
+			client := &Client{BaseURL: baseURL, Token: "x", HTTPClient: http.DefaultClient}
+			obs := newRecordingObserver()
 
-	if _, err := LoadConsistentSnapshot(context.Background(), client, 5, time.Millisecond, obs); err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	if got := len(obs.loadErrs); got != 1 {
-		t.Errorf("SnapshotLoadError fired %d times, want 1: %v", got, obs.loadErrs)
-	}
-	if len(obs.delays) != 0 {
-		t.Errorf("retry delays %v reported, want none", obs.delays)
+			if _, err := LoadConsistentSnapshot(context.Background(), client, 5, time.Millisecond, obs); err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if got := len(obs.loadErrs); got != 1 {
+				t.Errorf("SnapshotLoadError fired %d times, want 1: %v", got, obs.loadErrs)
+			}
+			if len(obs.delays) != 0 {
+				t.Errorf("retry delays %v reported, want none", obs.delays)
+			}
+		})
 	}
 }
 
