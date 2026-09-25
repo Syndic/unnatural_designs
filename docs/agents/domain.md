@@ -5,6 +5,8 @@ codebase.
 
 ## Before exploring, read these
 
+- **`CONTEXT.md`** at the repo root: the repo-wide glossary — terms about the repository itself
+  (its checks, CI, derived files) that every context uses.
 - **`CONTEXT-MAP.md`** at the repo root: it points at one `CONTEXT.md` per context. Read each one
   relevant to the topic.
 - **`docs/adr/`**: system-wide architectural decisions.
@@ -48,6 +50,7 @@ directories documented in the README (`//apps/`, `//libs/`, `//services/`, `//to
 
 ```
 /
+├── CONTEXT.md                                      ← repo-wide glossary
 ├── CONTEXT-MAP.md                                  ← points at each context's CONTEXT.md
 ├── docs/adr/                                       ← system-wide decisions
 ├── meta/
@@ -70,6 +73,12 @@ one as data, add it to an `exports_files` block in that package.
 When your output names a domain concept (in an issue title, a refactor proposal, a hypothesis, a
 test name), use the term as defined in the relevant `CONTEXT.md`. Don't drift to synonyms the
 glossary explicitly avoids.
+
+Glossaries come in two levels, like ADRs. Look a term up in the `CONTEXT.md` of the context you're
+working in first, then in the root `CONTEXT.md`. A term is defined in exactly one of them — the root
+for anything whose subject is the repository itself, a context's own for anything whose subject is
+that context's domain — so the lookup finds at most one definition. A term defined in both is a
+defect to flag, not a precedence question.
 
 If the concept you need isn't in the glossary yet, that's a signal: either you're inventing language
 the project doesn't use (reconsider) or there's a real gap (note it for `/domain-modeling`).

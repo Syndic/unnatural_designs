@@ -8,6 +8,12 @@ Each context owns its own `CONTEXT.md` (its glossary) and its own `docs/adr/` (d
 it). Repo-wide decisions live in `docs/adr/`. ADR *numbers* are unique across all of those
 directories rather than per directory — see [`docs/agents/domain.md`](docs/agents/domain.md).
 
+Repo-wide vocabulary lives in the root [`CONTEXT.md`](CONTEXT.md). The scoping rule is the term's
+subject, not where it's implemented: a term about the repository itself — its checks, its CI, its
+checked-in artifacts — belongs at the root even when one context's code is what enforces it; a term
+about a context's domain belongs in that context's glossary. Each term is defined in exactly one of
+them.
+
 ## Contexts
 
 - **Network infrastructure maintenance** — `tools/network_infrastructure_maintenance/`

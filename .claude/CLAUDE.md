@@ -702,5 +702,6 @@ The five canonical triage roles, each label string equal to its name. See
 
 ### Domain docs
 
-Multi-context: a root `CONTEXT-MAP.md` points at a per-context `CONTEXT.md`, one per Bazel package
-tree. See `docs/agents/domain.md`.
+Multi-context, with two glossary levels: a root `CONTEXT.md` for repo-wide vocabulary, and a root
+`CONTEXT-MAP.md` pointing at a per-context `CONTEXT.md`, one per Bazel package tree. See
+`docs/agents/domain.md`.
