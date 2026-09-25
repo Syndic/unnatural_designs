@@ -1,15 +1,38 @@
 """Tests for _workspace.py.
 
-Covers the helpers introduced by the extraction: `is_skipped` and `find_files`.
-The `found_modules` and `registered_modules` helpers retain their existing coverage in
-test_check_go_work.py (now importing from _workspace).
+Every helper is covered here and only here. A consumer's own suite tests that it is wired to a
+helper — `main()` routing through `exit_status`, a walker skipping `bazel-*` — not the helper.
 """
 
 import tempfile
 import unittest
 from pathlib import Path
 
-from meta.scripts._workspace import col_range, exit_status, find_files, is_skipped
+from meta.scripts._workspace import (
+    col_range,
+    exit_status,
+    find_files,
+    find_go_modules,
+    find_python_projects,
+    is_skipped,
+    registered_modules,
+)
+
+
+def write_go_mod(root: Path, rel_path: str) -> None:
+    mod_dir = root / rel_path
+    mod_dir.mkdir(parents=True, exist_ok=True)
+    (mod_dir / "go.mod").write_text(f"module github.com/Syndic/unnatural_designs/{rel_path}\n")
+
+
+def write_pyproject(root: Path, rel_path: str) -> None:
+    proj_dir = root / rel_path
+    proj_dir.mkdir(parents=True, exist_ok=True)
+    (proj_dir / "pyproject.toml").write_text(f'[project]\nname = "{rel_path.replace("/", "-")}"\n')
+
+
+def write_go_work(root: Path, content: str) -> None:
+    (root / "go.work").write_text(content)
 
 
 class TestExitStatus(unittest.TestCase):
@@ -141,6 +164,96 @@ class TestColRange(unittest.TestCase):
     def test_missing_file_falls_back(self):
         # File doesn't exist — fallback applies (the path was wrong, not a crash condition).
         self.assertEqual(col_range(Path("/nonexistent/file"), 1, "x"), (1, 2))
+
+
+class TestFindGoModules(unittest.TestCase):
+    def test_no_modules(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(find_go_modules(Path(tmp)), set())
+
+    def test_finds_every_module_relative_to_root(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_go_mod(root, "tools/foo")
+            write_go_mod(root, "libs/bar")
+            self.assertEqual(find_go_modules(root), {Path("tools/foo"), Path("libs/bar")})
+
+    def test_skipped_directories_hold_no_modules(self):
+        for rel in ("bazel-out/fake", ".git/fake"):
+            with self.subTest(path=rel), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                write_go_mod(root, rel)
+                self.assertEqual(find_go_modules(root), set())
+
+
+class TestFindPythonProjects(unittest.TestCase):
+    def test_no_projects(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(find_python_projects(Path(tmp)), set())
+
+    def test_excludes_root_pyproject(self):
+        """The workspace root pyproject is not a project; discovery skips it."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "pyproject.toml").write_text("[project]\nname = 'root'\n")
+            self.assertEqual(find_python_projects(root), set())
+
+    def test_finds_subdir_projects(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_pyproject(root, "tools/foo")
+            write_pyproject(root, "libs/bar")
+            self.assertEqual(find_python_projects(root), {Path("tools/foo"), Path("libs/bar")})
+
+    def test_skipped_directories_hold_no_projects(self):
+        for rel in (".venv/some-dep", "bazel-out/fake"):
+            with self.subTest(path=rel), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                write_pyproject(root, rel)
+                self.assertEqual(find_python_projects(root), set())
+
+
+class TestRegisteredModules(unittest.TestCase):
+    def test_empty_go_work(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_go_work(root, "go 1.26.1\n")
+            self.assertEqual(registered_modules(root), {})
+
+    def test_single_line_use(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_go_work(root, "go 1.26.1\nuse ./tools/foo\n")
+            # Line numbers are part of the contract — they drive squiggle placement.
+            self.assertEqual(registered_modules(root), {Path("tools/foo"): 2})
+
+    def test_block_use(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_go_work(root, "go 1.26.1\nuse (\n    ./tools/foo\n    ./tools/bar\n)\n")
+            self.assertEqual(
+                registered_modules(root),
+                {Path("tools/foo"): 3, Path("tools/bar"): 4},
+            )
+
+    def test_block_replace_no_false_positive(self):
+        """Block-form replace directives with local paths must not be mistaken for use entries."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_go_work(root, "go 1.26.1\nreplace (\n    ./foo => ./bar\n)\n")
+            self.assertEqual(registered_modules(root), {})
+
+    def test_go_directive_ignored(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_go_work(root, "go 1.26.1\n")
+            self.assertEqual(registered_modules(root), {})
+
+    def test_toolchain_directive_ignored(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_go_work(root, "go 1.26.1\ntoolchain go1.26.1\n")
+            self.assertEqual(registered_modules(root), {})
 
 
 if __name__ == "__main__":

@@ -148,7 +148,7 @@ jobs:
   # Fan-in for the ruleset; the pattern's reasoning is at devcontainer.yml's `base-image-all`.
   # Strict on `skipped` unlike that one, since nothing gates this matrix. `if: always()` is
   # load-bearing: without it a failed matrix skips this job, and a skipped check counts as
-  # passing. //meta/scripts:test_codeql_toolchain keeps both.
+  # passing. //meta/scripts:test_ci_enforcement_manifest keeps both.
   codeql-all:
     name: CodeQL Analysis (all languages)
     runs-on: ubuntu-latest

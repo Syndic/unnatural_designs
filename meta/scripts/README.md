@@ -94,6 +94,9 @@ three-dot diff into `name=true|false` step outputs for `devcontainer.yml`,
 `base-image-pin` pre-commit entry, which exists
 because pre-commit's `files:` cannot read a shared definition — so the hook takes no filter, gates
 on the shared set itself, and does nothing on a commit touching none of it.
+`test_classify_changed_paths_callers.py` holds every `--emit` those workflows pass to the first
+against the sets, and every read of that step's outputs against what it emitted, finding the callers
+by glob, so a new one is covered with no edit.
 
 `test_precommit_config.py` has no script half. It asserts that README's pre-commit hook table, and
 the paragraph that classifies each hook, still agree with `.pre-commit-config.yaml`, and that every
@@ -107,41 +110,32 @@ they ride `bazel test //...` instead of costing a CI job.
 
 `test_codeql_toolchain.py` has no script half either. It asserts that `security.yml`'s CodeQL job
 installs the toolchain `go.work` names before extraction starts — the `actions/setup-go` step ahead
-of `codeql-action/init`, plus the matrix entries that decide which languages need one at all. It
-also holds the `codeql-all` fan-in to its two load-bearing properties, since that job is the name
-branch protection requires. Same reason it rides `bazel test //...`: the couplings are between
-checked-in files, and nothing fails while they drift — not until `go.work` outruns the runner
-image's Go, or a green required check turns out to have been skipped.
+of `codeql-action/init`, plus the matrix entries that decide which languages need one at all, and
+the extraction report's position after `analyze`. Same reason it rides `bazel test //...`: the
+couplings are between checked-in files, and nothing fails while they drift — not until `go.work`
+outruns the runner image's Go. The `codeql-all` fan-in is the manifest test's, below.
 
 `test_commit_file_via_app_selftest.py` has no script half either. `Action self-test` is a required
-status check, and a ruleset is a repo setting nothing here can read — so this holds everything that
-setting depends on: that the workflow carries no trigger-level `paths:` filter (a
-filtered workflow never reports, and a required check that never reports leaves every unrelated PR
-`Pending`), that the job's name still matches the string the docs quote, that the classification
-resolves against the shared sets and still matches the paths it gates, and that it is a step of the
-reporting job rather than a `changes` job the rest `needs:` — a failed dependency skips its
-dependents, and a skipped required check reads as a pass.
+status check, and what every required check needs is the manifest test's, below; this holds what is
+particular to the self-test: that the classification emits the set the gate reads, that it is a
+step of the reporting job rather than a `changes` job the rest `needs:` — a failed dependency skips
+its dependents, and a skipped required check reads as a pass — and that a fork PR touching the
+action is refused rather than skipped.
 
-`test_ci_fan_ins.py` has no script half either. It holds `ci.yml`'s two fan-ins — `Build and test
-(all targets)` and `golangci-lint (all modules)` — to what makes requiring one mean anything: it
-depends on the whole matrix, it runs `if: always()`, and its shell rejects every result that is not
-`success`. That last is asserted by running the shell rather than matching its spelling, so the
-`case` idiom `devcontainer.yml` uses for the same job would pass too. The other half is a
-completeness guard over the workflow: a matrix job's own check name carries the row that produced
-it, so it can only be required through a fan-in, and a new matrix job without one fails this test
-rather than quietly becoming a check nothing can name — the gap
-[#311](https://github.com/Syndic/unnatural_designs/issues/311) closed.
-
-`test_ci_enforcement_manifest.py` has no script half either, and generalises the fan-in test above
-across every workflow that runs on `pull_request`. Its data sits beside it in
-`ci_enforcement_manifest.py` — every rule the repository is required to enforce on `main`, and
-the four jobs that deliberately gate nothing with a reason each — as a library rather than
-constants in the test, because `check_repository_constraints.py` holds the repository to the same
-data and is a second consumer by construction. The test fails a job in neither
-list, a blocking job that `needs:` a non-blocking one (enforcement moved by a scheduling edit, in
-either direction), a required check that cannot report on every PR or reports without having run, a
-matrix with no fan-in or no rows, and a fan-in accepting a result no recorded exemption covers. It
-cannot read the rules itself; the guard below is what does.
+`test_ci_enforcement_manifest.py` has no script half either, and is the one home for what every
+required check, and every fan-in on a required path, needs across every workflow that runs on
+`pull_request`. Its data sits beside it in `ci_enforcement_manifest.py` — every rule the repository
+is required to enforce on `main`, and the four jobs that deliberately gate nothing with a reason
+each — as a library rather than constants in the test, because `check_repository_constraints.py`
+holds the repository to the same data and is a second consumer by construction. The test fails a job
+in neither list, a blocking job that `needs:` a non-blocking one (enforcement moved by a scheduling
+edit, in either direction), a required check that cannot report on every PR or reports without
+having run, a matrix with no fan-in or no rows, a fan-in on a required path accepting a result no
+recorded exemption covers, and an exemption that lets a fan-in wave through another upstream's
+failure alongside the exempted result. A matrix job is requirable only through a fan-in, since its
+own check name carries the row that produced it — the gap
+[#311](https://github.com/Syndic/unnatural_designs/issues/311) closed. It cannot read the rules
+itself; the guard below is what does.
 
 `check_repository_constraints.py` is the one guard here with a script half that reads outside the
 tree, and so the only one that cannot ride `bazel test //...` — its verdict moves with repo

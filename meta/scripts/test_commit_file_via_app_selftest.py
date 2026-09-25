@@ -1,21 +1,16 @@
-"""Holds the commit-file-via-app self-test to the shape a required status check has to have.
+"""Holds the commit-file-via-app self-test to what its required status check depends on.
 
 `Action self-test` is the only gate between a change to `.github/actions/commit-file-via-app/` and
-the repos outside this one that reference it at `@main`. The ruleset that requires it is a repo
-setting nothing in the tree can read, so what this file can hold is everything that setting depends
-on — each of which fails silently:
+the repos outside this one that reference it at `@main`. What every required check needs — its
+name, a trigger with no path filter, no job-level `if:` — is
+`//meta/scripts:test_ci_enforcement_manifest`'s, and which paths the set matches is
+`:test_path_classification_pattern_sets`'s. What is held here is particular to this workflow, and
+each piece fails silently:
 
-  - **A trigger-level `paths:` filter.** GitHub counts a job skipped by `if:` as passing, but a
-    workflow skipped by path filtering never reports: the required check sits `Pending` and blocks
-    every PR that does not touch the action. Re-adding the filter looks like a tidy-up and takes the
-    merge queue down with it. See .claude/CLAUDE.md "A required check cannot be filtered at the
-    trigger".
-  - **The check's name.** It is a string in repo settings, so the couplings holdable here are
-    between the job and the docs that quote it. Rename the job and the ruleset goes on requiring a
-    context nothing produces — which, unlike the filter, wedges the merge with no red run to read.
-  - **The classification.** Now that the trigger runs on every PR, the pattern set is the whole of
-    what decides that the exercise runs at all. A set that stops matching this workflow's own path,
-    or an `--emit` naming a set that no longer exists, ends with a green check that ran nothing.
+  - **The gate reading the right set.** The trigger runs on every PR, so the classification is
+    the whole of what decides that the exercise runs. That the gate reads only sets the step
+    emits is `:test_classify_changed_paths_callers`'s; that the set it reads is the self-test's is
+    held here.
   - **Where the classification sits.** In a step of the reporting job, not a job the rest `needs:`.
     A failed dependency skips its dependents, and a skipped required check reads as a pass, so the
     `needs:` shape would turn a broken classifier into a green gate.
@@ -30,59 +25,39 @@ What the self-test *asserts* about the action is the workflow's own business and
 """
 
 import os
-import re
 import subprocess
 import tempfile
 import unittest
-from itertools import pairwise
 from pathlib import Path
 
 import yaml
-from meta.scripts.path_classification_pattern_sets import SETS
 
 # Not .resolve(): every file read here is a cross-package data dep, so each lives in the runfiles
 # tree beside this one rather than at the source path a resolved symlink would lead back to.
 _ROOT = Path(__file__).parent.parent.parent
-_WORKFLOW_PATH = ".github/workflows/commit-file-via-app-selftest.yml"
-_WORKFLOW = _ROOT / _WORKFLOW_PATH
-_ACTION_PATH = ".github/actions/commit-file-via-app/action.yml"
+_WORKFLOW = _ROOT / ".github/workflows/commit-file-via-app-selftest.yml"
+# README's copy of the check name is the manifest test's; CLAUDE.md's is only held here.
+_CLAUDE_MD = _ROOT / ".claude" / "CLAUDE.md"
 
-# The context the ruleset requires, and the id of the job that produces it.
-_CHECK_NAME = "Action self-test"
 # The ref the checkout must use. `github.head_ref` is a bare branch name and checkout's
 # `repository:` defaults to this repo, so on a fork PR it resolves the fork's branch name here.
 _CHECKOUT_ACTION = "actions/checkout@"
 _PULL_HEAD_REF = "refs/pull/"
 _JOB = "selftest"
-_DOCS_NAMING_THE_CHECK = (_ROOT / "README.md", _ROOT / ".claude" / "CLAUDE.md")
 
-# The two steps that decide anything, and the two conditions a step after them may carry: the
-# gate's own verdict, or the cleanup's, which reads the scratch step's outcome instead — `skipped`
-# whenever the gate stood the exercise down.
-_CLASSIFY_ID = "classify"
+# The step that decides whether the exercise runs, the set it reads, and the two conditions a step
+# after it may carry: the gate's own verdict, or the cleanup's, which reads the scratch step's
+# outcome instead — `skipped` whenever the gate stood the exercise down.
 _GATE_ID = "gate"
 _SET_NAME = "commit_file_via_app"
 _GATE = f"steps.{_GATE_ID}.outputs.run == 'true'"
 _CLEANUP_GATE = "steps.scratch.outcome == 'success'"
 
 
-def workflow() -> dict:
-    """The parsed workflow. `on:` is YAML 1.1's `true`, which is why nothing here spells it."""
-    return yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8"))
-
-
-def triggers(parsed: dict) -> dict:
-    """The `on:` mapping, under whichever key the loader produced for it."""
-    for key in (True, "on"):
-        if key in parsed:
-            return parsed[key]
-    raise AssertionError(f"no `on:` block in {_WORKFLOW.name}")
-
-
 def job() -> dict:
     """The one job. Structural rather than a text slice: a step's `if:` is only distinguishable
     from a job's, or from a line inside a `run: |` block, by where it sits."""
-    jobs = workflow()["jobs"]
+    jobs = yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8"))["jobs"]
     if _JOB not in jobs:
         raise AssertionError(f"no `{_JOB}:` job in {_WORKFLOW.name}")
     return jobs[_JOB]
@@ -129,71 +104,13 @@ def run_gate(changed: str, from_fork: str) -> tuple[int, str]:
         return done.returncode, output.read_text(encoding="utf-8")
 
 
-def emitted_sets() -> list[str]:
-    """The set names the classify step asks for, read off its `--emit` arguments."""
-    for step in job()["steps"]:
-        if step.get("id") == _CLASSIFY_ID:
-            words = step["run"].replace("\\\n", " ").split()
-            return [word for prev, word in pairwise(words) if prev == "--emit"]
-    raise AssertionError(f"no step with `id: {_CLASSIFY_ID}` in the `{_JOB}` job")
-
-
-class TestTheWorkflowAlwaysReports(unittest.TestCase):
-    def test_the_trigger_carries_no_path_filter(self):
-        for event, config in triggers(workflow()).items():
-            for key in ("paths", "paths-ignore"):
-                with self.subTest(event=event, key=key):
-                    self.assertNotIn(
-                        key,
-                        config or {},
-                        f"a `{key}:` filter skips the whole workflow, and a required check whose "
-                        "workflow never runs stays Pending — it blocks every PR that does not "
-                        "touch the action, instead of passing them",
-                    )
-
-    def test_it_runs_on_pull_requests_to_main(self):
-        # The event the ruleset evaluates against. A workflow that reports only on pushes would
-        # leave the same Pending check as a path filter.
-        self.assertIn("pull_request", triggers(workflow()))
-        self.assertEqual(triggers(workflow())["pull_request"]["branches"], ["main"])
-
-
 class TestTheCheckName(unittest.TestCase):
-    def test_the_job_is_named_what_branch_protection_names(self):
-        self.assertEqual(job()["name"], _CHECK_NAME)
-
-    def test_docs_name_the_check(self):
-        # The ruleset itself is unreadable from here, so the docs that quote the string are the
-        # only copies a rename can be held against.
-        for doc in _DOCS_NAMING_THE_CHECK:
-            with self.subTest(doc=doc.name):
-                self.assertIn(_CHECK_NAME, doc.read_text(encoding="utf-8"))
+    def test_claude_md_names_the_check(self):
+        """Read off the job, so a rename the manifest and README follow cannot leave this behind."""
+        self.assertIn(job()["name"], _CLAUDE_MD.read_text(encoding="utf-8"))
 
 
 class TestTheClassification(unittest.TestCase):
-    def test_the_emitted_sets_exist(self):
-        # `select()` refuses an unknown name, so a renamed set fails the step rather than emitting
-        # `false` forever — but it fails on a PR, at which point the rename is already written.
-        self.assertEqual(emitted_sets(), [_SET_NAME])
-        self.assertIn(_SET_NAME, SETS)
-
-    def test_the_set_matches_what_the_self_test_covers(self):
-        # Both halves rename easily and neither rename fails anything: the workflow could be moved
-        # and the action's directory could be, and the set would go on matching nothing. So each
-        # path is asserted to exist as well as to match — a constant matching a stale pattern is
-        # the one way both sides drift together and stay green.
-        for path in (_WORKFLOW_PATH, _ACTION_PATH):
-            with self.subTest(path=path):
-                self.assertTrue(
-                    (_ROOT / path).is_file(),
-                    f"{path} does not exist; the constant and the pattern can drift together",
-                )
-                self.assertTrue(
-                    any(re.search(pattern, path) for pattern in SETS[_SET_NAME]),
-                    f"{path} is not in the `{_SET_NAME}` set, so a PR touching it would skip the "
-                    "self-test and report success",
-                )
-
     def test_the_classification_is_a_step_not_a_dependency(self):
         # A `changes` job the rest `needs:` would report `skipped` on failure, and branch
         # protection counts a skipped required check as passed.
@@ -253,18 +170,9 @@ class TestTheCheckout(unittest.TestCase):
 class TestTheForkRule(unittest.TestCase):
     """A fork cannot run the exercise, so it cannot propose the change the exercise covers.
 
-    The job carries no fork `if:` any more. That shape skipped the whole job, and branch protection
-    counts a skipped required check as a pass — so a fork could change the action and report green
-    having verified nothing, on the one check standing between this action and the repos that
-    consume it at `@main`."""
-
-    def test_the_job_never_skips_itself(self):
-        self.assertNotIn(
-            "if",
-            job(),
-            "a job-level `if:` skips the whole job, and skipped reads as passed — whatever the "
-            "condition, the refusal has to be a step that fails",
-        )
+    The refusal is a step that fails, never a job-level `if:` that skips: branch protection counts
+    a skipped required check as a pass, so a fork could change the action and report green having
+    verified nothing. The manifest test refuses a falsifiable `if:` on any required job."""
 
     def test_a_fork_touching_the_action_is_refused(self):
         status, _ = run_gate(changed="true", from_fork="true")

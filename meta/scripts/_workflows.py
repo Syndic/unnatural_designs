@@ -1,4 +1,5 @@
-"""Reads GitHub Actions YAML structurally: per-language module matrices, and step inputs.
+"""Reads GitHub Actions YAML structurally: module matrices, step inputs, the mappings that hold
+steps, and the `needs:`/`if:` of a job already loaded as a mapping.
 
 Split out of `_workspace.py` so the YAML dependency lands on the scripts that need it:
 `check_modules.py` reads matrices and `check_python_version.py` reads step inputs, while
@@ -26,6 +27,7 @@ is not a list of paths. What is not reported is a wholly computed `matrix:`, whe
 presence is itself unknown.
 """
 
+import re
 from pathlib import Path
 from typing import NamedTuple
 
@@ -333,3 +335,77 @@ def action_steps(yaml_file: Path) -> tuple[list[Step], dict[int, str]]:
 
         collected.append(Step(uses, _line(node), inputs, axes))
     return collected, problems
+
+
+def action_yaml_files(root: Path) -> list[Path]:
+    """Every workflow and composite action in the repo.
+
+    Both trees, because a step is a step wherever it lives: a check that read only
+    `.github/workflows/` would have a blind spot under `.github/actions/`, in a check whose whole
+    claim is that it has none.
+    """
+    found = []
+    for directory, pattern in (
+        (root / ".github/workflows", "*.y*ml"),
+        (root / ".github/actions", "**/action.y*ml"),
+    ):
+        if directory.is_dir():
+            found.extend(p for p in directory.glob(pattern) if p.suffix in (".yml", ".yaml"))
+    return sorted(found)
+
+
+class StepContainer(NamedTuple):
+    """A job or composite action's steps, and the mapping a step's outputs can be read from.
+
+    `scope` is the job for a workflow, since a step output is read from anywhere in its job —
+    another step's `if:` or `env:`, or the job's own `outputs:`. For a composite action it is the
+    whole document, since the action's `outputs:` sit at its top level, beside `runs` rather than
+    inside it.
+    """
+
+    label: str
+    steps: list
+    scope: dict
+
+
+def step_containers(yaml_file: Path) -> list[StepContainer]:
+    """Every job in a workflow, by id, and a composite action's steps, labelled `runs`.
+
+    Raises on YAML that does not parse: a caller asking what a file runs cannot treat "unreadable"
+    as "runs nothing".
+    """
+    loaded = yaml.safe_load(yaml_file.read_text(encoding="utf-8")) or {}
+    found = [
+        StepContainer(job_id, body.get("steps") or [], body)
+        for job_id, body in (loaded.get("jobs") or {}).items()
+        if isinstance(body, dict)
+    ]
+    runs = loaded.get("runs")
+    if isinstance(runs, dict) and "steps" in runs:
+        found.append(StepContainer("runs", runs["steps"] or [], loaded))
+    return found
+
+
+# The `${{ }}` wrapper is optional on `if:` and carries no meaning, so it is normalised away before
+# a condition is compared.
+_WRAPPED_RE = re.compile(r"^\$\{\{(.*)\}\}$", re.S)
+
+
+def job_needs(body: dict) -> tuple[str, ...]:
+    """A loaded job's `needs:`. GitHub takes a bare scalar too, which `tuple()` would shred."""
+    declared = body.get("needs", [])
+    return (declared,) if isinstance(declared, str) else tuple(declared)
+
+
+def job_condition(body: dict) -> str | None:
+    """A loaded job's `if:`, with an optional `${{ }}` wrapper and surrounding whitespace removed.
+
+    GitHub evaluates this, not bash, so it has no runnable equivalent and has to be compared
+    rather than exercised. Only the wrapper is normalised away; anything past that is a different
+    condition.
+    """
+    declared = body.get("if")
+    if not isinstance(declared, str):
+        return declared
+    hit = _WRAPPED_RE.match(declared.strip())
+    return (hit.group(1) if hit else declared).strip()

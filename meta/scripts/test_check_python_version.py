@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from meta.scripts import check_python_version as cpv
+from meta.scripts._workflows import action_yaml_files
 
 
 def write(root: Path, rel: str, content: str) -> Path:
@@ -385,6 +386,10 @@ class TestMatrixDrivenSteps(unittest.TestCase):
 class TestAgainstThisRepo(unittest.TestCase):
     """Held against the repo's real YAML, where a false positive fails CI for everyone.
 
+    The same computation `python-version-check` runs, kept anyway: that job asks whether the
+    tree is right, this asks whether the checker is, and only this one fails on the checker's own
+    PR.
+
     The root comes from `__file__` rather than `workspace_root()`: under Bazel the test runs in a
     sandbox with no git repo, so shelling out to `git rev-parse` fails outright.
     """
@@ -392,7 +397,7 @@ class TestAgainstThisRepo(unittest.TestCase):
     root = Path(__file__).parent.parent.parent
 
     def test_both_trees_are_discovered(self):
-        files = cpv.action_yaml_files(self.root)
+        files = action_yaml_files(self.root)
         # Without the //:workflows and //:composite_actions data deps these directories are absent
         # from the runfiles tree, and every assertion below would pass while checking nothing.
         self.assertTrue(

@@ -1,7 +1,8 @@
-"""Covers `_workflows.py` — reading module matrices out of workflow YAML.
+"""Covers `_workflows.py` — reading module matrices, steps and job fields out of workflow YAML.
 
-Two groups. The first is carried over from the line-oriented predecessor and asserts what the
-check needs from any implementation: which jobs have a matrix, what is in it, and where.
+The matrix reader is covered in two groups. The first is carried over from the line-oriented
+predecessor and asserts what the check needs from any implementation: which jobs have a matrix,
+what is in it, and where.
 
 The second is the shape suite, and it is the point of the parse. Every entry in it is a real
 YAML spelling of a matrix, and the contract is that each one lands in exactly one bucket —
@@ -15,8 +16,14 @@ import textwrap
 import unittest
 from pathlib import Path
 
+import yaml
 from meta.scripts._workflows import (
+    StepContainer,
     action_steps,
+    action_yaml_files,
+    job_condition,
+    job_needs,
+    step_containers,
     unrecognised_matrix_keys,
     workflow_matrix_lists,
 )
@@ -542,7 +549,11 @@ class TestMatrixShapes(unittest.TestCase):
             self.assertTrue(unrecognised_matrix_keys(path, "go_module"))
 
     def test_the_repos_own_workflows_are_clean(self):
-        """Held against real files: a false positive here fails CI for everyone."""
+        """Held against real files: a false positive here fails CI for everyone.
+
+        The same computation `modules-check` runs, kept anyway: that job asks whether the tree is
+        right, this asks whether the parser is, and only this one fails on the parser's own PR.
+        """
         workflows = Path(__file__).parent.parent.parent / ".github" / "workflows"
         found = sorted(workflows.glob("*.yml"))
         # Without the //:workflows data dep this directory is absent from the runfiles tree and
@@ -688,6 +699,115 @@ class TestActionSteps(unittest.TestCase):
                   - uses: actions/setup-python@abc
             """)
         self.assertEqual(steps[0].matrix, {})
+
+
+# ── Discovery, run scripts and job fields ─────────────────────────────────────
+
+
+def _write(root: Path, rel: str, content: str = "") -> Path:
+    path = root / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(textwrap.dedent(content))
+    return path
+
+
+class TestActionYamlFiles(unittest.TestCase):
+    def test_both_trees_either_extension_any_depth(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            wanted = [
+                _write(root, ".github/workflows/a.yml"),
+                _write(root, ".github/workflows/b.yaml"),
+                _write(root, ".github/actions/x/action.yml"),
+                _write(root, ".github/actions/y/z/action.yaml"),
+            ]
+            self.assertEqual(action_yaml_files(root), sorted(wanted))
+
+    def test_other_files_are_not_actions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write(root, ".github/workflows/README.md")
+            _write(root, ".github/actions/x/README.md")
+            _write(root, ".github/actions/x/helper.yml")
+            self.assertEqual(action_yaml_files(root), [])
+
+    def test_absent_directories_are_empty_not_an_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(action_yaml_files(Path(tmp)), [])
+
+
+class TestStepContainers(unittest.TestCase):
+    def _containers(self, content: str) -> list[StepContainer]:
+        with tempfile.TemporaryDirectory() as tmp:
+            return step_containers(_write(Path(tmp), "workflow.yml", content))
+
+    def test_every_job_by_id_whole(self):
+        containers = self._containers("""\
+            jobs:
+              a:
+                outputs:
+                  x: ${{ steps.s.outputs.x }}
+                steps:
+                  - id: s
+                    run: echo x=1
+              b:
+                steps:
+                  - run: echo hi
+            """)
+        self.assertEqual([c.label for c in containers], ["a", "b"])
+        self.assertEqual(containers[0].steps, [{"id": "s", "run": "echo x=1"}])
+        self.assertIn("outputs", containers[0].scope, "a job's `outputs:` read its steps too")
+
+    def test_a_composite_action_is_scoped_to_the_whole_document(self):
+        containers = self._containers("""\
+            outputs:
+              x:
+                value: ${{ steps.s.outputs.x }}
+            runs:
+              using: composite
+              steps:
+                - id: s
+                  run: echo x=1
+                  shell: bash
+            """)
+        self.assertEqual([c.label for c in containers], ["runs"])
+        self.assertEqual([step["id"] for step in containers[0].steps], ["s"])
+        self.assertIn("outputs", containers[0].scope, "the action's `outputs:` sit beside `runs`")
+
+    def test_a_docker_action_holds_no_steps(self):
+        self.assertEqual(self._containers("runs:\n  using: docker\n  image: x\n"), [])
+
+    def test_unparseable_yaml_raises_rather_than_reading_as_nothing(self):
+        with self.assertRaises(yaml.YAMLError):
+            self._containers("jobs:\n  a:\n   - [unbalanced\n")
+
+
+class TestJobNeeds(unittest.TestCase):
+    def test_absent_is_empty(self):
+        self.assertEqual(job_needs({}), ())
+
+    def test_a_bare_scalar_is_one_job_not_its_characters(self):
+        self.assertEqual(job_needs({"needs": "changes"}), ("changes",))
+
+    def test_a_list_keeps_its_order(self):
+        self.assertEqual(job_needs({"needs": ["b", "a"]}), ("b", "a"))
+
+
+class TestJobCondition(unittest.TestCase):
+    def test_absent_is_none(self):
+        self.assertIsNone(job_condition({}))
+
+    def test_the_wrapper_and_whitespace_are_normalised_away(self):
+        for spelled in ("always()", "${{ always() }}", "  ${{always()}}  "):
+            with self.subTest(spelled=spelled):
+                self.assertEqual(job_condition({"if": spelled}), "always()")
+
+    def test_anything_past_the_wrapper_is_kept(self):
+        self.assertEqual(job_condition({"if": "${{ !cancelled() }}"}), "!cancelled()")
+
+    def test_a_non_string_passes_through(self):
+        # YAML reads a bare `if: false` as a boolean; comparing it as text would hide that.
+        self.assertIs(job_condition({"if": False}), False)
 
 
 if __name__ == "__main__":

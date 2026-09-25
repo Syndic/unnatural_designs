@@ -26,6 +26,12 @@ py_test(
     name = "test_path_classification_pattern_sets",
     size = "small",
     srcs = ["test_path_classification_pattern_sets.py"],
+    # The two paths the self-test set gates on, so a rename fails here rather than leaving a
+    # pattern and a constant stale together.
+    data = [
+        "//:.github/workflows/commit-file-via-app-selftest.yml",
+        "//:composite_actions",
+    ],
     main = "test_path_classification_pattern_sets.py",
     deps = [":path_classification_pattern_sets_lib"],
 )
@@ -47,7 +53,10 @@ py_test(
     # there fails CI for everyone and no synthetic fixture would show it.
     data = ["//:workflows"],
     main = "test__workflows.py",
-    deps = [":_workflows_lib"],
+    deps = [
+        ":_workflows_lib",
+        requirement("pyyaml"),
+    ],
 )
 
 py_library(
@@ -149,29 +158,12 @@ py_test(
     name = "test_codeql_toolchain",
     size = "small",
     srcs = ["test_codeql_toolchain.py"],
-    # The docs are here for one string: the required check name, which lives in repo settings and
-    # so can only be held against the copies that quote it.
+    # CLAUDE.md for the one copy of the fan-in's name the manifest test does not read.
     data = [
         "//:.claude/CLAUDE.md",
         "//:.github/workflows/security.yml",
-        "//:README.md",
     ],
     main = "test_codeql_toolchain.py",
-)
-
-# Same shape once more, over ci.yml's fan-ins. Its completeness half is the one assertion here
-# that fails on a workflow nobody edited wrongly: a new matrix job is requirable only through a
-# fan-in, and adding one without it leaves a check no ruleset can name.
-py_test(
-    name = "test_ci_fan_ins",
-    size = "small",
-    srcs = ["test_ci_fan_ins.py"],
-    # README for the fan-in names, the same way test_codeql_toolchain reads its copies.
-    data = [
-        "//:.github/workflows/ci.yml",
-        "//:README.md",
-    ],
-    main = "test_ci_fan_ins.py",
     deps = [requirement("pyyaml")],
 )
 
@@ -230,14 +222,14 @@ py_test(
     ],
     main = "test_ci_enforcement_manifest.py",
     deps = [
+        ":_workflows_lib",
         ":ci_enforcement_manifest_lib",
         requirement("pyyaml"),
     ],
 )
 
-# Same shape, and the same failure mode it guards against: a `changes` job that fails hands both of
-# devcontainer.yml's required checks a `skipped`, which branch protection reads as a pass. Reads the
-# sets directly, because the workflow's `--emit` names are the one copy of them nothing else holds.
+# What devcontainer.yml's required checks depend on that the manifest test cannot see: which job is
+# the gate, and why `build-and-smoke-test` carries `!cancelled()` rather than `always()`.
 py_test(
     name = "test_devcontainer_required_checks",
     size = "small",
@@ -245,7 +237,8 @@ py_test(
     data = ["//:.github/workflows/devcontainer.yml"],
     main = "test_devcontainer_required_checks.py",
     deps = [
-        ":path_classification_pattern_sets_lib",
+        ":_workflows_lib",
+        ":classify_changed_paths_lib",
         requirement("pyyaml"),
     ],
 )
@@ -332,28 +325,19 @@ py_test(
     main = "test_renovate_grouping.py",
 )
 
-# Same shape as the workflow-reading tests above: the assertion is the whole gate. What it guards
-# is a required status check, and a ruleset is a repo setting nothing here can read — so the
-# couplings it can hold are the ones that setting depends on, and each fails silently.
+# Same shape as the workflow-reading tests above: the assertion is the whole gate. What every
+# required check needs is the manifest test's; this holds what is particular to the self-test.
 py_test(
     name = "test_commit_file_via_app_selftest",
     size = "small",
     srcs = ["test_commit_file_via_app_selftest.py"],
-    # The docs are here for one string: the check name, held against the job that produces it, the
-    # same way test_codeql_toolchain holds its fan-in's. `composite_actions` is here so the action
-    # path the pattern set is checked against is a file this test actually reads — a bare constant
-    # would go on matching a pattern that had gone stale in the same direction as the rename.
+    # CLAUDE.md for the one copy of the check name the manifest test does not read.
     data = [
         "//:.claude/CLAUDE.md",
         "//:.github/workflows/commit-file-via-app-selftest.yml",
-        "//:README.md",
-        "//:composite_actions",
     ],
     main = "test_commit_file_via_app_selftest.py",
-    deps = [
-        ":path_classification_pattern_sets_lib",
-        requirement("pyyaml"),
-    ],
+    deps = [requirement("pyyaml")],
 )
 
 py_library(
@@ -408,6 +392,23 @@ py_test(
         # Direct: TestSelect resolves caller names against the real sets, since resolving them is
         # what `select` does. It asserts nothing about their contents.
         ":path_classification_pattern_sets_lib",
+    ],
+)
+
+# Every caller's `--emit` names against the sets, found by glob for the reason :workflows gives: a
+# new caller is exactly when a name is most likely to be wrong, and a curated list would miss it.
+py_test(
+    name = "test_classify_changed_paths_callers",
+    size = "small",
+    srcs = ["test_classify_changed_paths_callers.py"],
+    data = [
+        "//:composite_actions",
+        "//:workflows",
+    ],
+    main = "test_classify_changed_paths_callers.py",
+    deps = [
+        ":_workflows_lib",
+        ":classify_changed_paths_lib",
     ],
 )
 

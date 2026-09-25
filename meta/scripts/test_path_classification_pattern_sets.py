@@ -11,6 +11,7 @@ longer part of it.
 
 import re
 import unittest
+from pathlib import Path
 
 import meta.scripts.path_classification_pattern_sets as pattern_sets
 from meta.scripts.path_classification_pattern_sets import BASE, BAZEL, CHANGED, SETS, SETS_MODULE
@@ -27,6 +28,10 @@ def fires(path: str) -> set[str]:
 
 # The self-test set fires alone: nothing else in the repo classifies the action's directory.
 _SELFTEST = {"commit_file_via_app"}
+
+# Not .resolve(): the files checked for existence are cross-package data deps, so they live in the
+# runfiles tree beside this file rather than at the source path a resolved symlink leads back to.
+_ROOT = Path(__file__).parent.parent.parent
 
 # Derived, never written twice. A literal here would be a second copy of the path `SETS_MODULE`
 # already encodes, so every assertion comparing them would compare two hand-written strings and
@@ -207,13 +212,23 @@ class TestCommitFileViaAppSet(unittest.TestCase):
     gates a required check rather than a derived file, so a path that falls out of it does not go
     stale — it goes unexercised, and the check reports success having run nothing."""
 
+    _ACTION = ".github/actions/commit-file-via-app/action.yml"
+    _WORKFLOW = ".github/workflows/commit-file-via-app-selftest.yml"
+
+    def test_the_paths_asserted_here_exist(self):
+        # Both rename easily and neither rename fails anything else: a constant here and the
+        # pattern could go stale together and stay green, matching a path nothing has any more.
+        for path in (self._ACTION, self._WORKFLOW):
+            with self.subTest(path=path):
+                self.assertTrue((_ROOT / path).is_file(), f"{path} does not exist")
+
     def test_the_action_and_everything_beside_it(self):
-        self.assertEqual(fires(".github/actions/commit-file-via-app/action.yml"), _SELFTEST)
+        self.assertEqual(fires(self._ACTION), _SELFTEST)
         self.assertEqual(fires(".github/actions/commit-file-via-app/README.md"), _SELFTEST)
 
     def test_the_self_test_workflow_itself(self):
         # The workflow decides what the exercise covers, so editing it has to re-run the exercise.
-        self.assertEqual(fires(".github/workflows/commit-file-via-app-selftest.yml"), _SELFTEST)
+        self.assertEqual(fires(self._WORKFLOW), _SELFTEST)
 
     def test_a_sibling_composite_action_is_not_matched(self):
         self.assertEqual(fires(".github/actions/setup-bazel-remote/action.yml"), set())

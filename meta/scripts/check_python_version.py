@@ -32,7 +32,7 @@ from pathlib import Path
 # pre-commit), the workspace root is not on sys.path, so `from meta.scripts.X` would fail.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from meta.scripts._workflows import action_steps
+from meta.scripts._workflows import action_steps, action_yaml_files
 from meta.scripts._workspace import col_range, workspace_root
 
 PIN_FILE = ".python-version"
@@ -174,24 +174,6 @@ def check_dockerfile(root: Path, version: str) -> list[str]:
                 )
             )
     return problems
-
-
-def action_yaml_files(root: Path) -> list[Path]:
-    """Every workflow and composite action in the repo.
-
-    Both trees, because a step is a step wherever it lives: a `setup-python` added to a composite
-    action under `.github/actions/` pins the level exactly as a workflow step does, and omitting
-    that directory would be a hand-maintained blind spot in a guard whose whole claim is that it
-    has none. Latent today — no composite action uses setup-python — which is when it is cheap.
-    """
-    found = []
-    for directory, pattern in (
-        (root / ".github/workflows", "*.y*ml"),
-        (root / ".github/actions", "**/action.y*ml"),
-    ):
-        if directory.is_dir():
-            found.extend(p for p in directory.glob(pattern) if p.suffix in (".yml", ".yaml"))
-    return sorted(found)
 
 
 def _literal_problem(

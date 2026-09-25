@@ -133,7 +133,8 @@ jobs:
   #
   # That is why `changes` is a separate question rather than one more result to accept: a gate
   # that *failed to evaluate* skips the matrix byte-identically to a gate that ran and said no.
-  # //meta/scripts:test_devcontainer_required_checks keeps both questions asked.
+  # //meta/scripts:test_ci_enforcement_manifest keeps both questions asked, and
+  # //meta/scripts:test_devcontainer_required_checks keeps `changes` in `needs:` to be asked about.
   base-image-all:
     name: Base image (all platforms)
     needs:

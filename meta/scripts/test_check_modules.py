@@ -1,7 +1,8 @@
 """Tests for check_modules.py.
 
-Workflow-matrix parsing and Go discovery coverage carried over from the predecessor
-(test_check_go_modules.py); Python invariants tested directly.
+Workflow-matrix parsing coverage carried over from the predecessor (test_check_go_modules.py);
+Python invariants tested directly. Module and project discovery are `_workspace`'s, and tested in
+test__workspace.py; here they only build fixtures.
 """
 
 import io
@@ -96,75 +97,6 @@ def make_module_workflow(root: Path, name: str, jobs: dict[str, list[str]]) -> P
         for job_name, modules in jobs.items()
     )
     return make_workflow(root, name, _WORKFLOW_HEADER + job_blocks)
-
-
-# ── TestFindGoModules ──────────────────────────────────────────────────────────
-
-
-class TestFindGoModules(unittest.TestCase):
-    def test_no_modules(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            self.assertEqual(find_go_modules(Path(tmp)), set())
-
-    def test_finds_single_module(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            make_go_module(root, "tools/foo")
-            self.assertEqual(find_go_modules(root), {Path("tools/foo")})
-
-    def test_finds_multiple_modules(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            make_go_module(root, "tools/foo")
-            make_go_module(root, "libs/bar")
-            self.assertEqual(find_go_modules(root), {Path("tools/foo"), Path("libs/bar")})
-
-    def test_excludes_bazel_symlinks(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            make_go_module(root, "bazel-out/fake")
-            self.assertEqual(find_go_modules(root), set())
-
-    def test_excludes_git_directory(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            make_go_module(root, ".git/fake")
-            self.assertEqual(find_go_modules(root), set())
-
-
-# ── TestFindPythonProjects ─────────────────────────────────────────────────────
-
-
-class TestFindPythonProjects(unittest.TestCase):
-    def test_no_projects(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            self.assertEqual(find_python_projects(Path(tmp)), set())
-
-    def test_excludes_root_pyproject(self):
-        """The workspace root pyproject is not a project; discovery skips it."""
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            (root / "pyproject.toml").write_text("[project]\nname = 'root'\n")
-            self.assertEqual(find_python_projects(root), set())
-
-    def test_finds_subdir_projects(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            make_python_project(root, "tools/foo")
-            make_python_project(root, "libs/bar")
-            self.assertEqual(find_python_projects(root), {Path("tools/foo"), Path("libs/bar")})
-
-    def test_excludes_venv(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            make_python_project(root, ".venv/some-dep")
-            self.assertEqual(find_python_projects(root), set())
-
-    def test_excludes_bazel(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            make_python_project(root, "bazel-out/fake")
-            self.assertEqual(find_python_projects(root), set())
 
 
 # ── TestCheckWorkflowMatrices ──────────────────────────────────────────────────
