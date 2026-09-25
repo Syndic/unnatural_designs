@@ -77,11 +77,12 @@ test name), use the term as defined in the relevant `CONTEXT.md`. Don't drift to
 glossary explicitly avoids.
 
 Glossaries come in two levels, like ADRs; `CONTEXT-MAP.md` states which terms go where. To resolve
-a term, check the root `CONTEXT.md` and, when the file you're working on belongs to a context, that
-context's `CONTEXT.md` too — both, not whichever you reach first. A file outside every context
-(`.github/`, `.devcontainer/`, the root docs) has only the root glossary; don't borrow the glossary
-of whichever context implements the thing. A term defined at both levels is a defect to flag, not a
-precedence question.
+a term, check both levels, not whichever you reach first. Inside a context, check that context's
+glossary alongside the root. A file outside every context (`.github/`, `.devcontainer/`, the root
+docs) has no glossary of its own but still uses contexts' terms — `.devcontainer/` is a **Consumer**
+of `meta/`'s **Base image** — so check the root and every context glossary `CONTEXT-MAP.md` lists.
+If a word turns up in two contexts' glossaries, the file's subject decides which sense it means. A
+term defined at both levels is a defect to flag, not a precedence question.
 
 If the concept you need isn't in the glossary yet, that's a signal: either you're inventing language
 the project doesn't use (reconsider) or there's a real gap (note it for `/domain-modeling`).
