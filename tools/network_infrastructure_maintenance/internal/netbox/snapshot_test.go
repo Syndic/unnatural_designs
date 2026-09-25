@@ -168,8 +168,8 @@ func TestLoadConsistentSnapshotRetriesReportsToObserver(t *testing.T) {
 	}
 	if got := len(obs.loadErrs); got != 1 {
 		t.Errorf("SnapshotLoadError fired %d times, want 1: %v", got, obs.loadErrs)
-	} else if !strings.Contains(obs.loadErrs[0].Error(), "(1 -> 2)") {
-		t.Errorf("load error %q does not name the moved change IDs", obs.loadErrs[0])
+	} else if !errors.Is(obs.loadErrs[0], errStateChanged) {
+		t.Errorf("load error %q is not errStateChanged", obs.loadErrs[0])
 	}
 	if len(obs.delays) != 1 || obs.delays[0] != time.Millisecond {
 		t.Errorf("SnapshotLoadRetryDelay calls = %v, want [1ms]", obs.delays)
@@ -246,6 +246,62 @@ func TestLoadConsistentSnapshotRetryDelayHonoursCancel(t *testing.T) {
 	_, err := LoadConsistentSnapshot(ctx, client, 2, time.Hour, obs)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+	if !errors.Is(err, errStateChanged) {
+		t.Errorf("err = %v, want it to keep the error that caused the retry", err)
+	}
+}
+
+// TestLoadConsistentSnapshotRetriesAfterChangeReadError fails the first
+// change-ID read and checks it is retried like any other failed request.
+func TestLoadConsistentSnapshotRetriesAfterChangeReadError(t *testing.T) {
+	var changeReads atomic.Int32
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/core/object-changes/" && changeReads.Add(1) == 1 {
+			http.Error(w, "boom", http.StatusInternalServerError)
+			return
+		}
+		_, _ = w.Write([]byte(`{"count":0,"next":null,"results":[]}`))
+	}))
+	obs := newRecordingObserver()
+
+	snap, err := LoadConsistentSnapshot(context.Background(), client, 2, time.Millisecond, obs)
+	if err != nil {
+		t.Fatalf("LoadConsistentSnapshot: %v", err)
+	}
+	if snap.SnapshotAttempts != 2 {
+		t.Errorf("SnapshotAttempts=%d, want 2", snap.SnapshotAttempts)
+	}
+	if got := len(obs.loadErrs); got != 1 {
+		t.Errorf("SnapshotLoadError fired %d times, want 1: %v", got, obs.loadErrs)
+	}
+	if got := len(obs.delays); got != 1 {
+		t.Errorf("SnapshotLoadRetryDelay fired %d times, want 1", got)
+	}
+}
+
+// TestLoadConsistentSnapshotCancelledFetchIsNotRetried cancels the context from
+// inside a fetch; the load must return context.Canceled without reporting a
+// failed attempt or a retry.
+func TestLoadConsistentSnapshotCancelledFetchIsNotRetried(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/dcim/devices/" {
+			cancel()
+			http.Error(w, "cancelled", http.StatusInternalServerError)
+			return
+		}
+		_, _ = w.Write([]byte(`{"count":0,"next":null,"results":[]}`))
+	}))
+	obs := newRecordingObserver()
+
+	_, err := LoadConsistentSnapshot(ctx, client, 2, time.Hour, obs)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+	if len(obs.loadErrs) != 0 || len(obs.delays) != 0 {
+		t.Errorf("load errors %v and delays %v reported, want none", obs.loadErrs, obs.delays)
 	}
 }
 
