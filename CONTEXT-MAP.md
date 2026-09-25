@@ -8,11 +8,12 @@ Each context owns its own `CONTEXT.md` (its glossary) and its own `docs/adr/` (d
 it). Repo-wide decisions live in `docs/adr/`. ADR *numbers* are unique across all of those
 directories rather than per directory — see [`docs/agents/domain.md`](docs/agents/domain.md).
 
-Repo-wide vocabulary lives in the root [`CONTEXT.md`](CONTEXT.md). The scoping rule is the term's
-subject, not where it's implemented: a term about the repository itself — its checks, its CI, its
-checked-in artifacts — belongs at the root even when one context's code is what enforces it; a term
-about a context's domain belongs in that context's glossary. Each term is defined in exactly one of
-them.
+Repo-wide vocabulary lives in the root [`CONTEXT.md`](CONTEXT.md). Which glossary a term belongs
+in is decided by its subject, not by where it's implemented: a term about the repository itself —
+its checks, its CI, its checked-in artifacts — belongs at the root even when one context's code is
+what enforces it, and a term about a context's domain belongs in that context's glossary. A word
+defined at the root is defined in no context's glossary. Two contexts may each define the same word
+in their own sense, since each context's vocabulary is its own.
 
 ## Contexts
 

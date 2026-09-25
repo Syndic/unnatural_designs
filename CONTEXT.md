@@ -1,9 +1,8 @@
 # Repository
 
-Vocabulary for the repository as a whole: terms whose subject is the repo itself — its checks, its
-CI, its checked-in artifacts — rather than any one context's domain. A context's own terms live in
-that context's `CONTEXT.md`; [`CONTEXT-MAP.md`](CONTEXT-MAP.md) lists them and states the scoping
-rule.
+Vocabulary for the repository as a whole. [`CONTEXT-MAP.md`](CONTEXT-MAP.md) lists the contexts,
+each of which keeps its own terms in its own `CONTEXT.md`, and states which glossary a term belongs
+in.
 
 ## Language
 

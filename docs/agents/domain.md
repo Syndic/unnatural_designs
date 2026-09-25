@@ -5,8 +5,8 @@ codebase.
 
 ## Before exploring, read these
 
-- **`CONTEXT.md`** at the repo root: the repo-wide glossary — terms about the repository itself
-  (its checks, CI, derived files) that every context uses.
+- **`CONTEXT.md`** at the repo root: the repo-wide glossary. `CONTEXT-MAP.md` states which terms
+  belong there rather than in a context's own.
 - **`CONTEXT-MAP.md`** at the repo root: it points at one `CONTEXT.md` per context. Read each one
   relevant to the topic.
 - **`docs/adr/`**: system-wide architectural decisions.
@@ -38,9 +38,11 @@ If any of these files don't exist, **proceed silently**. Don't flag their absenc
 creating them upfront. The `/domain-modeling` skill (reached via `/grill-with-docs` and
 `/improve-codebase-architecture`) creates them lazily when terms or decisions actually get resolved.
 
-Note that `.claude/CLAUDE.md` is a separate artifact and is not a substitute for a `CONTEXT.md`: it
-carries cross-cutting engineering invariants (CI, devcontainer, Renovate plumbing), not the domain
-glossary.
+Note that `.claude/CLAUDE.md` is a separate artifact and is not a substitute for a `CONTEXT.md`, the
+root one included. A glossary says what a word means; CLAUDE.md carries cross-cutting engineering
+invariants — what must hold, and why the CI, devcontainer and Renovate plumbing are arranged as they
+are. So **Fan-in** is defined in the root `CONTEXT.md`, while the rule that a matrix job can be
+required only through its fan-in lives in CLAUDE.md.
 
 ## File structure
 
@@ -74,11 +76,12 @@ When your output names a domain concept (in an issue title, a refactor proposal,
 test name), use the term as defined in the relevant `CONTEXT.md`. Don't drift to synonyms the
 glossary explicitly avoids.
 
-Glossaries come in two levels, like ADRs. Look a term up in the `CONTEXT.md` of the context you're
-working in first, then in the root `CONTEXT.md`. A term is defined in exactly one of them — the root
-for anything whose subject is the repository itself, a context's own for anything whose subject is
-that context's domain — so the lookup finds at most one definition. A term defined in both is a
-defect to flag, not a precedence question.
+Glossaries come in two levels, like ADRs; `CONTEXT-MAP.md` states which terms go where. To resolve
+a term, check the root `CONTEXT.md` and, when the file you're working on belongs to a context, that
+context's `CONTEXT.md` too — both, not whichever you reach first. A file outside every context
+(`.github/`, `.devcontainer/`, the root docs) has only the root glossary; don't borrow the glossary
+of whichever context implements the thing. A term defined at both levels is a defect to flag, not a
+precedence question.
 
 If the concept you need isn't in the glossary yet, that's a signal: either you're inventing language
 the project doesn't use (reconsider) or there's a real gap (note it for `/domain-modeling`).
