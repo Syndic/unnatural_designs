@@ -2,17 +2,17 @@
 
 ## CLI flags
 
-| Flag                     | Default                         | Description                                             |
-| ------------------------ | ------------------------------- | ------------------------------------------------------- |
-| `-netbox-base-url`       | `http://mini.dev.yanch.ar:8000` | NetBox server URL                                       |
-| `-netbox-token-file`     | `.netbox_api_token`             | Path to a file containing the API token                 |
-| `-config`                | _(none)_                        | Path to a JSON policy config file                       |
-| `-format`                | `text`                          | Output format: `text` or `json`                         |
-| `-color`                 | `auto`                          | ANSI color in text output: `auto`, `always`, or `never` |
-| `-progress`              | `auto`                          | Progress UI mode: `auto`, `rich`, `plain`, or `off`     |
-| `-max-snapshot-attempts` | `5`                             | How many times to retry an incoherent snapshot          |
-| `-snapshot-retry-delay`  | `3s`                            | Delay between snapshot retries                          |
-| `-fail-on-findings`      | `false`                         | Exit with code 2 if any check produces findings         |
+| Flag                     | Default                         | Description                                                               |
+| ------------------------ | ------------------------------- | ------------------------------------------------------------------------- |
+| `-netbox-base-url`       | `http://mini.dev.yanch.ar:8000` | NetBox server URL                                                         |
+| `-netbox-token-file`     | `.netbox_api_token`             | Path to a file containing the API token                                   |
+| `-config`                | _(none)_                        | Path to a JSON policy config file                                         |
+| `-format`                | `text`                          | Output format: `text` or `json`                                           |
+| `-color`                 | `auto`                          | ANSI color in text output: `auto`, `always`, or `never`                   |
+| `-progress`              | `auto`                          | Progress UI mode: `auto`, `rich`, `plain`, or `off`                       |
+| `-max-snapshot-attempts` | `5`                             | Maximum snapshot attempts; a failed request or a mid-load change uses one |
+| `-snapshot-retry-delay`  | `3s`                            | Delay before each snapshot attempt after the first                        |
+| `-fail-on-findings`      | `false`                         | Exit with code 2 if any check produces findings                           |
 
 ## Environment variables
 

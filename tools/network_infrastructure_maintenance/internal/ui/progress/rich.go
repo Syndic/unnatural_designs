@@ -77,10 +77,10 @@ func (r *richReporter) SnapshotAttemptStart(attempt, max, totalTasks int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if attempt > 1 {
-		// On retry, write a one-line note above the live region. The
-		// previous attempt's aggregate bar will have been completed/removed
-		// by SnapshotLoadError handling.
-		_, _ = fmt.Fprintf(r.p, "Snapshot attempt %d/%d (previous attempt detected a mid-load change)\n", attempt, max)
+		// On retry, write a one-line note above the live region; the reason
+		// was already printed by SnapshotLoadError, which also removed the
+		// previous attempt's aggregate bar.
+		_, _ = fmt.Fprintf(r.p, "Snapshot attempt %d/%d\n", attempt, max)
 	}
 	r.agg = r.p.New(int64(totalTasks),
 		mpb.BarStyle().Lbound("[").Filler("=").Tip(">").Padding(" ").Rbound("]"),
