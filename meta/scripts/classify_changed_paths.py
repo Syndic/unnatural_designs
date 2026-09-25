@@ -98,6 +98,9 @@ def invocations(script: str) -> list[list[str]]:
             argv = []
             for arg in words[start + 1 :]:
                 if set(arg) <= set(lexer.punctuation_chars):
+                    # `2>&1` splits as `2`, `>&`, `1`: the digit is the redirect's, not an argument.
+                    if arg[0] in "<>" and argv and argv[-1].isdigit():
+                        argv.pop()
                     break
                 argv.append(arg)
             found.append(argv)

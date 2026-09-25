@@ -124,18 +124,18 @@ action is refused rather than skipped.
 
 `test_ci_enforcement_manifest.py` has no script half either, and is the one home for what every
 required check, and every fan-in on a required path, needs across every workflow that runs on
-`pull_request`. Its data sits
-beside it in `ci_enforcement_manifest.py` — every rule the repository is required to enforce on
-`main`, and the four jobs that deliberately gate nothing with a reason each — as a library rather
-than constants in the test, because `check_repository_constraints.py` holds the repository to the
-same data and is a second consumer by construction. The test fails a job in neither list, a
-blocking job that `needs:` a non-blocking one (enforcement moved by a scheduling edit, in either
-direction), a required check that cannot report on every PR or reports without having run, a matrix
-with no fan-in or no rows, a fan-in on a required path accepting a result no recorded exemption
-covers, and an exemption that lets a fan-in wave through another upstream's failure alongside the
-exempted result. A matrix job is requirable only through a fan-in, since its own check name carries the row
-that produced it — the gap [#311](https://github.com/Syndic/unnatural_designs/issues/311) closed.
-It cannot read the rules itself; the guard below is what does.
+`pull_request`. Its data sits beside it in `ci_enforcement_manifest.py` — every rule the repository
+is required to enforce on `main`, and the four jobs that deliberately gate nothing with a reason
+each — as a library rather than constants in the test, because `check_repository_constraints.py`
+holds the repository to the same data and is a second consumer by construction. The test fails a job
+in neither list, a blocking job that `needs:` a non-blocking one (enforcement moved by a scheduling
+edit, in either direction), a required check that cannot report on every PR or reports without
+having run, a matrix with no fan-in or no rows, a fan-in on a required path accepting a result no
+recorded exemption covers, and an exemption that lets a fan-in wave through another upstream's
+failure alongside the exempted result. A matrix job is requirable only through a fan-in, since its
+own check name carries the row that produced it — the gap
+[#311](https://github.com/Syndic/unnatural_designs/issues/311) closed. It cannot read the rules
+itself; the guard below is what does.
 
 `check_repository_constraints.py` is the one guard here with a script half that reads outside the
 tree, and so the only one that cannot ride `bazel test //...` — its verdict moves with repo

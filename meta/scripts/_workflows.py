@@ -354,23 +354,35 @@ def action_yaml_files(root: Path) -> list[Path]:
     return sorted(found)
 
 
-def step_containers(yaml_file: Path) -> list[tuple[str, dict]]:
-    """Every mapping holding `steps:` in a workflow or composite action, as (label, mapping).
+class StepContainer(NamedTuple):
+    """A job or composite action's steps, and the mapping a step's outputs can be read from.
 
-    Each job by its id, and a composite action's `runs` as `runs`. The whole mapping rather than
-    its steps, because a step output is read from anywhere in its job — another step's `if:` or
-    `env:`, or the job's own `outputs:`. Raises on YAML that does not parse: a caller asking what a
-    file runs cannot treat "unreadable" as "runs nothing".
+    `scope` is the job for a workflow, since a step output is read from anywhere in its job —
+    another step's `if:` or `env:`, or the job's own `outputs:`. For a composite action it is the
+    whole document, since the action's `outputs:` sit at its top level, beside `runs` rather than
+    inside it.
+    """
+
+    label: str
+    steps: list
+    scope: dict
+
+
+def step_containers(yaml_file: Path) -> list[StepContainer]:
+    """Every job in a workflow, by id, and a composite action's steps, labelled `runs`.
+
+    Raises on YAML that does not parse: a caller asking what a file runs cannot treat "unreadable"
+    as "runs nothing".
     """
     loaded = yaml.safe_load(yaml_file.read_text(encoding="utf-8")) or {}
     found = [
-        (job_id, body)
+        StepContainer(job_id, body.get("steps") or [], body)
         for job_id, body in (loaded.get("jobs") or {}).items()
         if isinstance(body, dict)
     ]
     runs = loaded.get("runs")
     if isinstance(runs, dict) and "steps" in runs:
-        found.append(("runs", runs))
+        found.append(StepContainer("runs", runs["steps"] or [], loaded))
     return found
 
 

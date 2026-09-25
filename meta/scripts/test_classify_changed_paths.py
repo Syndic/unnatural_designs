@@ -147,6 +147,14 @@ class TestInvocations(unittest.TestCase):
         script = "classify_changed_paths.py --base b --emit go && other --emit y  # it's"
         self.assertEqual(invocations(script), [["--base", "b", "--emit", "go"]])
 
+    def test_a_redirect_is_not_an_argument(self):
+        for script in (
+            "classify_changed_paths.py --base b --emit go 2>&1",
+            "classify_changed_paths.py --base b --emit go > out.txt",
+        ):
+            with self.subTest(script=script):
+                self.assertEqual(invocations(script), [["--base", "b", "--emit", "go"]])
+
     def test_an_unbalanced_quote_on_another_line_does_not_matter(self):
         script = "echo don't\nclassify_changed_paths.py --base b --emit go\n"
         self.assertEqual(invocations(script), [["--base", "b", "--emit", "go"]])

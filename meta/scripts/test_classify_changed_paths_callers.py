@@ -39,19 +39,19 @@ class Caller(NamedTuple):
 def callers() -> list[Caller]:
     found = []
     for path in action_yaml_files(_ROOT):
-        for label, body in step_containers(path):
-            for step in body.get("steps") or []:
+        for container in step_containers(path):
+            for step in container.steps:
                 argvs = invocations(step.get("run") or "")
                 if not argvs:
                     continue
                 step_id = step.get("id")
                 reads = set()
                 if step_id is not None:
-                    # The whole job as text: an output is read from any `if:`, `env:`, `with:` or
-                    # `run:` in it, and from the job's own `outputs:`.
+                    # The whole scope as text: an output is read from any `if:`, `env:`, `with:` or
+                    # `run:` in it, and from its `outputs:`.
                     pattern = re.escape(f"steps.{step_id}.outputs.") + r"([\w-]+)"
-                    reads = set(re.findall(pattern, json.dumps(body)))
-                where = f"{path.relative_to(_ROOT)}:{label}:{step_id or step.get('name')}"
+                    reads = set(re.findall(pattern, json.dumps(container.scope)))
+                where = f"{path.relative_to(_ROOT)}:{container.label}:{step_id or step.get('name')}"
                 found.append(Caller(where, argvs, reads))
     return found
 

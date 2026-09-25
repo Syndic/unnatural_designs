@@ -18,6 +18,7 @@ from pathlib import Path
 
 import yaml
 from meta.scripts._workflows import (
+    StepContainer,
     action_steps,
     action_yaml_files,
     job_condition,
@@ -736,7 +737,7 @@ class TestActionYamlFiles(unittest.TestCase):
 
 
 class TestStepContainers(unittest.TestCase):
-    def _containers(self, content: str) -> list[tuple[str, dict]]:
+    def _containers(self, content: str) -> list[StepContainer]:
         with tempfile.TemporaryDirectory() as tmp:
             return step_containers(_write(Path(tmp), "workflow.yml", content))
 
@@ -753,18 +754,25 @@ class TestStepContainers(unittest.TestCase):
                 steps:
                   - run: echo hi
             """)
-        self.assertEqual([label for label, _ in containers], ["a", "b"])
-        self.assertIn("outputs", containers[0][1], "a job's `outputs:` read its steps too")
+        self.assertEqual([c.label for c in containers], ["a", "b"])
+        self.assertEqual(containers[0].steps, [{"id": "s", "run": "echo x=1"}])
+        self.assertIn("outputs", containers[0].scope, "a job's `outputs:` read its steps too")
 
-    def test_a_composite_action_is_its_runs_mapping(self):
+    def test_a_composite_action_is_scoped_to_the_whole_document(self):
         containers = self._containers("""\
+            outputs:
+              x:
+                value: ${{ steps.s.outputs.x }}
             runs:
               using: composite
               steps:
-                - run: echo hi
+                - id: s
+                  run: echo x=1
                   shell: bash
             """)
-        self.assertEqual([label for label, _ in containers], ["runs"])
+        self.assertEqual([c.label for c in containers], ["runs"])
+        self.assertEqual([step["id"] for step in containers[0].steps], ["s"])
+        self.assertIn("outputs", containers[0].scope, "the action's `outputs:` sit beside `runs`")
 
     def test_a_docker_action_holds_no_steps(self):
         self.assertEqual(self._containers("runs:\n  using: docker\n  image: x\n"), [])
