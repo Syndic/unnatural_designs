@@ -29,13 +29,14 @@ type LoadObserver interface {
 	SnapshotLoadRetryDelay(delay time.Duration)
 }
 
-type nopObserver struct{}
+// NopObserver is a LoadObserver that ignores every notification.
+type NopObserver struct{}
 
-func (nopObserver) SnapshotAttemptStart(int, int, int)              {}
-func (nopObserver) SnapshotTaskStart(string) TaskProgress           { return nil }
-func (nopObserver) SnapshotTaskComplete(int, int, FetchTiming, int) {}
-func (nopObserver) SnapshotLoadError(int, int, error)               {}
-func (nopObserver) SnapshotLoadRetryDelay(time.Duration)            {}
+func (NopObserver) SnapshotAttemptStart(int, int, int)              {}
+func (NopObserver) SnapshotTaskStart(string) TaskProgress           { return nil }
+func (NopObserver) SnapshotTaskComplete(int, int, FetchTiming, int) {}
+func (NopObserver) SnapshotLoadError(int, int, error)               {}
+func (NopObserver) SnapshotLoadRetryDelay(time.Duration)            {}
 
 // errStateChanged marks an attempt whose start and end change IDs differ.
 var errStateChanged = errors.New("NetBox state changed during load")
@@ -46,7 +47,7 @@ var errStateChanged = errors.New("NetBox state changed during load")
 // interface obs receives no notifications; a typed-nil obs is called as-is.
 func LoadConsistentSnapshot(ctx context.Context, client *Client, maxAttempts int, retryDelay time.Duration, obs LoadObserver) (Snapshot, error) {
 	if obs == nil {
-		obs = nopObserver{}
+		obs = NopObserver{}
 	}
 	var lastErr error
 	var totalStart = time.Now()
