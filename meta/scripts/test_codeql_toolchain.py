@@ -14,7 +14,7 @@ a language that cannot use `none` is a language that needs a toolchain installed
 entry that names no mode at all is the same case wearing a default.
 
 The `codeql-all` fan-in is not here: its name, `if: always()` and how its shell answers each result
-are `//meta/scripts:test_ci_enforcement_manifest`'s, which holds every fan-in in every workflow.
+are `//meta/scripts:test_ci_enforcement_manifest`'s, which holds every fan-in on a required path.
 What stays is CLAUDE.md's copy of its name, which that file does not read.
 
 The extraction report is the other coupling: it is what turns "the analysis succeeded" back into
@@ -27,6 +27,8 @@ the report *says*, and the file-coverage gate it fails on, are
 import re
 import unittest
 from pathlib import Path
+
+import yaml
 
 # Not .resolve(): every file read here is a cross-package data dep, so each lives in the runfiles
 # tree beside this one rather than at the source path a resolved symlink would lead back to.
@@ -53,7 +55,6 @@ _PINNED_FEATURE_ENV = {
 
 # README's copy of the fan-in's name is the manifest test's; CLAUDE.md's is only held here.
 _CLAUDE_MD = _ROOT / ".claude" / "CLAUDE.md"
-_JOB_NAME_RE = re.compile(r"^    name: (.+)$", re.M)
 
 
 # Trailing comments introduce the *next* job rather than closing this one, and this file writes
@@ -223,10 +224,8 @@ class DocumentedNameTest(unittest.TestCase):
 
     def test_claude_md_names_the_fan_in(self):
         """Read off the job, so a rename the manifest and README follow cannot leave this behind."""
-        found = _JOB_NAME_RE.search(job_block(_WORKFLOW.read_text(encoding="utf-8"), "codeql-all"))
-        if found is None:
-            self.fail(f"no job-level `name:` on `codeql-all` in {_WORKFLOW.name}")
-        self.assertIn(found.group(1), _CLAUDE_MD.read_text(encoding="utf-8"))
+        jobs = yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8"))["jobs"]
+        self.assertIn(jobs["codeql-all"]["name"], _CLAUDE_MD.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

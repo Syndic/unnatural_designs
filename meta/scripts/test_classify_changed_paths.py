@@ -1,9 +1,8 @@
 """Tests for classify_changed_paths.py.
 
 Scoped to the script: the pure functions (is_branch_creation, select, classify, format_outputs,
-emitted_sets)
-carry all the non-I/O logic, and the git diff and $GITHUB_OUTPUT wiring is exercised end-to-end by
-the caller workflows on real PRs.
+invocations, emitted_sets) carry all the non-I/O logic, and the git diff and $GITHUB_OUTPUT wiring
+is exercised end-to-end by the caller workflows on real PRs.
 """
 
 import unittest
@@ -12,6 +11,7 @@ from meta.scripts.classify_changed_paths import (
     classify,
     emitted_sets,
     format_outputs,
+    invocations,
     is_branch_creation,
     select,
 )
@@ -122,27 +122,46 @@ class TestFormatOutputs(unittest.TestCase):
         self.assertEqual(format_outputs({}), "")
 
 
-class TestEmittedSets(unittest.TestCase):
+class TestInvocations(unittest.TestCase):
     """Reading a caller's command line back, the way the per-workflow tests need to."""
 
     def test_continued_lines_are_one_command(self):
-        command = (
+        script = (
             "python3 meta/scripts/classify_changed_paths.py \\\n"
             '  --base "$base" \\\n'
             "  --emit changed \\\n"
             "  --emit base\n"
         )
-        self.assertEqual(emitted_sets(command), ["changed", "base"])
+        self.assertEqual(
+            invocations(script), [["--base", "$base", "--emit", "changed", "--emit", "base"]]
+        )
 
-    def test_the_equals_spelling_counts_too(self):
-        # argparse accepts it, so a check that missed it would pass a name it never checked.
-        self.assertEqual(emitted_sets("x.py --base b --emit=python --emit go"), ["python", "go"])
+    def test_quotes_are_removed_as_the_shell_removes_them(self):
+        argv = invocations('python3 classify_changed_paths.py --base b --emit "base"')
+        self.assertEqual(argv, [["--base", "b", "--emit", "base"]])
 
-    def test_the_base_argument_is_not_a_set(self):
-        self.assertEqual(emitted_sets("x.py --base origin/main"), [])
+    def test_a_file_merely_containing_the_name_is_not_an_invocation(self):
+        self.assertEqual(invocations("pytest meta/scripts/test_classify_changed_paths.py"), [])
 
-    def test_a_trailing_flag_with_no_value_names_nothing(self):
-        self.assertEqual(emitted_sets("x.py --emit"), [])
+    def test_another_command_on_the_line_keeps_its_own_arguments(self):
+        script = "classify_changed_paths.py --base b --emit go && other --emit y  # it's"
+        self.assertEqual(invocations(script), [["--base", "b", "--emit", "go"]])
+
+    def test_an_unbalanced_quote_on_another_line_does_not_matter(self):
+        script = "echo don't\nclassify_changed_paths.py --base b --emit go\n"
+        self.assertEqual(invocations(script), [["--base", "b", "--emit", "go"]])
+
+
+class TestEmittedSets(unittest.TestCase):
+    def test_both_argparse_spellings(self):
+        self.assertEqual(
+            emitted_sets(["--base", "b", "--emit=python", "--emit", "go"]), ["python", "go"]
+        )
+
+    def test_arguments_the_step_would_refuse_raise(self):
+        # No `--emit` at all: argparse exits, exactly as the step would.
+        with self.assertRaises(SystemExit):
+            emitted_sets(["--base", "b"])
 
 
 if __name__ == "__main__":

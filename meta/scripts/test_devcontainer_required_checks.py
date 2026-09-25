@@ -19,9 +19,10 @@ Three couplings keep that closed, and none of them fails while it drifts:
     when a `needs:` fails, and a deleted required check is a green one.
 
 Both checks' names, `base-image-all`'s `always()` and how its shell answers each result are
-`//meta/scripts:test_ci_enforcement_manifest`'s, which holds every required check and fan-in in
-every workflow. What stays here is what that file cannot see: which of this workflow's jobs is the
-gate, and the cost that picks `!cancelled()` over `always()`.
+`//meta/scripts:test_ci_enforcement_manifest`'s, which holds every required check, and every
+fan-in on a required path, in every workflow that runs on `pull_request`. What stays here is what
+that file cannot see: which of this workflow's jobs is the gate, and the cost that picks
+`!cancelled()` over `always()`.
 
 The guard shell is run rather than matched: asserting on its spelling would fail an idiom that
 behaves identically, and pass one that does not.
@@ -34,7 +35,7 @@ from pathlib import Path
 
 import yaml
 from meta.scripts._workflows import job_condition, job_needs
-from meta.scripts.classify_changed_paths import emitted_sets
+from meta.scripts.classify_changed_paths import emitted_sets, invocations
 
 # Not .resolve(): the workflow is a cross-package data dep, so it lives in the runfiles tree beside
 # this file rather than at the source path a resolved symlink would lead back to.
@@ -45,7 +46,6 @@ _JOBS = yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8"))["jobs"]
 # an npm install and a container build it has been told not to trust.
 _GUARD_STEP = "Verify the classification ran"
 
-_CLASSIFIER = "classify_changed_paths.py"
 _GATE_RE = re.compile(r"needs\.changes\.outputs\.(\w+)")
 _STEP_OUTPUT_RE = re.compile(r"^\$\{\{\s*steps\.(\w+)\.outputs\.(\w+)\s*\}\}$")
 
@@ -57,7 +57,7 @@ _NOT_SUCCESS = ("failure", "cancelled", "skipped")
 def classify_step() -> dict:
     """The step that runs the classifier — the one the job's `outputs:` read back from."""
     for step in _JOBS["changes"]["steps"]:
-        if _CLASSIFIER in step.get("run", ""):
+        if invocations(step.get("run", "")):
             return step
     raise AssertionError(f"no step running the classifier in {_WORKFLOW.name}'s `changes` job")
 
@@ -82,7 +82,9 @@ class ClassificationOutputsTest(unittest.TestCase):
     """The three hops between a pattern set and a gated step, each silent when it breaks."""
 
     def setUp(self):
-        self.emitted = emitted_sets(classify_step()["run"])
+        self.emitted = [
+            name for argv in invocations(classify_step()["run"]) for name in emitted_sets(argv)
+        ]
         self.outputs = _JOBS["changes"]["outputs"]
 
     def test_the_job_declares_exactly_what_it_emits(self):

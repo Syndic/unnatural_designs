@@ -95,7 +95,8 @@ three-dot diff into `name=true|false` step outputs for `devcontainer.yml`,
 because pre-commit's `files:` cannot read a shared definition — so the hook takes no filter, gates
 on the shared set itself, and does nothing on a commit touching none of it.
 `test_classify_changed_paths_callers.py` holds every `--emit` those workflows pass to the first
-against the sets, finding the callers by glob, so a new one is covered with no edit.
+against the sets, and every read of that step's outputs against what it emitted, finding the callers
+by glob, so a new one is covered with no edit.
 
 `test_precommit_config.py` has no script half. It asserts that README's pre-commit hook table, and
 the paragraph that classifies each hook, still agree with `.pre-commit-config.yaml`, and that every
@@ -122,15 +123,17 @@ its dependents, and a skipped required check reads as a pass — and that a fork
 action is refused rather than skipped.
 
 `test_ci_enforcement_manifest.py` has no script half either, and is the one home for what every
-required check and fan-in needs, across every workflow that runs on `pull_request`. Its data sits
+required check, and every fan-in on a required path, needs across every workflow that runs on
+`pull_request`. Its data sits
 beside it in `ci_enforcement_manifest.py` — every rule the repository is required to enforce on
 `main`, and the four jobs that deliberately gate nothing with a reason each — as a library rather
 than constants in the test, because `check_repository_constraints.py` holds the repository to the
-same data and is a second consumer by construction. The test fails a job in neither list, a blocking job that `needs:` a non-blocking one (enforcement moved by a scheduling edit, in
-either direction), a required check that cannot report on every PR or reports without having run, a
-matrix with no fan-in or no rows, a fan-in accepting a result no recorded exemption covers, and
-an exemption that lets a fan-in wave through another upstream's failure alongside the exempted
-result. A matrix job is requirable only through a fan-in, since its own check name carries the row
+same data and is a second consumer by construction. The test fails a job in neither list, a
+blocking job that `needs:` a non-blocking one (enforcement moved by a scheduling edit, in either
+direction), a required check that cannot report on every PR or reports without having run, a matrix
+with no fan-in or no rows, a fan-in on a required path accepting a result no recorded exemption
+covers, and an exemption that lets a fan-in wave through another upstream's failure alongside the
+exempted result. A matrix job is requirable only through a fan-in, since its own check name carries the row
 that produced it — the gap [#311](https://github.com/Syndic/unnatural_designs/issues/311) closed.
 It cannot read the rules itself; the guard below is what does.
 

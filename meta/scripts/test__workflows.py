@@ -22,7 +22,7 @@ from meta.scripts._workflows import (
     action_yaml_files,
     job_condition,
     job_needs,
-    run_scripts,
+    step_containers,
     unrecognised_matrix_keys,
     workflow_matrix_lists,
 )
@@ -735,37 +735,43 @@ class TestActionYamlFiles(unittest.TestCase):
             self.assertEqual(action_yaml_files(Path(tmp)), [])
 
 
-class TestRunScripts(unittest.TestCase):
-    def _scripts(self, content: str) -> list[tuple[int, str]]:
+class TestStepContainers(unittest.TestCase):
+    def _containers(self, content: str) -> list[tuple[str, dict]]:
         with tempfile.TemporaryDirectory() as tmp:
-            return run_scripts(_write(Path(tmp), "workflow.yml", content))
+            return step_containers(_write(Path(tmp), "workflow.yml", content))
 
-    def test_job_steps_are_read_with_their_line(self):
-        scripts = self._scripts("""\
+    def test_every_job_by_id_whole(self):
+        containers = self._containers("""\
             jobs:
               a:
+                outputs:
+                  x: ${{ steps.s.outputs.x }}
                 steps:
-                  - uses: actions/checkout@abc
-                  - run: |
-                      echo one
-                  - name: second
-                    run: echo two
+                  - id: s
+                    run: echo x=1
+              b:
+                steps:
+                  - run: echo hi
             """)
-        self.assertEqual(scripts, [(5, "echo one\n"), (7, "echo two")])
+        self.assertEqual([label for label, _ in containers], ["a", "b"])
+        self.assertIn("outputs", containers[0][1], "a job's `outputs:` read its steps too")
 
-    def test_composite_action_steps_are_read(self):
-        scripts = self._scripts("""\
+    def test_a_composite_action_is_its_runs_mapping(self):
+        containers = self._containers("""\
             runs:
               using: composite
               steps:
                 - run: echo hi
                   shell: bash
             """)
-        self.assertEqual(scripts, [(4, "echo hi")])
+        self.assertEqual([label for label, _ in containers], ["runs"])
+
+    def test_a_docker_action_holds_no_steps(self):
+        self.assertEqual(self._containers("runs:\n  using: docker\n  image: x\n"), [])
 
     def test_unparseable_yaml_raises_rather_than_reading_as_nothing(self):
         with self.assertRaises(yaml.YAMLError):
-            self._scripts("jobs:\n  a:\n   - [unbalanced\n")
+            self._containers("jobs:\n  a:\n   - [unbalanced\n")
 
 
 class TestJobNeeds(unittest.TestCase):

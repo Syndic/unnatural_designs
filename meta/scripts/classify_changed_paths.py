@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -45,9 +46,9 @@ from meta.scripts.path_classification_pattern_sets import SETS
 # that first creates a branch. Any length of zeros counts (abbreviated or full 40/64 hex).
 _NULL_OID_RE = re.compile(r"\A0+\Z")
 
-# This script's own flag, so a caller's command line can be read back by the one file that parses
-# it for real.
-EMIT = "--emit"
+# The name a caller invokes this file by, matched as a whole path component so a test file that
+# merely contains it (`test_classify_changed_paths.py`) is not mistaken for an invocation.
+SCRIPT = Path(__file__).name
 
 
 # ── Pure functions (the part the tests exercise) ──────────────────────────────
@@ -76,20 +77,39 @@ def select(names: list[str]) -> dict[str, tuple[str, ...]]:
     return {name: SETS[name] for name in names}
 
 
-def emitted_sets(command: str) -> list[str]:
-    """The set names a shell command asks this script for, in order, read off its `--emit`s.
+def invocations(script: str) -> list[list[str]]:
+    """The argument list of every command in a shell script that runs this file.
 
-    Line continuations are joined first, since every caller splits the invocation across lines.
-    Both argparse spellings count: `--emit NAME` and `--emit=NAME`.
+    Tokenised as the shell would, by `shlex`: quotes are removed and `#` comments dropped.
+    Continuations are joined first, a newline ends a command, and so does a shell operator — so an
+    `--emit` belonging to some other command is not read as this one's. Only lines naming the file
+    are tokenised, which keeps an unbalanced quote elsewhere in the script from mattering.
     """
-    words = command.replace("\\\n", " ").split()
-    names = []
-    for index, word in enumerate(words):
-        if word == EMIT and index + 1 < len(words):
-            names.append(words[index + 1])
-        elif word.startswith(EMIT + "="):
-            names.append(word.removeprefix(EMIT + "="))
-    return names
+    found = []
+    for line in script.replace("\\\n", " ").splitlines():
+        if SCRIPT not in line:
+            continue
+        lexer = shlex.shlex(line, posix=True, punctuation_chars=True)
+        lexer.whitespace_split = True
+        words = list(lexer)
+        for start, word in enumerate(words):
+            if Path(word).name != SCRIPT:
+                continue
+            argv = []
+            for arg in words[start + 1 :]:
+                if set(arg) <= set(lexer.punctuation_chars):
+                    break
+                argv.append(arg)
+            found.append(argv)
+    return found
+
+
+def emitted_sets(argv: list[str]) -> list[str]:
+    """The set names one invocation asks for, read by the parser `main` runs.
+
+    An argument list that parser refuses raises SystemExit here too, as the step itself would.
+    """
+    return _parser().parse_args(argv).emit
 
 
 def format_outputs(result: dict[str, bool]) -> str:
@@ -124,11 +144,11 @@ def _emit_github_output(text: str) -> None:
 # ── Driver ────────────────────────────────────────────────────────────────────
 
 
-def main(argv: list[str] | None = None) -> int:
+def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base", required=True, help="Base ref or SHA to diff HEAD against.")
     parser.add_argument(
-        EMIT,
+        "--emit",
         action="append",
         default=[],
         required=True,
@@ -136,7 +156,11 @@ def main(argv: list[str] | None = None) -> int:
         help="A pattern set to classify into; repeatable. Emits NAME=true if any changed path "
         "matches it.",
     )
-    args = parser.parse_args(argv)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _parser().parse_args(argv)
 
     sets = select(args.emit)
 

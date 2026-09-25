@@ -7,9 +7,10 @@ name, a trigger with no path filter, no job-level `if:` — is
 `:test_path_classification_pattern_sets`'s. What is held here is particular to this workflow, and
 each piece fails silently:
 
-  - **The classification reaching the gate.** The trigger runs on every PR, so the classification
-    is the whole of what decides that the exercise runs. The step has to emit the set the gate
-    reads; a name that agrees with nothing is `false` on every run.
+  - **The gate reading the right set.** The trigger runs on every PR, so the classification is
+    the whole of what decides that the exercise runs. That the gate reads only sets the step
+    emits is `:test_classify_changed_paths_callers`'s; that the set it reads is the self-test's is
+    held here.
   - **Where the classification sits.** In a step of the reporting job, not a job the rest `needs:`.
     A failed dependency skips its dependents, and a skipped required check reads as a pass, so the
     `needs:` shape would turn a broken classifier into a green gate.
@@ -30,7 +31,6 @@ import unittest
 from pathlib import Path
 
 import yaml
-from meta.scripts.classify_changed_paths import emitted_sets
 
 # Not .resolve(): every file read here is a cross-package data dep, so each lives in the runfiles
 # tree beside this one rather than at the source path a resolved symlink would lead back to.
@@ -45,10 +45,9 @@ _CHECKOUT_ACTION = "actions/checkout@"
 _PULL_HEAD_REF = "refs/pull/"
 _JOB = "selftest"
 
-# The two steps that decide anything, and the two conditions a step after them may carry: the
-# gate's own verdict, or the cleanup's, which reads the scratch step's outcome instead — `skipped`
-# whenever the gate stood the exercise down.
-_CLASSIFY_ID = "classify"
+# The step that decides whether the exercise runs, the set it reads, and the two conditions a step
+# after it may carry: the gate's own verdict, or the cleanup's, which reads the scratch step's
+# outcome instead — `skipped` whenever the gate stood the exercise down.
 _GATE_ID = "gate"
 _SET_NAME = "commit_file_via_app"
 _GATE = f"steps.{_GATE_ID}.outputs.run == 'true'"
@@ -112,11 +111,6 @@ class TestTheCheckName(unittest.TestCase):
 
 
 class TestTheClassification(unittest.TestCase):
-    def test_the_step_emits_the_set_the_gate_reads(self):
-        # Whether the name exists at all is :test_classify_changed_paths_callers'. A step emitting
-        # a real set the gate does not read would pass that and stand the exercise down forever.
-        self.assertEqual(emitted_sets(step_with_id(_CLASSIFY_ID)["run"]), [_SET_NAME])
-
     def test_the_classification_is_a_step_not_a_dependency(self):
         # A `changes` job the rest `needs:` would report `skipped` on failure, and branch
         # protection counts a skipped required check as passed.

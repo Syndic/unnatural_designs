@@ -164,6 +164,7 @@ py_test(
         "//:.github/workflows/security.yml",
     ],
     main = "test_codeql_toolchain.py",
+    deps = [requirement("pyyaml")],
 )
 
 # The enforcement manifest: every rule the repository enforces on `main`, plus what deliberately
@@ -227,8 +228,8 @@ py_test(
     ],
 )
 
-# The failure mode the manifest test covers, where only this workflow can see it: a `changes` job that
-# fails hands both of devcontainer.yml's required checks a `skipped`, which reads as a pass.
+# What devcontainer.yml's required checks depend on that the manifest test cannot see: which job is
+# the gate, and why `build-and-smoke-test` carries `!cancelled()` rather than `always()`.
 py_test(
     name = "test_devcontainer_required_checks",
     size = "small",
@@ -336,10 +337,7 @@ py_test(
         "//:.github/workflows/commit-file-via-app-selftest.yml",
     ],
     main = "test_commit_file_via_app_selftest.py",
-    deps = [
-        ":classify_changed_paths_lib",
-        requirement("pyyaml"),
-    ],
+    deps = [requirement("pyyaml")],
 )
 
 py_library(
@@ -411,7 +409,6 @@ py_test(
     deps = [
         ":_workflows_lib",
         ":classify_changed_paths_lib",
-        ":path_classification_pattern_sets_lib",
     ],
 )
 

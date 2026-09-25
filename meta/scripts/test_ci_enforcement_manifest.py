@@ -66,9 +66,6 @@ _PULL_REQUEST = "pull_request"
 # is what a failed dependency and a false `if:` both leave behind, and what GitHub counts as a pass.
 _NOT_SUCCESS = ("failure", "cancelled", "skipped")
 
-# GitHub treats these as the same condition, and a fan-in written either way behaves identically.
-_ALWAYS = ("always()", "${{ always() }}")
-
 # The two conditions that run whatever happened upstream. A required job may carry one of these
 # and nothing else: GitHub reports a job skipped by a false `if:` as `skipped`, and branch
 # protection counts `skipped` as a pass, so any falsifiable condition on a required job makes it a
@@ -601,9 +598,9 @@ class FanInStrictnessTest(unittest.TestCase):
     def test_a_fan_in_runs_even_when_its_matrix_failed(self):
         for job in blocking_fan_ins():
             with self.subTest(job=str(job)):
-                self.assertIn(
-                    job.body.get("if"),
-                    _ALWAYS,
+                self.assertEqual(
+                    job_condition(job.body),
+                    "always()",
                     f"without `always()` a failed matrix skips `{job}`, and branch protection "
                     "counts a skipped required check as passed. `always()` rather than "
                     "`!cancelled()` here on purpose: seeing a `cancelled` result and refusing it "

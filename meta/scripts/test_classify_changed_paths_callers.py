@@ -1,36 +1,59 @@
-"""Every `--emit` a workflow or composite action passes to classify_changed_paths.py names a set.
+"""Every caller of classify_changed_paths.py asks for sets that exist, and reads only what it asked.
 
-`select()` refuses a name it does not know, so a renamed set fails the calling step rather than
-emitting `false` forever — but it fails on a PR, after the rename is written, and in the one
-workflow whose Renovate-only trigger means an ordinary PR never runs it. This holds every caller to
-`SETS` at once, found by glob, so a new caller is covered with no edit here.
+Two hops, each silent when it breaks, held for every workflow and composite action at once — found
+by glob, so a new caller is covered with no edit here:
 
-What a caller then *does* with a set's output is its own workflow's business, and stays in that
-workflow's own test: `//meta/scripts:test_devcontainer_required_checks` and
-`:test_commit_file_via_app_selftest`.
+  - **The `--emit` names.** Read by the parser the step runs, then resolved by `select()`, which
+    refuses a name it does not know. That fails the step, but on a PR, after the rename is written.
+  - **The reads of the step's outputs.** A `steps.<id>.outputs.<name>` naming a set the step did
+    not emit is an empty string, which reads as `false`: whatever it gates never runs, and nothing
+    goes red.
+
+What stays with a caller's own workflow test is whatever is particular to it — devcontainer.yml's
+job-level `outputs:` hop in `//meta/scripts:test_devcontainer_required_checks`, and the
+self-test's gate reading the one set it needs in `:test_commit_file_via_app_selftest`.
 """
 
+import json
+import re
 import unittest
 from pathlib import Path
+from typing import NamedTuple
 
-from meta.scripts._workflows import action_yaml_files, run_scripts
-from meta.scripts.classify_changed_paths import emitted_sets
-from meta.scripts.path_classification_pattern_sets import SETS
+from meta.scripts._workflows import action_yaml_files, step_containers
+from meta.scripts.classify_changed_paths import emitted_sets, invocations, select
 
 # Not .resolve(): the workflows and actions are cross-package data deps, so they live in the
 # runfiles tree beside this file rather than at the source path a resolved symlink leads back to.
 _ROOT = Path(__file__).parent.parent.parent
-_CLASSIFIER = "classify_changed_paths.py"
 
 
-def callers() -> list[tuple[str, list[str]]]:
-    """`(file:line, emitted set names)` for every step that runs the classifier."""
-    return [
-        (f"{path.relative_to(_ROOT)}:{line}", emitted_sets(script))
-        for path in action_yaml_files(_ROOT)
-        for line, script in run_scripts(path)
-        if _CLASSIFIER in script
-    ]
+class Caller(NamedTuple):
+    """One step that runs the classifier, with what it asks for and what its job reads back."""
+
+    where: str
+    argvs: list[list[str]]
+    reads: set[str]
+
+
+def callers() -> list[Caller]:
+    found = []
+    for path in action_yaml_files(_ROOT):
+        for label, body in step_containers(path):
+            for step in body.get("steps") or []:
+                argvs = invocations(step.get("run") or "")
+                if not argvs:
+                    continue
+                step_id = step.get("id")
+                reads = set()
+                if step_id is not None:
+                    # The whole job as text: an output is read from any `if:`, `env:`, `with:` or
+                    # `run:` in it, and from the job's own `outputs:`.
+                    pattern = re.escape(f"steps.{step_id}.outputs.") + r"([\w-]+)"
+                    reads = set(re.findall(pattern, json.dumps(body)))
+                where = f"{path.relative_to(_ROOT)}:{label}:{step_id or step.get('name')}"
+                found.append(Caller(where, argvs, reads))
+    return found
 
 
 class ClassifierCallersTest(unittest.TestCase):
@@ -39,23 +62,39 @@ class ClassifierCallersTest(unittest.TestCase):
 
     def test_callers_were_found(self):
         """Without the data deps, or after a rename, every assertion below passes vacuously."""
-        self.assertTrue(self.callers, f"no step in the runfiles tree runs {_CLASSIFIER}")
+        self.assertTrue(self.callers, "no step in the runfiles tree runs the classifier")
 
-    def test_every_caller_asks_for_at_least_one_set(self):
-        for where, names in self.callers:
-            with self.subTest(caller=where):
-                self.assertTrue(
-                    names, f"{where} runs {_CLASSIFIER} with no `--emit`, which argparse refuses"
-                )
+    def test_some_caller_reads_an_output(self):
+        """Non-vacuity for the read check: a pattern that matched nothing would pass it."""
+        self.assertTrue(any(caller.reads for caller in self.callers))
+
+    def test_every_invocation_parses(self):
+        for caller in self.callers:
+            for argv in caller.argvs:
+                with self.subTest(caller=caller.where, argv=argv):
+                    try:
+                        emitted_sets(argv)
+                    except SystemExit:
+                        self.fail(f"{caller.where} passes arguments the classifier refuses")
 
     def test_every_emitted_set_exists(self):
-        for where, names in self.callers:
-            with self.subTest(caller=where):
+        for caller in self.callers:
+            for argv in caller.argvs:
+                with self.subTest(caller=caller.where, argv=argv):
+                    try:
+                        select(emitted_sets(argv))
+                    except SystemExit as exc:
+                        self.fail(f"{caller.where}: {exc}")
+
+    def test_every_read_names_a_set_the_step_emitted(self):
+        for caller in self.callers:
+            with self.subTest(caller=caller.where):
+                emitted = {name for argv in caller.argvs for name in emitted_sets(argv)}
                 self.assertEqual(
-                    sorted(name for name in names if name not in SETS),
+                    sorted(caller.reads - emitted),
                     [],
-                    f"{where} names a set path_classification_pattern_sets.py does not define, so "
-                    "the classifier exits non-zero and the step fails",
+                    f"{caller.where}'s job reads outputs its classifier step never emits; each "
+                    "reads as `false` on every run, so whatever it gates never runs",
                 )
 
 

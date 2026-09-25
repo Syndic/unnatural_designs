@@ -1,5 +1,5 @@
-"""Reads GitHub Actions YAML structurally: module matrices, step inputs, `run:` scripts, and the
-`needs:`/`if:` of a job already loaded as a mapping.
+"""Reads GitHub Actions YAML structurally: module matrices, step inputs, the mappings that hold
+steps, and the `needs:`/`if:` of a job already loaded as a mapping.
 
 Split out of `_workspace.py` so the YAML dependency lands on the scripts that need it:
 `check_modules.py` reads matrices and `check_python_version.py` reads step inputs, while
@@ -354,17 +354,23 @@ def action_yaml_files(root: Path) -> list[Path]:
     return sorted(found)
 
 
-def run_scripts(yaml_file: Path) -> list[tuple[int, str]]:
-    """Every `run:` script in a workflow or composite action, as (step line, script).
+def step_containers(yaml_file: Path) -> list[tuple[str, dict]]:
+    """Every mapping holding `steps:` in a workflow or composite action, as (label, mapping).
 
-    Raises on YAML that does not parse: a caller asking what a file runs cannot treat "unreadable"
-    as "runs nothing".
+    Each job by its id, and a composite action's `runs` as `runs`. The whole mapping rather than
+    its steps, because a step output is read from anywhere in its job — another step's `if:` or
+    `env:`, or the job's own `outputs:`. Raises on YAML that does not parse: a caller asking what a
+    file runs cannot treat "unreadable" as "runs nothing".
     """
-    found: list[tuple[int, str]] = []
-    for node, _ in _step_nodes(yaml.compose(yaml_file.read_text(encoding="utf-8"))):
-        run = _lookup(node, "run")
-        if run is not None and isinstance(run[1], yaml.ScalarNode):
-            found.append((_line(node), run[1].value))
+    loaded = yaml.safe_load(yaml_file.read_text(encoding="utf-8")) or {}
+    found = [
+        (job_id, body)
+        for job_id, body in (loaded.get("jobs") or {}).items()
+        if isinstance(body, dict)
+    ]
+    runs = loaded.get("runs")
+    if isinstance(runs, dict) and "steps" in runs:
+        found.append(("runs", runs))
     return found
 
 
