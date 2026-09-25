@@ -340,8 +340,8 @@ def action_steps(yaml_file: Path) -> tuple[list[Step], dict[int, str]]:
 def action_yaml_files(root: Path) -> list[Path]:
     """Every workflow and composite action in the repo.
 
-    Both trees, because a step is a step wherever it lives: a guard that read only
-    `.github/workflows/` would have a blind spot under `.github/actions/`, in a guard whose whole
+    Both trees, because a step is a step wherever it lives: a check that read only
+    `.github/workflows/` would have a blind spot under `.github/actions/`, in a check whose whole
     claim is that it has none.
     """
     found = []

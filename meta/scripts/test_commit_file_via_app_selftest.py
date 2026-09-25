@@ -2,7 +2,7 @@
 
 `Action self-test` is the only gate between a change to `.github/actions/commit-file-via-app/` and
 the repos outside this one that reference it at `@main`. What every required check needs — its
-name, a trigger with no path filter, no job-level gate — is
+name, a trigger with no path filter, no job-level `if:` — is
 `//meta/scripts:test_ci_enforcement_manifest`'s, and which paths the set matches is
 `:test_path_classification_pattern_sets`'s. What is held here is particular to this workflow, and
 each piece fails silently:

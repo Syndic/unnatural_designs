@@ -6,7 +6,7 @@ workflow whose Renovate-only trigger means an ordinary PR never runs it. This ho
 `SETS` at once, found by glob, so a new caller is covered with no edit here.
 
 What a caller then *does* with a set's output is its own workflow's business, and stays in that
-workflow's guard: `//meta/scripts:test_devcontainer_required_checks` and
+workflow's own test: `//meta/scripts:test_devcontainer_required_checks` and
 `:test_commit_file_via_app_selftest`.
 """
 

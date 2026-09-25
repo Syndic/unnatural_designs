@@ -123,7 +123,7 @@ class TestFormatOutputs(unittest.TestCase):
 
 
 class TestEmittedSets(unittest.TestCase):
-    """Reading a caller's command line back, the way the workflow guards need to."""
+    """Reading a caller's command line back, the way the per-workflow tests need to."""
 
     def test_continued_lines_are_one_command(self):
         command = (
@@ -135,7 +135,7 @@ class TestEmittedSets(unittest.TestCase):
         self.assertEqual(emitted_sets(command), ["changed", "base"])
 
     def test_the_equals_spelling_counts_too(self):
-        # argparse accepts it, so a guard that missed it would pass a name it never checked.
+        # argparse accepts it, so a check that missed it would pass a name it never checked.
         self.assertEqual(emitted_sets("x.py --base b --emit=python --emit go"), ["python", "go"])
 
     def test_the_base_argument_is_not_a_set(self):

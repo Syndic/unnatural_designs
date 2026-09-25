@@ -227,7 +227,7 @@ py_test(
     ],
 )
 
-# The failure mode the manifest guards, where only this workflow can see it: a `changes` job that
+# The failure mode the manifest test covers, where only this workflow can see it: a `changes` job that
 # fails hands both of devcontainer.yml's required checks a `skipped`, which reads as a pass.
 py_test(
     name = "test_devcontainer_required_checks",
