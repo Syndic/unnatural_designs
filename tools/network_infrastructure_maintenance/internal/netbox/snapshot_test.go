@@ -281,8 +281,8 @@ func TestLoadConsistentSnapshotRetriesAfterChangeReadError(t *testing.T) {
 }
 
 // TestLoadConsistentSnapshotCancelledFetchIsNotRetried cancels the context from
-// inside a fetch; the load must return context.Canceled without reporting a
-// failed attempt or a retry.
+// inside a fetch; the load must report the failed attempt and return
+// context.Canceled without a retry.
 func TestLoadConsistentSnapshotCancelledFetchIsNotRetried(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -300,8 +300,11 @@ func TestLoadConsistentSnapshotCancelledFetchIsNotRetried(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("err = %v, want context.Canceled", err)
 	}
-	if len(obs.loadErrs) != 0 || len(obs.delays) != 0 {
-		t.Errorf("load errors %v and delays %v reported, want none", obs.loadErrs, obs.delays)
+	if got := len(obs.loadErrs); got != 1 {
+		t.Errorf("SnapshotLoadError fired %d times, want 1: %v", got, obs.loadErrs)
+	}
+	if len(obs.delays) != 0 {
+		t.Errorf("retry delays %v reported, want none", obs.delays)
 	}
 }
 
@@ -405,6 +408,9 @@ func TestLoadConsistentSnapshotPermanentFailureIsNotRetried(t *testing.T) {
 			if !errors.As(err, &httpErr) {
 				t.Fatalf("err = %v, want an *HTTPError", err)
 			}
+			if got := len(obs.loadErrs); got != 1 {
+				t.Errorf("SnapshotLoadError fired %d times, want 1: %v", got, obs.loadErrs)
+			}
 			if len(obs.delays) != 0 {
 				t.Errorf("retry delays %v reported, want none", obs.delays)
 			}
@@ -423,6 +429,9 @@ func TestLoadConsistentSnapshotMalformedURLIsNotRetried(t *testing.T) {
 
 	if _, err := LoadConsistentSnapshot(context.Background(), client, 5, time.Millisecond, obs); err == nil {
 		t.Fatal("expected error, got nil")
+	}
+	if got := len(obs.loadErrs); got != 1 {
+		t.Errorf("SnapshotLoadError fired %d times, want 1: %v", got, obs.loadErrs)
 	}
 	if len(obs.delays) != 0 {
 		t.Errorf("retry delays %v reported, want none", obs.delays)

@@ -26,6 +26,8 @@ type LoadObserver interface {
 	// need per-page updates).
 	SnapshotTaskStart(name string) TaskProgress
 	SnapshotTaskComplete(completed, total int, stats FetchTiming, totalRequests int)
+	// SnapshotLoadError reports a failed attempt, whether or not a retry
+	// follows it.
 	SnapshotLoadError(attempt, maxAttempts int, err error)
 	SnapshotLoadRetryDelay(delay time.Duration)
 }
@@ -67,6 +69,7 @@ func LoadConsistentSnapshot(ctx context.Context, client *Client, maxAttempts int
 			snap.LoadStats.Duration = time.Since(totalStart)
 			return snap, nil
 		}
+		obs.SnapshotLoadError(attempt, maxAttempts, err)
 		// A request that failed because ctx ended is not worth retrying.
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return Snapshot{}, cancelled(ctxErr, lastErr)
@@ -74,7 +77,6 @@ func LoadConsistentSnapshot(ctx context.Context, client *Client, maxAttempts int
 		if !retryable(err) {
 			return Snapshot{}, err
 		}
-		obs.SnapshotLoadError(attempt, maxAttempts, err)
 		lastErr = err
 	}
 	if lastErr == nil {
