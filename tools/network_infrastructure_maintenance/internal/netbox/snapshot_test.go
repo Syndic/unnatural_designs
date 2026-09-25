@@ -494,7 +494,8 @@ func TestLoadConsistentSnapshotRetriesTransportFailure(t *testing.T) {
 }
 
 // TestLoadConsistentSnapshotCancelledRetryKeepsCause fails attempt 1 with a 500
-// and cancels inside a fetch on attempt 2; the error must carry both.
+// and cancels inside a fetch on attempt 2; the error must carry the
+// cancellation and attempt 1's 500, not attempt 2's own failure.
 func TestLoadConsistentSnapshotCancelledRetryKeepsCause(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -506,7 +507,8 @@ func TestLoadConsistentSnapshotCancelledRetryKeepsCause(t *testing.T) {
 			return
 		case r.URL.Path == "/api/dcim/devices/" && deviceReads.Add(1) == 2:
 			cancel()
-			http.Error(w, "cancelled", http.StatusInternalServerError)
+			// A status distinct from attempt 1's 500, so the cause is unambiguous.
+			http.Error(w, "cancelled", http.StatusServiceUnavailable)
 			return
 		}
 		_, _ = w.Write([]byte(`{"count":0,"next":null,"results":[]}`))
