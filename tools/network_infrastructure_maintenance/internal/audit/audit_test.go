@@ -8,8 +8,8 @@ import (
 	netbox "github.com/Syndic/unnatural_designs/tools/network_infrastructure_maintenance/internal/netbox"
 )
 
-func choice(v string) netbox.Choice           { return netbox.Choice{Value: v, Label: v} }
-func choicePtr(v string) *netbox.Choice       { c := choice(v); return &c }
+func choice(v string) netbox.Choice                { return netbox.Choice{Value: v, Label: v} }
+func choicePtr(v string) *netbox.Choice            { c := choice(v); return &c }
 func namedRef(id int, name string) netbox.NamedRef { return netbox.NamedRef{ID: id, Name: name} }
 
 func TestCables(t *testing.T) {
@@ -191,7 +191,7 @@ func TestDeviceTypeDriftWithViolations(t *testing.T) {
 func TestHoneypots(t *testing.T) {
 	s := netbox.Snapshot{
 		IPAddresses: []netbox.IPAddress{
-			{Address: "10.0.0.5/24", Tags: []netbox.TagRef{{Slug: TagHoneypot}}},   // covers prefix 10.0.0.0/24
+			{Address: "10.0.0.5/24", Tags: []netbox.TagRef{{Slug: TagHoneypot}}},    // covers prefix 10.0.0.0/24
 			{Address: "192.168.1.5/24", Tags: []netbox.TagRef{{Slug: TagHoneypot}}}, // not in any prefix
 			{Address: "not-an-ip", Tags: []netbox.TagRef{{Slug: TagHoneypot}}},
 		},
@@ -304,10 +304,10 @@ func TestModuleConsistency(t *testing.T) {
 		},
 		Modules: []netbox.Module{
 			{ID: 100, Device: namedRef(1, "sw1"), ModuleBay: &netbox.ModuleBayRef{ID: 1, Name: "bay1"}},
-			{ID: 101, Device: namedRef(1, "sw1")},                                              // no module bay
+			{ID: 101, Device: namedRef(1, "sw1")},                                            // no module bay
 			{ID: 102, Device: namedRef(1, "sw1"), ModuleBay: &netbox.ModuleBayRef{ID: 5555}}, // missing bay
-			{ID: 103, Device: namedRef(3, "other"), ModuleBay: &netbox.ModuleBayRef{ID: 2}},   // wrong device
-			{ID: 104, Device: namedRef(2, "sw2"), ModuleBay: &netbox.ModuleBayRef{ID: 2}},     // creates duplicate w/ 103
+			{ID: 103, Device: namedRef(3, "other"), ModuleBay: &netbox.ModuleBayRef{ID: 2}},  // wrong device
+			{ID: 104, Device: namedRef(2, "sw2"), ModuleBay: &netbox.ModuleBayRef{ID: 2}},    // creates duplicate w/ 103
 		},
 	}
 	s.BuildIndexes()
@@ -457,10 +457,10 @@ func TestPOEPower(t *testing.T) {
 func TestPrivateIPVRF(t *testing.T) {
 	s := netbox.Snapshot{
 		IPAddresses: []netbox.IPAddress{
-			{Address: "10.0.0.1/24"},                              // private, no VRF
+			{Address: "10.0.0.1/24"},                             // private, no VRF
 			{Address: "10.0.0.2/24", VRF: &netbox.VRFRef{ID: 1}}, // private, has VRF -> ok
-			{Address: "8.8.8.8/32"},                               // public, no VRF
-			{Address: "garbage"},                                  // unparseable -> skipped
+			{Address: "8.8.8.8/32"},                              // public, no VRF
+			{Address: "garbage"},                                 // unparseable -> skipped
 		},
 	}
 	got := PrivateIPVRF(&s, PrivateIPVRFRules{RequireOnPrivateIPs: true, RequireOnPublicIPs: true})
