@@ -288,6 +288,15 @@ jobs:
             go version
             python3 --version
 
+            # Tools installed for agents' use rather than by any gate, so nothing else notices
+            # a broken install. jq has no pin of ours: it arrives with the common-utils feature.
+            actionlint --version
+            yq --version
+            cosmic-ray --version
+            check-jsonschema --version
+            gremlins --version
+            jq --version
+
             # The plumbing arrived via the base image, at the paths the hooks call it by.
             # Nothing in this repo installs either file, so these fail if the FROM regressed
             # to a plain Debian base.

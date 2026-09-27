@@ -67,6 +67,11 @@ go install "github.com/fatih/gomodifytags@${GOMODIFYTAGS_VERSION}"
 IMPL_VERSION=v1.5.0
 go install "github.com/josharian/impl@${IMPL_VERSION}"
 
+# Install gremlins — Go mutation testing.
+# renovate: datasource=go depName=github.com/go-gremlins/gremlins
+GREMLINS_VERSION=v0.6.0
+go install "github.com/go-gremlins/gremlins/cmd/gremlins@${GREMLINS_VERSION}"
+
 # Wire up the pre-commit hooks. pre-commit itself is installed at image build
 # time via `uv tool install` (Dockerfile), so it's on PATH here — no pip,
 # no $HOME/.local/bin dance.

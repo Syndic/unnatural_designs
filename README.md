@@ -33,13 +33,18 @@ Container_ from the Command Palette. First build takes a few minutes; subsequent
 [`gh`](https://cli.github.com), [`uv`](https://docs.astral.sh/uv/) (Python package manager),
 [`ruff`](https://docs.astral.sh/ruff/) (Python format + lint),
 [`ty`](https://docs.astral.sh/ty/) (Python type checker, alpha),
-[pre-commit](https://pre-commit.com), [`golangci-lint`](https://golangci-lint.run), and
-[`shellcheck`](https://www.shellcheck.net) (shell lint). All Python tools (`ruff`, `ty`,
-`pre-commit`) are installed via `uv tool install` at image build time, so the devcontainer has a
-single Python package manager (uv) and no `pip install --user` in post-create. Named volumes
-preserve the two cache roots across container rebuilds: `ud-cache` (`~/.cache` — Bazel,
-bazelisk, `go build`, uv, pre-commit) and `ud-go-pkg-cache` (`$GOPATH/pkg` — the Go module and
-checksum-db caches, i.e. `/go/pkg`).
+[pre-commit](https://pre-commit.com), [`golangci-lint`](https://golangci-lint.run),
+[`shellcheck`](https://www.shellcheck.net) (shell lint),
+[`actionlint`](https://github.com/rhysd/actionlint) (workflow lint),
+[`yq`](https://github.com/mikefarah/yq) and `jq` (YAML/JSON on the command line),
+[`check-jsonschema`](https://check-jsonschema.readthedocs.io) (validate configs against
+SchemaStore), and mutation testers [`gremlins`](https://gremlins.dev) (Go) and
+[`cosmic-ray`](https://cosmic-ray.readthedocs.io) (Python). All Python tools (`ruff`, `ty`,
+`pre-commit`, `cosmic-ray`, `check-jsonschema`) are installed via `uv tool install` at image
+build time, so the devcontainer has a single Python package manager (uv) and no
+`pip install --user` in post-create. Named volumes preserve the two cache roots across container
+rebuilds: `ud-cache` (`~/.cache` — Bazel, bazelisk, `go build`, uv, pre-commit) and
+`ud-go-pkg-cache` (`$GOPATH/pkg` — the Go module and checksum-db caches, i.e. `/go/pkg`).
 
 **Base image**: all of that is layered on top of
 [`meta/devcontainer-base/`](meta/devcontainer-base/README.md)'s published image, which this repo

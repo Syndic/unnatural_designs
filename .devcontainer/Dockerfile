@@ -15,6 +15,12 @@ ARG BUILDIFIER_VERSION=v10.1.0
 # renovate: datasource=github-releases depName=koalaman/shellcheck
 ARG SHELLCHECK_VERSION=v0.11.0
 
+# renovate: datasource=github-releases depName=rhysd/actionlint
+ARG ACTIONLINT_VERSION=v1.7.12
+
+# renovate: datasource=github-releases depName=mikefarah/yq
+ARG YQ_VERSION=v4.53.6
+
 # uv: the workspace's Python package manager. Single source of truth for the
 # uv.lock + requirements_lock.txt chain consumed by rules_python's pip.parse
 # and enforced by the `uv-lock-fresh` pre-commit hook. Installed first so
@@ -42,6 +48,13 @@ ARG TY_VERSION=0.0.84
 # shell can invoke it directly without a $HOME/.local/bin PATH dance.
 # renovate: datasource=pypi depName=pre-commit
 ARG PRE_COMMIT_VERSION=4.6.2
+# cosmic-ray: Python mutation testing. Pure-Python, so it depends on the world-readable
+# UV_PYTHON_INSTALL_DIR below just as pre-commit does.
+# renovate: datasource=pypi depName=cosmic-ray
+ARG COSMIC_RAY_VERSION=8.7.0
+# check-jsonschema: validates workflows, action.yml, renovate.json, etc. against SchemaStore.
+# renovate: datasource=pypi depName=check-jsonschema
+ARG CHECK_JSONSCHEMA_VERSION=0.38.2
 # UV_TOOL_DIR holds the per-tool venvs; UV_PYTHON_INSTALL_DIR is where uv
 # downloads its managed Python interpreters (both the pre-commit tool venv's
 # interpreter and the interactive `python3` installed below). Both must be
@@ -57,7 +70,9 @@ ENV UV_TOOL_BIN_DIR=/usr/local/bin \
     UV_PYTHON_INSTALL_DIR=/usr/local/share/uv-python
 RUN uv tool install --no-cache "ruff==${RUFF_VERSION}" \
     && uv tool install --no-cache "ty==${TY_VERSION}" \
-    && uv tool install --no-cache "pre-commit==${PRE_COMMIT_VERSION}"
+    && uv tool install --no-cache "pre-commit==${PRE_COMMIT_VERSION}" \
+    && uv tool install --no-cache "cosmic-ray==${COSMIC_RAY_VERSION}" \
+    && uv tool install --no-cache "check-jsonschema==${CHECK_JSONSCHEMA_VERSION}"
 
 # Interactive Python for the devcontainer: a prebuilt uv-managed CPython, not the
 # `python` devcontainer feature (which compiles from source, ~2 min/build). uv drops
@@ -108,6 +123,20 @@ RUN ARCH="$(dpkg --print-architecture)" \
         | tar -xJ -C /tmp \
     && install -m 0755 "/tmp/shellcheck-${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/shellcheck \
     && rm -rf "/tmp/shellcheck-${SHELLCHECK_VERSION}"
+
+# actionlint runs shellcheck over `run:` blocks, resolving it from PATH — the pinned copy above.
+# Its asset names carry the version without the tag's leading `v`.
+RUN ARCH="$(dpkg --print-architecture)" \
+    && curl -fsSL \
+        "https://github.com/rhysd/actionlint/releases/download/${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION#v}_linux_${ARCH}.tar.gz" \
+        | tar -xz -C /usr/local/bin actionlint \
+    && chmod 0755 /usr/local/bin/actionlint
+
+# mikefarah/yq, the Go one — not the Debian `yq` package, which is a jq wrapper with other syntax.
+RUN ARCH="$(dpkg --print-architecture)" \
+    && curl -fsSL -o /usr/local/bin/yq \
+        "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_${ARCH}" \
+    && chmod 0755 /usr/local/bin/yq
 
 # No host-specific layers here on purpose: the git-common-dir symlink and the host timezone are
 # applied at container start by the base image's dispatcher, which keeps this image host-agnostic.
