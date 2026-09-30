@@ -10,9 +10,9 @@ FROM ${BASE_IMAGE}
 # uv.lock + requirements_lock.txt chain consumed by rules_python's pip.parse
 # and enforced by the `uv-lock-fresh` pre-commit hook. Installed first so
 # the `uv tool install` layers below can build on it.
-# Pinned tag bumped by Renovate's docker manager (matches the pattern used in
-# ~/.dotfiles/.devcontainer/Dockerfile).
-COPY --from=ghcr.io/astral-sh/uv:0.13.0 /uv /uvx /usr/local/bin/
+# Pinned by tag and index digest, both moved by Renovate's docker manager; see README's
+# "Image references".
+COPY --from=ghcr.io/astral-sh/uv:0.13.0@sha256:cdc6093146eb3ff6a40107b38f008b789e050e77ad87865e381d9917da55a168 /uv /uvx /usr/local/bin/
 
 # ruff: format + lint. Installed via `uv tool install` so the binary lives in
 # /usr/local/bin and `ruff` is on PATH for the pre-commit hooks and the VS Code
