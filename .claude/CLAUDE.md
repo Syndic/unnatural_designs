@@ -671,9 +671,9 @@ would freeze `/go/bin` at whatever the image held on first mount, and a later `f
 would install tools nobody ever sees. `/go/bin` is image content — the feature builds ten tools
 there at image-build time — while `/go/pkg` does not exist in the image at all, because the
 feature purges the module cache afterwards. So `pkg/` is the derived half of GOPATH and `bin/`
-is the artifact half, and only `pkg/` is mounted. `post-create.sh` reinstalls its six pinned
-tools over the image's copies on every create, which is why persisting `/go/bin` would buy
-nothing even without the shadowing.
+is the artifact half, and only `pkg/` is mounted. `post-create.sh` reinstalls its pinned Go
+tools on every create (all but gremlins over the image's own copies), which is why persisting
+`/go/bin` would buy nothing even without the shadowing.
 
 Nothing under either mount should stay ephemeral: every entry is content-addressed or
 key-validated by its own tool, and CI builds cold, so a stale local cache can't reach `main`.
