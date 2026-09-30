@@ -1,6 +1,6 @@
 """Tests for the wiring between devcontainer.json, the Dockerfile, the base image, and .vscode.
 
-Five couplings live across those files and none of them fails loudly:
+Six couplings live across those files and none of them fails loudly:
 
   - The `BASE_IMAGE` override has an exact working shape. Every nearby shape either breaks
     every local `devcontainer up` (an empty `--build-arg` overriding the Dockerfile default)
@@ -16,10 +16,13 @@ Five couplings live across those files and none of them fails loudly:
     of volume targets. Too narrow a target leaves the siblings ephemeral, too wide a one
     shadows image content with a stale volume copy, and a target with no chown entry comes up
     root-owned.
+  - Each upstream release download is verified against a per-arch sha512 pin that
+    renovate.json can read. A pin Renovate cannot see goes stale, and nothing notices until the
+    next version bump fails the image build.
 
 The rationale for the first three is in meta/devcontainer-base/README.md, "Consuming the
 image"; for the mounts — which are this repo's, not the base image's — it is in
-.claude/CLAUDE.md, "Devcontainer cache volumes".
+.claude/CLAUDE.md, "Devcontainer cache volumes"; for the release pins, README "Release binaries".
 The parsing helpers are pure so they can be exercised directly, same split as the shell tests
 in this directory.
 """
@@ -40,6 +43,7 @@ _SETTINGS_JSON = _HERE.parent / ".vscode" / "settings.json"
 _EXTENSIONS_JSON = _HERE.parent / ".vscode" / "extensions.json"
 _CI_WORKFLOW = _HERE.parent / ".github" / "workflows" / "ci.yml"
 _DOCKERFILE = _HERE / "Dockerfile"
+_RENOVATE_JSON = _HERE.parent / "renovate.json"
 _HOOKS = (_HERE / "post-create.sh", _HERE / "post-start.sh")
 _DEVCONTAINER_WORKFLOW = _HERE.parent / ".github" / "workflows" / "devcontainer.yml"
 
@@ -400,12 +404,140 @@ class TestPinnedShellcheck(unittest.TestCase):
             "ARG SHELLCHECK_VERSION=" in self.workflow,
             "ci.yml no longer derives the shellcheck version from the Dockerfile",
         )
+        self.assertTrue(
+            "ARG SHELLCHECK_SHA512_AMD64=" in self.workflow,
+            "ci.yml no longer derives the shellcheck digest from the Dockerfile",
+        )
+        self.assertTrue(
+            "sha512sum -c -" in self.workflow,
+            "ci.yml installs shellcheck without checking it against the Dockerfile's digest",
+        )
         restated = re.findall(r"shellcheck-v\d+\.\d+", self.workflow)
         self.assertEqual(
             restated,
             [],
             "ci.yml names a shellcheck version of its own; it must read the Dockerfile's ARG",
         )
+
+
+def dockerfile_runs(text: str) -> list[str]:
+    """Each RUN instruction with its `\\`-continuations joined onto one line."""
+    runs, current = [], None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if current is None:
+            if not stripped.upper().startswith("RUN "):
+                continue
+            current = ""
+        current += " " + stripped.removesuffix("\\").strip()
+        if not stripped.endswith("\\"):
+            runs.append(current.strip())
+            current = None
+    return runs
+
+
+def renovate_regex(pattern: str) -> re.Pattern:
+    """Compile one of renovate.json's `matchStrings` — JS named groups — as a Python regex."""
+    return re.compile(pattern.replace("(?<", "(?P<"))
+
+
+class TestVerifiedReleaseDownloads(unittest.TestCase):
+    """Every upstream release download is checked against a Renovate-maintained sha512 pin.
+
+    The convention and why it is shaped this way are in README, "Release binaries". What this
+    holds: each download is verified before use, each arch has a pin, each pin names the same
+    release as the version ARG, and renovate.json's Dockerfile managers still read every line
+    of it. A line Renovate cannot read leaves a stale pin that fails the next bump's build,
+    far from the change that caused it.
+    """
+
+    # The base image is published for these (meta/devcontainer-base/BUILD.bazel), and each is a
+    # `dpkg --print-architecture` value the install RUNs switch on.
+    _ARCHES = ("amd64", "arm64")
+    _VERSION_ARG_RE = re.compile(
+        r"^# renovate: datasource=github-releases depName=(?P<dep>\S+)\n"
+        r"ARG (?P<tool>\w+)_VERSION=(?P<version>\S+)$",
+        re.MULTILINE,
+    )
+    _RELEASE_URL_RE = re.compile(r"https://github\.com/(?P<dep>[^/]+/[^/]+)/releases/download/")
+
+    @classmethod
+    def setUpClass(cls):
+        cls.dockerfile = _DOCKERFILE.read_text(encoding="utf-8")
+        cls.renovate = json.loads(_RENOVATE_JSON.read_text(encoding="utf-8"))
+        cls.downloads = {
+            m.group("dep"): run
+            for run in dockerfile_runs(cls.dockerfile)
+            if (m := cls._RELEASE_URL_RE.search(run))
+        }
+        cls.versions = {
+            m.group("dep"): (m.group("tool"), m.group("version"))
+            for m in cls._VERSION_ARG_RE.finditer(cls.dockerfile)
+        }
+
+    def pin(self, dep: str, tool: str, version: str, arch: str) -> str:
+        """The digest pinned for `arch`, asserting the comment Renovate reads above it."""
+        match = re.search(
+            rf"^# renovate: datasource=github-release-attachments depName={re.escape(dep)} "
+            rf"digestVersion=(?P<version>\S+)\nARG {tool}_SHA512_{arch.upper()}=(?P<digest>\S*)$",
+            self.dockerfile,
+            re.MULTILINE,
+        )
+        self.assertIsNotNone(match, f"no {tool}_SHA512_{arch.upper()} pin for {dep}")
+        self.assertEqual(
+            match.group("version"),
+            version,
+            f"{tool}_SHA512_{arch.upper()} is pinned for a different release than "
+            f"{tool}_VERSION downloads",
+        )
+        self.assertRegex(match.group("digest"), r"\A[0-9a-f]{128}\Z", "not a sha512 hex digest")
+        return match.group("digest")
+
+    def test_there_are_release_downloads_to_check(self):
+        # Guards the rest against vacuous passes if the URL shape ever stops matching.
+        self.assertGreaterEqual(len(self.downloads), 3)
+
+    def test_each_download_is_verified_before_use(self):
+        for dep, run in self.downloads.items():
+            with self.subTest(dep=dep):
+                self.assertIn("sha512sum -c -", run)
+                # Streaming into tar would unpack before anything had been checked.
+                self.assertNotRegex(run, r"\|\s*tar\b", "download is piped, not saved and checked")
+
+    def test_each_arch_has_a_pin_the_download_selects(self):
+        for dep, run in self.downloads.items():
+            with self.subTest(dep=dep):
+                self.assertIn(dep, self.versions, f"no github-releases version ARG for {dep}")
+                tool, version = self.versions[dep]
+                self.assertIn(f"${{{tool}_VERSION}}", run)
+                for arch in self._ARCHES:
+                    self.pin(dep, tool, version, arch)
+                    self.assertIn(f"${{{tool}_SHA512_{arch.upper()}}}", run)
+
+    def test_renovate_reads_every_version_and_pin(self):
+        managers = [
+            renovate_regex(pattern)
+            for manager in self.renovate["customManagers"]
+            if "/^\\.devcontainer/Dockerfile$/" in manager["managerFilePatterns"]
+            for pattern in manager["matchStrings"]
+        ]
+        extracted = {
+            (
+                m.groupdict().get("datasource"),
+                m.group("depName"),
+                m.group("currentValue"),
+                m.groupdict().get("currentDigest"),
+            )
+            for regex in managers
+            for m in regex.finditer(self.dockerfile)
+        }
+        for dep in self.downloads:
+            with self.subTest(dep=dep):
+                tool, version = self.versions[dep]
+                self.assertIn(("github-releases", dep, version, None), extracted)
+                for arch in self._ARCHES:
+                    digest = self.pin(dep, tool, version, arch)
+                    self.assertIn(("github-release-attachments", dep, version, digest), extracted)
 
 
 class TestLocalEnvParsing(unittest.TestCase):
