@@ -16,9 +16,9 @@ Six couplings live across those files and none of them fails loudly:
     of volume targets. Too narrow a target leaves the siblings ephemeral, too wide a one
     shadows image content with a stale volume copy, and a target with no chown entry comes up
     root-owned.
-  - Each upstream release download is verified against a per-arch sha512 pin that
-    renovate.json can read. A pin Renovate cannot see goes stale, and nothing notices until the
-    next version bump fails the image build.
+  - Every fetch in the Dockerfile is a GitHub release download, verified against a per-arch
+    sha512 pin that renovate.json can read. A pin Renovate cannot see goes stale, and nothing
+    notices until the next version bump fails the image build.
 
 The rationale for the first three is in meta/devcontainer-base/README.md, "Consuming the
 image"; for the mounts — which are this repo's, not the base image's — it is in
@@ -438,17 +438,24 @@ def dockerfile_runs(text: str) -> list[str]:
 
 def renovate_regex(pattern: str) -> re.Pattern:
     """Compile one of renovate.json's `matchStrings` — JS named groups — as a Python regex."""
-    return re.compile(pattern.replace("(?<", "(?P<"))
+    return re.compile(re.sub(r"\(\?<(?=[A-Za-z_])", "(?P<", pattern))
+
+
+class TestRenovateRegex(unittest.TestCase):
+    def test_named_groups_are_translated(self):
+        self.assertEqual(renovate_regex("(?<v>\\d+)").match("12").group("v"), "12")
+
+    def test_lookbehinds_are_left_alone(self):
+        self.assertIsNotNone(renovate_regex("(?<=a)(?<!b)(?<v>c)").search("ac"))
 
 
 class TestVerifiedReleaseDownloads(unittest.TestCase):
-    """Every upstream release download is checked against a Renovate-maintained sha512 pin.
+    """What the Dockerfile's network fetches must look like.
 
-    The convention and why it is shaped this way are in README, "Release binaries". What this
-    holds: each download is verified before use, each arch has a pin, each pin names the same
-    release as the version ARG, and renovate.json's Dockerfile managers still read every line
-    of it. A line Renovate cannot read leaves a stale pin that fails the next bump's build,
-    far from the change that caused it.
+    Every `curl`/`wget` is a GitHub release download, saved with `-o` and checked with
+    `sha512sum -c` before anything installs or extracts that file. Every arch has a pin naming
+    the same release as the version ARG the download uses, and renovate.json's Dockerfile
+    managers still extract every version and pin.
     """
 
     # The base image is published for these (meta/devcontainer-base/BUILD.bazel), and each is a
@@ -459,21 +466,33 @@ class TestVerifiedReleaseDownloads(unittest.TestCase):
         r"ARG (?P<tool>\w+)_VERSION=(?P<version>\S+)$",
         re.MULTILINE,
     )
+    # Command position only, so `curl` as an apt package name is not a fetch.
+    _FETCH_RE = re.compile(r"(?:^RUN|&&|\|\||[;|(])\s*(?:curl|wget)\b")
     _RELEASE_URL_RE = re.compile(r"https://github\.com/(?P<dep>[^/]+/[^/]+)/releases/download/")
+    _OUTPUT_RE = re.compile(r"\bcurl\b[^&|;]*?\s-o\s+(?P<path>\S+)")
+    _VERSION_REF_RE = re.compile(r"\$\{(?P<tool>\w+)_VERSION\b")
 
     @classmethod
     def setUpClass(cls):
         cls.dockerfile = _DOCKERFILE.read_text(encoding="utf-8")
         cls.renovate = json.loads(_RENOVATE_JSON.read_text(encoding="utf-8"))
-        cls.downloads = {
-            m.group("dep"): run
-            for run in dockerfile_runs(cls.dockerfile)
-            if (m := cls._RELEASE_URL_RE.search(run))
-        }
+        cls.fetches = [run for run in dockerfile_runs(cls.dockerfile) if cls._FETCH_RE.search(run)]
         cls.versions = {
-            m.group("dep"): (m.group("tool"), m.group("version"))
+            m.group("tool"): (m.group("dep"), m.group("version"))
             for m in cls._VERSION_ARG_RE.finditer(cls.dockerfile)
         }
+
+    def release(self, run: str) -> tuple[str, str, str]:
+        """`(dep, tool, version)` for a download RUN, asserting its URL and version ARG agree."""
+        url = self._RELEASE_URL_RE.search(run)
+        self.assertIsNotNone(url, f"fetch is not a GitHub release download: {run[:120]}")
+        tools = {m.group("tool") for m in self._VERSION_REF_RE.finditer(run)}
+        self.assertEqual(len(tools), 1, f"expected one *_VERSION ARG in: {run[:120]}")
+        (tool,) = tools
+        self.assertIn(tool, self.versions, f"no github-releases marker above {tool}_VERSION")
+        dep, version = self.versions[tool]
+        self.assertEqual(url.group("dep"), dep, f"{tool}_VERSION tracks {dep}, not the URL's repo")
+        return dep, tool, version
 
     def pin(self, dep: str, tool: str, version: str, arch: str) -> str:
         """The digest pinned for `arch`, asserting the comment Renovate reads above it."""
@@ -493,26 +512,37 @@ class TestVerifiedReleaseDownloads(unittest.TestCase):
         self.assertRegex(match.group("digest"), r"\A[0-9a-f]{128}\Z", "not a sha512 hex digest")
         return match.group("digest")
 
-    def test_there_are_release_downloads_to_check(self):
-        # Guards the rest against vacuous passes if the URL shape ever stops matching.
-        self.assertGreaterEqual(len(self.downloads), 5)
+    def test_there_are_fetches_to_check(self):
+        # Guards the rest against vacuous passes if the fetch pattern ever stops matching.
+        self.assertTrue(self.fetches)
 
-    def test_each_download_is_verified_before_use(self):
-        for dep, run in self.downloads.items():
-            with self.subTest(dep=dep):
-                self.assertIn("sha512sum -c -", run)
-                # Streaming into tar would unpack before anything had been checked.
-                self.assertNotRegex(run, r"\|\s*tar\b", "download is piped, not saved and checked")
-
-    def test_each_arch_has_a_pin_the_download_selects(self):
-        for dep, run in self.downloads.items():
-            with self.subTest(dep=dep):
-                self.assertIn(dep, self.versions, f"no github-releases version ARG for {dep}")
-                tool, version = self.versions[dep]
-                self.assertIn(f"${{{tool}_VERSION}}", run)
+    def test_each_fetch_is_one_pinned_release_download(self):
+        for run in self.fetches:
+            with self.subTest(run=run[:80]):
+                # One per RUN, so every URL, output path and check below is unambiguous.
+                self.assertEqual(len(self._FETCH_RE.findall(run)), 1)
+                dep, tool, version = self.release(run)
                 for arch in self._ARCHES:
                     self.pin(dep, tool, version, arch)
                     self.assertIn(f"${{{tool}_SHA512_{arch.upper()}}}", run)
+
+    def test_each_download_is_verified_before_use(self):
+        for run in self.fetches:
+            with self.subTest(run=run[:80]):
+                output = self._OUTPUT_RE.search(run)
+                self.assertIsNotNone(output, "download is not saved with `curl -o`")
+                path = output.group("path")
+                check = f'echo "${{SHA512}}  {path}" | sha512sum -c -'
+                self.assertIn(check, run, f"{path} is not the file sha512sum checks")
+                uses = [
+                    m.start()
+                    # The lookahead stops `/tmp/yq` from matching `/tmp/yq-unchecked`.
+                    for m in re.finditer(
+                        rf"\b(?:install|tar)\b[^&|;]*{re.escape(path)}(?![^\s\"'])", run
+                    )
+                ]
+                self.assertTrue(uses, f"nothing installs or extracts the checked {path}")
+                self.assertGreater(min(uses), run.index(check), f"{path} is used before its check")
 
     def test_renovate_reads_every_version_and_pin(self):
         managers = [
@@ -531,9 +561,9 @@ class TestVerifiedReleaseDownloads(unittest.TestCase):
             for regex in managers
             for m in regex.finditer(self.dockerfile)
         }
-        for dep in self.downloads:
-            with self.subTest(dep=dep):
-                tool, version = self.versions[dep]
+        for run in self.fetches:
+            dep, tool, version = self.release(run)
+            with self.subTest(tool=tool):
                 self.assertIn(("github-releases", dep, version, None), extracted)
                 for arch in self._ARCHES:
                     digest = self.pin(dep, tool, version, arch)

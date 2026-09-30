@@ -80,7 +80,8 @@ as the first field of a line. It misreads bazelisk's filename-less `.sha256` fil
 pin the checksum file's own hash. No release here has a small sha512 file in that form (yq lists
 sha512 as one column of a 110 KB file), so Renovate always hashes the asset itself.
 [`test_devcontainer_config.py`](.devcontainer/test_devcontainer_config.py) holds the shape,
-including that `renovate.json` still reads every pin. To add a tool, copy an existing block.
+including that `renovate.json` still reads every pin and that the Dockerfile fetches nothing else.
+To add a tool, copy an existing block.
 
 **Known limitations**: the Docker and Kubernetes VS Code extensions install but aren't wired to a
 daemon or `kubectl` inside the container
