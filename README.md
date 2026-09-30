@@ -64,23 +64,23 @@ tags are what make the features Renovate-visible, and that bump is what triggers
 [`devcontainer-lock.json`](.devcontainer/devcontainer-lock.json) regeneration under
 [Automation](#automation), which CI then verifies.
 
-**Release binaries**: bazelisk, buildifier and shellcheck are downloaded from their projects'
-GitHub releases, and the Dockerfile checks each download against a sha512 pinned in the repo
-before installing it. There is one `ARG <TOOL>_SHA512_<ARCH>` per architecture, directly under
+**Release binaries**: bazelisk, buildifier, shellcheck, actionlint and yq are downloaded from their
+projects' GitHub releases, and the Dockerfile checks each download against a sha512 pinned in the
+repo before installing it. There is one `ARG <TOOL>_SHA512_<ARCH>` per architecture, directly under
 the tool's `<TOOL>_VERSION`, and a mismatch fails the image build. The digest is pinned here rather
 than read from a checksums file in the same release because that file only catches corruption:
-anyone who can replace an asset can replace its checksums too, and buildtools and shellcheck
-publish none. A pin makes a changed asset under an unchanged tag fail the build. It is still
+anyone who can replace an asset can replace its checksums too, and buildtools and shellcheck publish
+none. A pin makes a changed asset under an unchanged tag fail the build. It is still
 trust-on-first-use: a new version's pin is only as good as the release was when Renovate read it.
 Each pin carries a `# renovate: datasource=github-release-attachments depName=<repo>
 digestVersion=<version>` marker. On a version bump Renovate finds the asset that matches the old
-digest, hashes the new release's equivalent, and commits both in the same PR. The digest is
-sha512 rather than sha256 because Renovate first looks for the old digest in the release's small
-checksum files, and it misreads bazelisk's filename-less `.sha256` files, so it would pin the
-checksum file's own hash. No project here publishes sha512, so Renovate always hashes the asset
-itself. [`test_devcontainer_config.py`](.devcontainer/test_devcontainer_config.py) holds the
-shape, including that `renovate.json` still reads every pin. To add a tool, copy an existing
-block.
+digest, hashes the new release's equivalent, and commits both in the same PR. The digest is sha512
+rather than sha256 because Renovate first looks for the old digest in any release asset under 5 KiB,
+as the first field of a line. It misreads bazelisk's filename-less `.sha256` files there and would
+pin the checksum file's own hash. No release here has a small sha512 file in that form (yq lists
+sha512 as one column of a 110 KB file), so Renovate always hashes the asset itself.
+[`test_devcontainer_config.py`](.devcontainer/test_devcontainer_config.py) holds the shape,
+including that `renovate.json` still reads every pin. To add a tool, copy an existing block.
 
 **Known limitations**: the Docker and Kubernetes VS Code extensions install but aren't wired to a
 daemon or `kubectl` inside the container

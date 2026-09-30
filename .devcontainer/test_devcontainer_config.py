@@ -495,7 +495,7 @@ class TestVerifiedReleaseDownloads(unittest.TestCase):
 
     def test_there_are_release_downloads_to_check(self):
         # Guards the rest against vacuous passes if the URL shape ever stops matching.
-        self.assertGreaterEqual(len(self.downloads), 3)
+        self.assertGreaterEqual(len(self.downloads), 5)
 
     def test_each_download_is_verified_before_use(self):
         for dep, run in self.downloads.items():

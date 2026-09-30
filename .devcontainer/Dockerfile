@@ -122,7 +122,8 @@ RUN ARCH="$(dpkg --print-architecture)" \
 
 # shellcheck from upstream rather than Debian's package, so the version is ours to pin: these
 # ARGs are the repo's only shellcheck version and digest, and ci.yml reads them out of this file
-# instead of using the runner image's copy. The editor extension is pointed at the binary this installs.
+# instead of using the runner image's copy. The editor extension is pointed at the binary this
+# installs.
 # Release assets use uname-style arch names, which dpkg's differ from.
 # renovate: datasource=github-releases depName=koalaman/shellcheck
 ARG SHELLCHECK_VERSION=v0.11.0
@@ -148,20 +149,41 @@ RUN ARCH="$(dpkg --print-architecture)" \
 # extracting in place: the tarball's entry is owned by uid 1001, which root's tar would keep.
 # renovate: datasource=github-releases depName=rhysd/actionlint
 ARG ACTIONLINT_VERSION=v1.7.12
+# renovate: datasource=github-release-attachments depName=rhysd/actionlint digestVersion=v1.7.12
+ARG ACTIONLINT_SHA512_AMD64=c476b850a53a7777911ea29fd89e2b4caa89f22f35ffb1c11c5aae33d544a89e2b95050b491ef6dcf0572d8a0a15a01f61dca22879eaaa58a7d96f2fc0ef611f
+# renovate: datasource=github-release-attachments depName=rhysd/actionlint digestVersion=v1.7.12
+ARG ACTIONLINT_SHA512_ARM64=6862b29d439b62b97d3a9d95e150890ee5f5a19e615c2c47c3a3fa8367c31c6552857380130cba99d111c45cdd4c15767650466c77a6b2f8ba1f74caaf9f2e33
 RUN ARCH="$(dpkg --print-architecture)" \
-    && curl -fsSL \
+    && case "${ARCH}" in \
+        amd64) SHA512="${ACTIONLINT_SHA512_AMD64}" ;; \
+        arm64) SHA512="${ACTIONLINT_SHA512_ARM64}" ;; \
+        *) echo "no pinned actionlint digest for ${ARCH}" >&2; exit 1 ;; \
+    esac \
+    && curl -fsSL -o /tmp/actionlint.tar.gz \
         "https://github.com/rhysd/actionlint/releases/download/${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION#v}_linux_${ARCH}.tar.gz" \
-        | tar -xz -C /tmp actionlint \
+    && echo "${SHA512}  /tmp/actionlint.tar.gz" | sha512sum -c - \
+    && tar -xzf /tmp/actionlint.tar.gz -C /tmp actionlint \
     && install -m 0755 /tmp/actionlint /usr/local/bin/actionlint \
-    && rm /tmp/actionlint
+    && rm /tmp/actionlint.tar.gz /tmp/actionlint
 
 # mikefarah/yq, the Go one — not the Debian `yq` package, which is a jq wrapper with other syntax.
 # renovate: datasource=github-releases depName=mikefarah/yq
 ARG YQ_VERSION=v4.53.6
+# renovate: datasource=github-release-attachments depName=mikefarah/yq digestVersion=v4.53.6
+ARG YQ_SHA512_AMD64=508f4ee34c6d093d136ff3c1b36db4105e686c3d68d435c064448ba16e2616d528efafb2cb0a1890b7724890373a226a38b7da27e6796396ee759bed39a8c671
+# renovate: datasource=github-release-attachments depName=mikefarah/yq digestVersion=v4.53.6
+ARG YQ_SHA512_ARM64=d7b42b08f3cc2cf115ceb0579c143a7fccceee9e496075004bcbc34e173cfd0a4dacc0bdc6fc502c2869586b9fc949116db5fe9bef973c1a14568f4bd625edfa
 RUN ARCH="$(dpkg --print-architecture)" \
-    && curl -fsSL -o /usr/local/bin/yq \
+    && case "${ARCH}" in \
+        amd64) SHA512="${YQ_SHA512_AMD64}" ;; \
+        arm64) SHA512="${YQ_SHA512_ARM64}" ;; \
+        *) echo "no pinned yq digest for ${ARCH}" >&2; exit 1 ;; \
+    esac \
+    && curl -fsSL -o /tmp/yq \
         "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_${ARCH}" \
-    && chmod 0755 /usr/local/bin/yq
+    && echo "${SHA512}  /tmp/yq" | sha512sum -c - \
+    && install -m 0755 /tmp/yq /usr/local/bin/yq \
+    && rm /tmp/yq
 
 # No host-specific layers here on purpose: the git-common-dir symlink and the host timezone are
 # applied at container start by the base image's dispatcher, which keeps this image host-agnostic.
