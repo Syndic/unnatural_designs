@@ -115,6 +115,11 @@ the extraction report's position after `analyze`. Same reason it rides `bazel te
 couplings are between checked-in files, and nothing fails while they drift — not until `go.work`
 outruns the runner image's Go. The `codeql-all` fan-in is the manifest test's, below.
 
+`test_devcontainer_base_choice.py` has no script half either. It runs `devcontainer.yml`'s
+`Choose the base image` step against stub `docker` and `python3`, and holds the build to the
+image it chose: the tree's own base when the change edits it or the registry does not serve the
+pin, with a warning in the second case, and the pinned digest otherwise.
+
 `test_commit_file_via_app_selftest.py` has no script half either. `Action self-test` is a required
 status check, and what every required check needs is the manifest test's, below; this holds what is
 particular to the self-test: that the classification emits the set the gate reads, that it is a

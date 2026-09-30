@@ -243,6 +243,20 @@ py_test(
     ],
 )
 
+# Which base image devcontainer.yml's consumer build uses, and that an unservable pin falls back
+# to the tree's own base loudly rather than failing the build or passing silently.
+py_test(
+    name = "test_devcontainer_base_choice",
+    size = "small",
+    srcs = ["test_devcontainer_base_choice.py"],
+    data = ["//:.github/workflows/devcontainer.yml"],
+    main = "test_devcontainer_base_choice.py",
+    deps = [
+        ":_workflows_lib",
+        requirement("pyyaml"),
+    ],
+)
+
 # Same shape as the ones above: the assertion is the whole gate. What it guards is invisible while
 # the uv workspace has no members — the export is correct by coincidence until the day one lands.
 py_test(
