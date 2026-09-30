@@ -6,25 +6,10 @@ ARG BASE_IMAGE=pinned-base
 FROM ghcr.io/syndic/unnatural_designs-devcontainer-base:latest@sha256:614ae9c927838c910b0ab2439079799604f013fceecb97eabe9805b27e9b5911 AS pinned-base
 FROM ${BASE_IMAGE}
 
-# renovate: datasource=github-releases depName=bazelbuild/bazelisk
-ARG BAZELISK_VERSION=v1.29.0
-
-# renovate: datasource=github-releases depName=bazelbuild/buildtools
-ARG BUILDIFIER_VERSION=v10.1.0
-
-# renovate: datasource=github-releases depName=koalaman/shellcheck
-ARG SHELLCHECK_VERSION=v0.11.0
-
-# renovate: datasource=github-releases depName=rhysd/actionlint
-ARG ACTIONLINT_VERSION=v1.7.12
-
-# renovate: datasource=github-releases depName=mikefarah/yq
-ARG YQ_VERSION=v4.53.6
-
 # uv: the workspace's Python package manager. Single source of truth for the
 # uv.lock + requirements_lock.txt chain consumed by rules_python's pip.parse
 # and enforced by the `uv-lock-fresh` pre-commit hook. Installed first so
-# later layers can layer `uv tool install ruff ty pre-commit` on top of it.
+# the `uv tool install` layers below can build on it.
 # Pinned tag bumped by Renovate's docker manager (matches the pattern used in
 # ~/.dotfiles/.devcontainer/Dockerfile).
 COPY --from=ghcr.io/astral-sh/uv:0.12.19 /uv /uvx /usr/local/bin/
@@ -48,31 +33,30 @@ ARG TY_VERSION=0.0.84
 # shell can invoke it directly without a $HOME/.local/bin PATH dance.
 # renovate: datasource=pypi depName=pre-commit
 ARG PRE_COMMIT_VERSION=4.6.2
-# cosmic-ray: Python mutation testing. Pure-Python, so it depends on the world-readable
-# UV_PYTHON_INSTALL_DIR below just as pre-commit does.
-# renovate: datasource=pypi depName=cosmic-ray
-ARG COSMIC_RAY_VERSION=8.7.0
-# check-jsonschema: validates workflows, action.yml, renovate.json, etc. against SchemaStore.
-# renovate: datasource=pypi depName=check-jsonschema
-ARG CHECK_JSONSCHEMA_VERSION=0.38.2
 # UV_TOOL_DIR holds the per-tool venvs; UV_PYTHON_INSTALL_DIR is where uv
 # downloads its managed Python interpreters (both the pre-commit tool venv's
 # interpreter and the interactive `python3` installed below). Both must be
 # world-readable because tools install as root but run as the vscode user. The
-# Python path matters for *pure-Python* tools (pre-commit): the venv's
-# `bin/python` symlinks into UV_PYTHON_INSTALL_DIR, and a pre-commit shebang to
-# a path under root-owned /root/.local (uv's default) makes `pre-commit` fail
-# with "bad interpreter: Permission denied" for vscode. ruff and ty are
-# standalone binaries and don't actually invoke the symlinked Python, which is
-# why this only surfaces with pre-commit.
+# Python path matters for *pure-Python* tools (pre-commit, cosmic-ray,
+# check-jsonschema): the venv's `bin/python` symlinks into UV_PYTHON_INSTALL_DIR,
+# and a shebang to a path under root-owned /root/.local (uv's default) makes them
+# fail with "bad interpreter: Permission denied" for vscode. ruff and ty are
+# standalone binaries and don't actually invoke the symlinked Python.
 ENV UV_TOOL_BIN_DIR=/usr/local/bin \
     UV_TOOL_DIR=/usr/local/share/uv-tools \
     UV_PYTHON_INSTALL_DIR=/usr/local/share/uv-python
 RUN uv tool install --no-cache "ruff==${RUFF_VERSION}" \
     && uv tool install --no-cache "ty==${TY_VERSION}" \
-    && uv tool install --no-cache "pre-commit==${PRE_COMMIT_VERSION}" \
-    && uv tool install --no-cache "cosmic-ray==${COSMIC_RAY_VERSION}" \
-    && uv tool install --no-cache "check-jsonschema==${CHECK_JSONSCHEMA_VERSION}"
+    && uv tool install --no-cache "pre-commit==${PRE_COMMIT_VERSION}"
+
+# Agent tooling rather than anything a hook or editor runs: cosmic-ray for Python mutation
+# testing, check-jsonschema to validate workflows and configs against SchemaStore schemas.
+# renovate: datasource=pypi depName=cosmic-ray
+ARG COSMIC_RAY_VERSION=8.7.0
+RUN uv tool install --no-cache "cosmic-ray==${COSMIC_RAY_VERSION}"
+# renovate: datasource=pypi depName=check-jsonschema
+ARG CHECK_JSONSCHEMA_VERSION=0.38.2
+RUN uv tool install --no-cache "check-jsonschema==${CHECK_JSONSCHEMA_VERSION}"
 
 # Interactive Python for the devcontainer: a prebuilt uv-managed CPython, not the
 # `python` devcontainer feature (which compiles from source, ~2 min/build). uv drops
@@ -97,12 +81,16 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
         zip \
     && rm -rf /var/lib/apt/lists/*
 
+# renovate: datasource=github-releases depName=bazelbuild/bazelisk
+ARG BAZELISK_VERSION=v1.29.0
 RUN ARCH="$(dpkg --print-architecture)" \
     && curl -fsSL -o /usr/local/bin/bazel \
         "https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-linux-${ARCH}" \
     && chmod 0755 /usr/local/bin/bazel \
     && ln -s /usr/local/bin/bazel /usr/local/bin/bazelisk
 
+# renovate: datasource=github-releases depName=bazelbuild/buildtools
+ARG BUILDIFIER_VERSION=v10.1.0
 RUN ARCH="$(dpkg --print-architecture)" \
     && curl -fsSL -o /usr/local/bin/buildifier \
         "https://github.com/bazelbuild/buildtools/releases/download/${BUILDIFIER_VERSION}/buildifier-linux-${ARCH}" \
@@ -112,6 +100,8 @@ RUN ARCH="$(dpkg --print-architecture)" \
 # is the repo's only shellcheck version, and ci.yml reads it out of this file instead of using
 # the runner image's copy. The editor extension is pointed at the binary this installs.
 # Release assets use uname-style arch names, which dpkg's differ from.
+# renovate: datasource=github-releases depName=koalaman/shellcheck
+ARG SHELLCHECK_VERSION=v0.11.0
 RUN ARCH="$(dpkg --print-architecture)" \
     && case "${ARCH}" in \
         amd64) SC_ARCH=x86_64 ;; \
@@ -125,14 +115,20 @@ RUN ARCH="$(dpkg --print-architecture)" \
     && rm -rf "/tmp/shellcheck-${SHELLCHECK_VERSION}"
 
 # actionlint runs shellcheck over `run:` blocks, resolving it from PATH — the pinned copy above.
-# Its asset names carry the version without the tag's leading `v`.
+# Its asset names carry the version without the tag's leading `v`. `install` rather than
+# extracting in place: the tarball's entry is owned by uid 1001, which root's tar would keep.
+# renovate: datasource=github-releases depName=rhysd/actionlint
+ARG ACTIONLINT_VERSION=v1.7.12
 RUN ARCH="$(dpkg --print-architecture)" \
     && curl -fsSL \
         "https://github.com/rhysd/actionlint/releases/download/${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION#v}_linux_${ARCH}.tar.gz" \
-        | tar -xz -C /usr/local/bin actionlint \
-    && chmod 0755 /usr/local/bin/actionlint
+        | tar -xz -C /tmp actionlint \
+    && install -m 0755 /tmp/actionlint /usr/local/bin/actionlint \
+    && rm /tmp/actionlint
 
 # mikefarah/yq, the Go one — not the Debian `yq` package, which is a jq wrapper with other syntax.
+# renovate: datasource=github-releases depName=mikefarah/yq
+ARG YQ_VERSION=v4.53.6
 RUN ARCH="$(dpkg --print-architecture)" \
     && curl -fsSL -o /usr/local/bin/yq \
         "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_${ARCH}" \
