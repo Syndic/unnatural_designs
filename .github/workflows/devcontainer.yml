@@ -281,12 +281,23 @@ jobs:
           # baked into BAZELISK_VERSION, then bootstrap Bazel per .bazelversion.
           # `go version` confirms the `go` feature landed the toolchain on PATH;
           # `python3 --version` confirms the Dockerfile's uv-installed interpreter did.
-          # The rest pins the host-plumbing mechanism — see meta/devcontainer-base/README.md.
+          # The agent-tool block is annotated inline; everything after it pins the
+          # host-plumbing mechanism — see meta/devcontainer-base/README.md.
           runCmd: |
             set -euo pipefail
             bazel --version
             go version
             python3 --version
+
+            # Agent tools no gate runs. A failed install already fails the build; these catch
+            # one that installs but won't run for remoteUser (wrong-arch asset, unreachable
+            # interpreter) or isn't on PATH. jq has no pin of ours: common-utils provides it.
+            actionlint --version
+            yq --version
+            cosmic-ray --version
+            check-jsonschema --version
+            gremlins --version
+            jq --version
 
             # The plumbing arrived via the base image, at the paths the hooks call it by.
             # Nothing in this repo installs either file, so these fail if the FROM regressed
