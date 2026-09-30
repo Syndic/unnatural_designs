@@ -710,6 +710,58 @@ class TestBaseImageOverride(unittest.TestCase):
         self.assertEqual(image, "${BASE_IMAGE}")
 
 
+def image_references(instructions: list[tuple[str, str]]) -> list[str]:
+    """Registry images named by `FROM` or `COPY --from=`, skipping stages and ARG-selected ones.
+
+    A stage alias or index names a stage of this build, not an image to pull, and a `${…}`
+    reference resolves to one of those (see TestBaseImageOverride).
+    """
+    stages, images = set(), []
+    for kind, arg in instructions:
+        if kind == "FROM":
+            image, alias = parse_from(arg)
+            candidates = [image]
+            if alias:
+                stages.add(alias)
+        elif kind == "COPY":
+            candidates = [f.removeprefix("--from=") for f in arg.split() if f.startswith("--from=")]
+        else:
+            continue
+        images += [c for c in candidates if c not in stages and not c.isdigit() and "${" not in c]
+    return images
+
+
+class TestImageReferencesArePinned(unittest.TestCase):
+    """Every pulled image carries a tag for Renovate and an index digest for the build.
+
+    The convention is README's "Image references"; the base image's own pin is additionally
+    held by TestBaseImageOverride and //.devcontainer:test_base_image_pin.
+    """
+
+    _PINNED_RE = re.compile(r"\A[\w.-]+(?::\d+)?(?:/[\w.-]+)+:[\w][\w.-]*@sha256:[0-9a-f]{64}\Z")
+
+    def test_every_image_is_pinned_by_tag_and_digest(self):
+        images = image_references(dockerfile_instructions(_DOCKERFILE.read_text(encoding="utf-8")))
+        # Guards against a vacuous pass if the parsing ever stops finding the base and uv.
+        self.assertGreaterEqual(len(images), 2)
+        for image in images:
+            with self.subTest(image=image):
+                self.assertRegex(image, self._PINNED_RE)
+
+    def test_stages_and_arg_selected_references_are_not_images(self):
+        instructions = [
+            ("FROM", "reg.example/a:1@sha256:" + "0" * 64 + " AS base"),
+            ("FROM", "${BASE_IMAGE}"),
+            ("COPY", "--from=base /x /y"),
+            ("COPY", "--from=0 /x /y"),
+            ("COPY", "--chown=1:1 --from=reg.example/b:2 /x /y"),
+        ]
+        self.assertEqual(
+            image_references(instructions),
+            ["reg.example/a:1@sha256:" + "0" * 64, "reg.example/b:2"],
+        )
+
+
 # Loop fixtures for the chown_targets tests: one header, a body swapped per case.
 _LOOP_PATHS = ["$HOME/.cache", "/go/pkg"]
 
