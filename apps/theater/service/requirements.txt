@@ -1,0 +1,21 @@
+# Runtime dependencies for the Theater Controls service.
+#
+# This file is the source-of-truth for what gets pinned in the rules_python
+# pip extension. The Bazel migration replaces this with `requirements.lock`
+# produced by `pip-compile` (or rules_python's built-in equivalent), with
+# per-platform locks for the three supported targets.
+#
+# Until then, this file is what `pip install -r` consumes in the Dockerfile.
+#
+# All deps are pure-Python wheels available as `*-py3-none-any.whl`. When
+# the eventual `meta/scripts/check_pure_python.py` lands, it should pass
+# against this set without an allow-list.
+
+fastapi==0.118.0           # WS routing, pydantic integration
+uvicorn==0.32.0            # ASGI server
+pydantic==2.9.2            # Schema
+httpx==0.28.1              # async HTTP for Bravia + ESCAPI clients
+aiowebostv==0.4.2          # LG webOS pairing + control
+pylutron_caseta==0.21.1    # RA3 / Caseta LEAP client
+wakeonlan==3.1.0           # WoL for TV power-on
+tomli==2.0.2               # config.toml parser (Python 3.11+ has tomllib, but pinned for parity)

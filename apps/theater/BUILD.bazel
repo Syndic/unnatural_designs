@@ -1,0 +1,33 @@
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
+
+# //apps/theater — Theater Controls service + frontend.
+#
+# Layout:
+#   service/  - FastAPI app, devices, state engine
+#   frontend/ - React app (copy from the design project's Theater Controls.html
+#               + dependencies, then run frontend-bridge.md's hook swap)
+#   cmd/      - CLI tools: pair_devices (one-time), theaterctl (debug)
+#   deploy/   - Dockerfile + k8s manifests
+#
+# Targets:
+#   //apps/theater/service:service        - py_library (importable)
+#   //apps/theater/service:dev            - py_binary (dev runner with uvicorn --reload)
+#   //apps/theater/cmd/pair_devices:pair  - py_binary
+#   //apps/theater/cmd/theaterctl:ctl     - py_binary
+#   //apps/theater/deploy:image           - oci_image
+#   //apps/theater/deploy:image_push      - oci_push
+#
+# This file is the umbrella that re-exports the integration test target.
+
+package(default_visibility = ["//visibility:public"])
+
+py_test(
+    name = "integration_test",
+    srcs = ["service/integration_test.py"],
+    deps = [
+        "//apps/theater/service:service",
+        # rules_python pip deps go here once the lock file is ready:
+        # "@pip//httpx",
+        # "@pip//pytest_asyncio",
+    ],
+)
