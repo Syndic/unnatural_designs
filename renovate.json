@@ -42,6 +42,13 @@
     },
     {
       "customType": "regex",
+      "managerFilePatterns": [ "/^\\.devcontainer/Dockerfile$/" ],
+      "matchStrings": [
+        "#\\s*renovate:\\s*datasource=(?<datasource>github-release-attachments)\\s+depName=(?<depName>\\S+?)\\s+digestVersion=(?<currentValue>\\S+)\\s*\\nARG\\s+\\w+=(?<currentDigest>[0-9a-f]{128})"
+      ]
+    },
+    {
+      "customType": "regex",
       "managerFilePatterns": [ "/^\\.devcontainer/post-create\\.sh$/" ],
       "matchStrings": [
         "#\\s*renovate:\\s*datasource=(?<datasource>[a-z-]+?)\\s+depName=(?<depName>\\S+?)\\s*\\n\\w+=(?<currentValue>\\S+)"
