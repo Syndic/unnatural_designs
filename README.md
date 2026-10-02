@@ -61,8 +61,8 @@ onto different content changes nothing here. The tag gives Renovate a version to
 docker manager updates tag and digest together on a bump, and raises a moved tag as a `digest`
 update in its own PR (see "Dependency updates" under [Automation](#automation)). Pin the multi-arch
 index digest, not one platform's, because the image builds for amd64 and arm64.
-[`test_devcontainer_config.py`](.devcontainer/test_devcontainer_config.py) fails any `FROM` or
-`COPY --from=` image that lacks either half.
+[`test_devcontainer_config.py`](.devcontainer/test_devcontainer_config.py) fails any `FROM`,
+`COPY --from=` or `RUN --mount=…,from=` image that lacks either half, after resolving ARG defaults.
 
 **Feature pinning**: the `ghcr.io/devcontainers/features/*` references in
 [`devcontainer.json`](.devcontainer/devcontainer.json) are pinned to **full semver**
