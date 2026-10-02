@@ -16,9 +16,9 @@ Six couplings live across those files and none of them fails loudly:
     of volume targets. Too narrow a target leaves the siblings ephemeral, too wide a one
     shadows image content with a stale volume copy, and a target with no chown entry comes up
     root-owned.
-  - Every fetch in the Dockerfile is a GitHub release download, verified against a per-arch
-    sha512 pin that renovate.json can read. A pin Renovate cannot see goes stale, and nothing
-    notices until the next version bump fails the image build.
+  - Every `curl`/`wget` a Dockerfile RUN runs is a GitHub release download, verified against a
+    per-arch sha512 pin that renovate.json can read. A pin Renovate cannot see goes stale, and
+    nothing notices until the next version bump fails the image build.
 
 The rationale for the first three is in meta/devcontainer-base/README.md, "Consuming the
 image"; for the mounts — which are this repo's, not the base image's — it is in
@@ -192,26 +192,48 @@ def expand_home(path: str, home: str) -> str:
     return path
 
 
-def dockerfile_instructions(text: str) -> list[tuple[str, str]]:
-    """Ordered instruction *heads* — `(FIRST_WORD, rest)` per non-comment, non-blank line.
+# A heredoc body is not instructions; see dockerfile_instructions.
+_HEREDOC_RE = re.compile(r"<<-?\s*[\"']?[A-Za-z_]\w*")
 
-    Not a Dockerfile parser: `\\`-continuation lines come back as their own entries (a `&& ...`
-    head). That is enough for the FROM/ARG identity and ordering questions asked below, none of
-    which spans a continuation, and it keeps the indices monotonic in file order.
+
+def dockerfile_instructions(text: str) -> list[tuple[str, str]]:
+    """Ordered `(KEYWORD, arguments)`, one per instruction, with `\\`-continuations joined.
+
+    Comment lines are dropped, inside a continuation too, as Docker drops them. A heredoc raises
+    instead of being read: its body would come back as instructions it isn't, and every check
+    built on this would then be judging the wrong text.
     """
-    instructions = []
+    instructions, current = [], None
     for line in text.splitlines():
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             continue
-        head, _, rest = stripped.partition(" ")
-        instructions.append((head.upper(), rest.strip()))
+        if _HEREDOC_RE.search(stripped):
+            raise ValueError(f"heredocs are not supported by this reader: {stripped!r}")
+        piece = stripped.removesuffix("\\").strip()
+        current = piece if current is None else f"{current} {piece}"
+        if not stripped.endswith("\\"):
+            head, _, rest = current.partition(" ")
+            instructions.append((head.upper(), rest.strip()))
+            current = None
+    if current is not None:
+        raise ValueError("the Dockerfile ends inside a `\\` continuation")
     return instructions
 
 
+def split_flags(arguments: str) -> tuple[list[str], str]:
+    """Split an instruction's leading `--flag[=value]` tokens from the rest of its arguments."""
+    flags, rest = [], arguments
+    while rest.startswith("--"):
+        flag, _, rest = rest.partition(" ")
+        flags.append(flag)
+        rest = rest.lstrip()
+    return flags, rest
+
+
 def parse_from(argument: str) -> tuple[str, str | None]:
-    """Split a FROM argument into `(image, stage_alias)`."""
-    parts = argument.split()
+    """Split a FROM argument into `(image, stage_alias)`, past any `--platform=` flag."""
+    parts = split_flags(argument)[1].split()
     if len(parts) >= 3 and parts[1].upper() == "AS":
         return parts[0], parts[2]
     return parts[0], None
@@ -420,22 +442,6 @@ class TestPinnedShellcheck(unittest.TestCase):
         )
 
 
-def dockerfile_runs(text: str) -> list[str]:
-    """Each RUN instruction with its `\\`-continuations joined onto one line."""
-    runs, current = [], None
-    for line in text.splitlines():
-        stripped = line.strip()
-        if current is None:
-            if not stripped.upper().startswith("RUN "):
-                continue
-            current = ""
-        current += " " + stripped.removesuffix("\\").strip()
-        if not stripped.endswith("\\"):
-            runs.append(current.strip())
-            current = None
-    return runs
-
-
 def renovate_regex(pattern: str) -> re.Pattern:
     """Compile one of renovate.json's `matchStrings` — JS named groups — as a Python regex."""
     return re.compile(re.sub(r"\(\?<(?=[A-Za-z_])", "(?P<", pattern))
@@ -450,12 +456,13 @@ class TestRenovateRegex(unittest.TestCase):
 
 
 class TestVerifiedReleaseDownloads(unittest.TestCase):
-    """What the Dockerfile's network fetches must look like.
+    """What the Dockerfile's own downloads must look like.
 
-    Every `curl`/`wget` is a GitHub release download, saved with `-o` and checked with
-    `sha512sum -c` before anything installs or extracts that file. Every arch has a pin naming
-    the same release as the version ARG the download uses, and renovate.json's Dockerfile
-    managers still extract every version and pin.
+    Every `curl`/`wget` a RUN runs is a GitHub release download, saved with `-o` and checked with
+    `sha512sum -c` before anything touches that file, and no `ADD` fetches a URL. Every arch has a
+    pin naming the same release as the version ARG the download uses, and renovate.json's
+    Dockerfile managers still extract every version and pin. Package-manager fetches (apt, uv)
+    are out of scope.
     """
 
     # The base image is published for these (meta/devcontainer-base/BUILD.bazel), and each is a
@@ -466,8 +473,12 @@ class TestVerifiedReleaseDownloads(unittest.TestCase):
         r"ARG (?P<tool>\w+)_VERSION=(?P<version>\S+)$",
         re.MULTILINE,
     )
-    # Command position only, so `curl` as an apt package name is not a fetch.
-    _FETCH_RE = re.compile(r"(?:^RUN|&&|\|\||[;|(])\s*(?:curl|wget)\b")
+    # Command position only, so `curl` as an apt package name is not a fetch; an `env` or
+    # `VAR=value` prefix still leaves it in command position.
+    _FETCH_RE = re.compile(
+        r"(?:^|&&|\|\||[;|(]|\b(?:then|do|else)\b)\s*"
+        r"(?:env\s+(?:-\S+\s+)*)?(?:[A-Za-z_]\w*=\S*\s+)*(?:curl|wget)\b"
+    )
     _RELEASE_URL_RE = re.compile(r"https://github\.com/(?P<dep>[^/]+/[^/]+)/releases/download/")
     _OUTPUT_RE = re.compile(r"\bcurl\b[^&|;]*?\s-o\s+(?P<path>\S+)")
     _VERSION_REF_RE = re.compile(r"\$\{(?P<tool>\w+)_VERSION\b")
@@ -476,7 +487,14 @@ class TestVerifiedReleaseDownloads(unittest.TestCase):
     def setUpClass(cls):
         cls.dockerfile = _DOCKERFILE.read_text(encoding="utf-8")
         cls.renovate = json.loads(_RENOVATE_JSON.read_text(encoding="utf-8"))
-        cls.fetches = [run for run in dockerfile_runs(cls.dockerfile) if cls._FETCH_RE.search(run)]
+        cls.instructions = dockerfile_instructions(cls.dockerfile)
+        cls.fetches = [
+            command
+            for kind, arguments in cls.instructions
+            if kind == "RUN"
+            for command in [split_flags(arguments)[1]]
+            if cls._FETCH_RE.search(command)
+        ]
         cls.versions = {
             m.group("tool"): (m.group("dep"), m.group("version"))
             for m in cls._VERSION_ARG_RE.finditer(cls.dockerfile)
@@ -534,15 +552,24 @@ class TestVerifiedReleaseDownloads(unittest.TestCase):
                 path = output.group("path")
                 check = f'echo "${{SHA512}}  {path}" | sha512sum -c -'
                 self.assertIn(check, run, f"{path} is not the file sha512sum checks")
+                # The lookahead stops `/tmp/yq` from matching `/tmp/yq-unchecked`.
+                mention = rf"{re.escape(path)}(?![^\s\"'])"
+                unchecked = run[output.end() : run.index(check)]
+                self.assertNotRegex(unchecked, mention, f"{path} is used before its check")
                 uses = [
                     m.start()
-                    # The lookahead stops `/tmp/yq` from matching `/tmp/yq-unchecked`.
-                    for m in re.finditer(
-                        rf"\b(?:install|tar)\b[^&|;]*{re.escape(path)}(?![^\s\"'])", run
-                    )
+                    for m in re.finditer(rf"\b(?:install|tar)\b[^&|;]*{mention}", run)
+                    if m.start() > run.index(check)
                 ]
                 self.assertTrue(uses, f"nothing installs or extracts the checked {path}")
-                self.assertGreater(min(uses), run.index(check), f"{path} is used before its check")
+
+    def test_no_add_fetches_a_url(self):
+        # ADD's own download is unverified unless it carries `--checksum`, which nothing here
+        # uses; a verified curl in a RUN is the one shape these checks understand.
+        for kind, arguments in self.instructions:
+            if kind == "ADD":
+                with self.subTest(add=arguments[:80]):
+                    self.assertNotRegex(split_flags(arguments)[1], r"\w+://|\bgit@")
 
     def test_renovate_reads_every_version_and_pin(self):
         managers = [
