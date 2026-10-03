@@ -269,6 +269,13 @@ and smoke test`, `Base image (all platforms)`, `Action self-test`, and the path-
 two hang off, `Detect devcontainer changes` - both of those carry it in `needs:`, so leaving it
 unrequired would put two merge gates downstream of an unguarded job.
 
+`Base image pin published` is advisory as well. It goes red while GHCR does not serve the base
+image the tree pins, so a failed publish shows on every PR. It does not block because the
+registry's state is not the PR's to fix, and blocking on it would also block a fix that has to
+merge before it can republish. What blocks instead is evidence: while the pin is unpublished, `Base
+image (all platforms)` and `Build devcontainer and smoke test` build and test the base from the
+tree. To republish, run the `Devcontainer` workflow on `main` from the Actions tab.
+
 Three jobs gate nothing for a different reason: they are automated tasks rather than checks, acting
 on the repo's behalf instead of verifying it. That is not what makes them non-blocking - an
 automated task can be required - it is that each one is gated to a situation no ordinary PR is in.

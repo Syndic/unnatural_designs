@@ -24,7 +24,8 @@ _Avoid_: gate, guard, linter, validator
 
 **Advisory check**:
 A check deliberately not named in the ruleset, so its failure does not block a merge. Its verdict
-is a judgement call rather than a defect. The distinction is recorded in
+is a judgement call rather than a defect, or concerns state outside the PR's tree, which the PR
+could not fix and should not be blocked on. The distinction is recorded in
 `meta/scripts/ci_enforcement_manifest.py`, because a check that gates nothing by decision and one
 that gates nothing by omission are indistinguishable from the workflow.
 _Avoid_: soft check, warning, non-required check

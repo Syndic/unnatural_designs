@@ -243,8 +243,8 @@ py_test(
     ],
 )
 
-# Which base image devcontainer.yml's consumer build uses, and that an unservable pin falls back
-# to the tree's own base loudly rather than failing the build or passing silently.
+# How devcontainer.yml answers an unpublished base-image pin: a blocking base build, and a red
+# advisory check.
 py_test(
     name = "test_devcontainer_base_choice",
     size = "small",
