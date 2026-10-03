@@ -243,6 +243,20 @@ py_test(
     ],
 )
 
+# How devcontainer.yml answers an unpublished base-image pin: a blocking base build, and a red
+# advisory check.
+py_test(
+    name = "test_devcontainer_base_choice",
+    size = "small",
+    srcs = ["test_devcontainer_base_choice.py"],
+    data = ["//:.github/workflows/devcontainer.yml"],
+    main = "test_devcontainer_base_choice.py",
+    deps = [
+        ":_workflows_lib",
+        requirement("pyyaml"),
+    ],
+)
+
 # Same shape as the ones above: the assertion is the whole gate. What it guards is invisible while
 # the uv workspace has no members — the export is correct by coincidence until the day one lands.
 py_test(

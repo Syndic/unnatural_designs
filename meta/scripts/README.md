@@ -115,6 +115,11 @@ the extraction report's position after `analyze`. Same reason it rides `bazel te
 couplings are between checked-in files, and nothing fails while they drift — not until `go.work`
 outruns the runner image's Go. The `codeql-all` fan-in is the manifest test's, below.
 
+`test_devcontainer_base_choice.py` has no script half either. It runs `devcontainer.yml`'s pin
+probe and the advisory `Base image pin published` check against stub `docker` and `python3`, and
+holds the base matrix, the consumer's `:load` and its `BASE_IMAGE` to the probe's answer: the
+tree's own base whenever the pin is not the published image.
+
 `test_commit_file_via_app_selftest.py` has no script half either. `Action self-test` is a required
 status check, and what every required check needs is the manifest test's, below; this holds what is
 particular to the self-test: that the classification emits the set the gate reads, that it is a
@@ -125,7 +130,7 @@ action is refused rather than skipped.
 `test_ci_enforcement_manifest.py` has no script half either, and is the one home for what every
 required check, and every fan-in on a required path, needs across every workflow that runs on
 `pull_request`. Its data sits beside it in `ci_enforcement_manifest.py` — every rule the repository
-is required to enforce on `main`, and the four jobs that deliberately gate nothing with a reason
+is required to enforce on `main`, and the five jobs that deliberately gate nothing with a reason
 each — as a library rather than constants in the test, because `check_repository_constraints.py`
 holds the repository to the same data and is a second consumer by construction. The test fails a job
 in neither list, a blocking job that `needs:` a non-blocking one (enforcement moved by a scheduling

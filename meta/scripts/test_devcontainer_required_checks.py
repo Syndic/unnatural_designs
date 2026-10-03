@@ -47,6 +47,10 @@ _JOBS = yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8"))["jobs"]
 _GUARD_STEP = "Verify the classification ran"
 
 _GATE_RE = re.compile(r"needs\.changes\.outputs\.(\w+)")
+
+# Outputs of `changes` that a step other than the classifier writes. Their wiring is
+# //meta/scripts:test_devcontainer_base_choice's.
+_NOT_CLASSIFIED = frozenset({"pin"})
 _STEP_OUTPUT_RE = re.compile(r"^\$\{\{\s*steps\.(\w+)\.outputs\.(\w+)\s*\}\}$")
 
 # Every result a `needs:` job can report other than success. `skipped` is the one that matters:
@@ -85,7 +89,8 @@ class ClassificationOutputsTest(unittest.TestCase):
         self.emitted = [
             name for argv in invocations(classify_step()["run"]) for name in emitted_sets(argv)
         ]
-        self.outputs = _JOBS["changes"]["outputs"]
+        self.declared = _JOBS["changes"]["outputs"]
+        self.outputs = {k: v for k, v in self.declared.items() if k not in _NOT_CLASSIFIED}
 
     def test_the_job_declares_exactly_what_it_emits(self):
         self.assertEqual(
@@ -111,7 +116,7 @@ class ClassificationOutputsTest(unittest.TestCase):
         """A gated step is the one place a typo costs nothing at all: it just never runs."""
         gates = set(_GATE_RE.findall(_WORKFLOW.read_text(encoding="utf-8")))
         self.assertTrue(gates, f"nothing in {_WORKFLOW.name} gates on the classification")
-        self.assertEqual(sorted(gates - set(self.outputs)), [])
+        self.assertEqual(sorted(gates - set(self.declared)), [])
 
 
 class BaseImageFanInTest(unittest.TestCase):

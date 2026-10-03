@@ -590,10 +590,12 @@ What is local to this repo:
   `base-image-pin` pre-commit hook for our edits, this workflow for Renovate's, and
   `//.devcontainer:test_base_image_pin` as the check under both — hooks are bypassable and the
   workflow only fires for Renovate's own PRs. Renovate is configured to ignore the dep. The cost
-  is that a base-editing branch pins an image the registry doesn't have yet; set
-  `DEVCONTAINER_BASE_IMAGE` to the published `:latest` to keep working. Don't reach for
-  `bazel run :load` locally — it needs a Docker daemon the devcontainer doesn't have, which is why
-  that path is CI's.
+  is that a pin can name an image the registry doesn't have yet: on a base-editing branch, and on
+  any branch that inherits the pin between a base-changing merge and `publish` pushing it, or
+  after a publish that failed. CI answers it with a blocking base build and an advisory red (see
+  README.md "What makes a check binding"). Locally, set `DEVCONTAINER_BASE_IMAGE` to the published
+  `:latest` to keep working. Don't reach for `bazel run :load` locally — it needs a Docker daemon
+  the devcontainer doesn't have, which is why that path is CI's.
 - **`.devcontainer/initialize.sh` is the host stub** — the read-and-drop half the image cannot
   carry, since it runs on the host before any container exists. It writes `.git-plumbing/` and the
   `.host-*` symlinks `devcontainer.json` binds.
