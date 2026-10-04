@@ -10,12 +10,16 @@ goes red. Two failures here pass every check while hiding the state they exist t
     not serve and fails on the pull, or skips the base build that is the merge's evidence.
 
 The shells are run against stub `docker` and `python3` rather than matched, for the reason
-//meta/scripts:test_devcontainer_required_checks gives. The `if:` conditions have no runnable
-equivalent and are compared.
+//meta/scripts:test_devcontainer_required_checks gives; those two always stand in, since they play
+the registry and the pin. `timeout` is the host's own wherever it has one, and a strict stand-in
+only where it does not, so a host with GNU coreutils still checks the real invocation.
+`TimeoutStubTest` holds the stand-in to the real tool on those hosts. The `if:` conditions have no
+runnable equivalent and are compared.
 """
 
 import os
 import re
+import shutil
 import stat
 import subprocess
 import tempfile
@@ -61,6 +65,25 @@ esac
 """
 
 
+# GNU timeout's contract, as far as the probe uses it: a duration then a command, exit 125 on a
+# duration it cannot parse, and the command's own status otherwise. Options are not modelled, so a
+# probe that starts passing one fails here until this learns it. It enforces no limit.
+_TIMEOUT_STUB = r"""#!/bin/bash
+if [ $# -lt 2 ] || ! [[ "$1" =~ ^([0-9]+(\.[0-9]*)?|\.[0-9]+)[smhd]?$ ]]; then
+  echo "timeout: invalid time interval '$1'" >&2
+  exit 125
+fi
+shift
+"$@"
+"""
+
+
+def install(bin_dir: Path, name: str, body: str) -> None:
+    path = bin_dir / name
+    path.write_text(body, encoding="utf-8")
+    path.chmod(path.stat().st_mode | stat.S_IXUSR)
+
+
 def step(job: str, predicate) -> dict:
     for candidate in _JOBS[job]["steps"]:
         if predicate(candidate):
@@ -86,10 +109,10 @@ class Run:
             root = Path(tmp)
             bin_dir = root / "bin"
             bin_dir.mkdir()
-            for name, body in (("python3", _PYTHON3_STUB), ("docker", _DOCKER_STUB)):
-                path = bin_dir / name
-                path.write_text(body, encoding="utf-8")
-                path.chmod(path.stat().st_mode | stat.S_IXUSR)
+            install(bin_dir, "python3", _PYTHON3_STUB)
+            install(bin_dir, "docker", _DOCKER_STUB)
+            if shutil.which("timeout") is None:
+                install(bin_dir, "timeout", _TIMEOUT_STUB)
             output, log = root / "output", root / "docker.log"
             output.touch()
             log.touch()
@@ -174,6 +197,33 @@ class ProbeTest(unittest.TestCase):
                 run = probe(value)
                 self.assertNotEqual(run.returncode, 0, run.log)
                 self.assertEqual(run.outputs, {})
+
+
+class TimeoutStubTest(unittest.TestCase):
+    """The stand-in answers as GNU timeout does, checked wherever the real one exists."""
+
+    _CASES = (
+        (["60", "true"], "a whole number of seconds"),
+        (["1.5m", "sh", "-c", "exit 7"], "a fractional duration with a unit"),
+        (["60", "false"], "the command's failure passed through"),
+        (["sixty", "true"], "a duration it cannot parse"),
+        (["", "true"], "an empty duration"),
+        (["-5", "true"], "an option it does not model"),
+        (["60", "no-such-command-anywhere"], "a command that does not exist"),
+    )
+
+    def test_the_stub_matches_the_real_tool(self):
+        real = shutil.which("timeout")
+        if real is None:
+            self.skipTest("no real timeout on this host to compare the stand-in against")
+        with tempfile.TemporaryDirectory() as tmp:
+            stub = Path(tmp) / "timeout"
+            install(Path(tmp), "timeout", _TIMEOUT_STUB)
+            for args, case in self._CASES:
+                with self.subTest(case=case):
+                    want = subprocess.run([real, *args], capture_output=True).returncode
+                    got = subprocess.run([str(stub), *args], capture_output=True).returncode
+                    self.assertEqual(got, want, f"timeout {' '.join(args)!r}")
 
 
 class AdvisoryCheckTest(unittest.TestCase):

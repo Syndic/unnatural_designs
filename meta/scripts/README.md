@@ -116,7 +116,8 @@ couplings are between checked-in files, and nothing fails while they drift — n
 outruns the runner image's Go. The `codeql-all` fan-in is the manifest test's, below.
 
 `test_devcontainer_base_choice.py` has no script half either. It runs `devcontainer.yml`'s pin
-probe and the advisory `Base image pin published` check against stub `docker` and `python3`, and
+probe and the advisory `Base image pin published` check against stub `docker` and `python3` (and a
+strict `timeout` stand-in on hosts without GNU coreutils, held to the real tool where it exists), and
 holds the base matrix, the consumer's `:load` and its `BASE_IMAGE` to the probe's answer: the
 tree's own base whenever the pin is not the published image.
 
