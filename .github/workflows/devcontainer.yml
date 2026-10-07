@@ -86,7 +86,7 @@ jobs:
           err="${RUNNER_TEMP}/imagetools-inspect.err"
           rc=0
           resolved="$(timeout 60 docker buildx imagetools inspect \
-            --format '{{.Manifest.Digest}}' "${repo}@${pinned}" 2>"$err")" || rc=$?
+            --format '{{.Manifest.Digest}}' "${repo}@sha256:0000000000000000000000000000000000000000000000000000000000000000" 2>"$err")" || rc=$?
           if [ "$resolved" = "$pinned" ]; then
             echo "${repo}@${pinned} is published."
             echo "pin=published" >> "$GITHUB_OUTPUT"
