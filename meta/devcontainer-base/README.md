@@ -173,18 +173,16 @@ repo that assembles the artifact.
 
 CI sets `DEVCONTAINER_BASE_IMAGE=devcontainer-base:ci` — the tag `bazel run :load` produces —
 whenever a PR touches the base, so a base change is smoke-tested against a real consumer *before*
-it publishes. It does the same whenever GHCR does not serve the pinned digest, which covers a
-branch that inherited a pin `publish` has not pushed yet. One consequence for a consumer
-that caches its built image: a push to `main` built against `devcontainer-base:ci` seeds the cache
-from it, while every later PR builds against `pinned-base`, so the `FROM` reference string differs
-and the layer cache misses from that line down. It re-seeds on the next `main` push built against
-the pin.
+it publishes. One consequence for a consumer that caches its built image: a base-changing push to
+`main` builds against `devcontainer-base:ci` while every later PR builds against `pinned-base`, so
+the `FROM` reference string differs and the layer cache misses from that line down. It re-seeds on
+the next `main` push that doesn't move the base.
 
 Two freshness facts to keep in mind. `devcontainer up` reuses an existing container, so a base
 bump lands on the next rebuild, not the next `up`. And because this repo's pin is derived, on any
-branch that edits the base — and on `main`, and every branch based on it, until the publish job
-for that merge finishes — the pinned digest names an image the registry does not have yet. Point
-the override at the last published one to get a working container meanwhile:
+branch that edits the base — and on `main` until the publish job finishes, a couple of minutes
+after the merge — the pinned digest names an image the registry does not have yet. Point the
+override at the last published one to get a working container meanwhile:
 
 ```
 DEVCONTAINER_BASE_IMAGE=ghcr.io/syndic/unnatural_designs-devcontainer-base:latest \
