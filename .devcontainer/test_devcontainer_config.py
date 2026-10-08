@@ -29,6 +29,7 @@ in this directory.
 
 import json
 import re
+import shlex
 import sys
 import unittest
 from pathlib import Path
@@ -730,9 +731,11 @@ def image_references(instructions: list[tuple[str, str]]) -> list[str]:
         flags, rest = split_flags(arguments)
         alias = None
         if kind == "ARG":
-            name, has_default, default = rest.partition("=")
-            if has_default:
-                defaults[name.strip()] = default.strip().strip("\"'")
+            # One ARG can declare several `NAME[=default]` pairs; shlex keeps quoted values whole.
+            for declaration in shlex.split(rest):
+                name, has_default, default = declaration.partition("=")
+                if has_default:
+                    defaults[name] = default
             continue
         if kind == "FROM":
             image, alias = parse_from(arguments)
@@ -792,6 +795,8 @@ class TestImageReferencesArePinned(unittest.TestCase):
                 "COPY --chown=1:1 \\",
                 "    --from=$TOOL_IMAGE /x /y",
                 "RUN --mount=type=bind,from=reg.example/d:4,source=/d,target=/d true",
+                'ARG FIRST=reg.example/e:5 SECOND="reg.example/f:6"',
+                "COPY --from=${SECOND} /x /y",
                 "COPY --from=${UNSET} /x /y",
             ]
         )
@@ -802,6 +807,7 @@ class TestImageReferencesArePinned(unittest.TestCase):
                 "reg.example/b:2",
                 "reg.example/c:3",
                 "reg.example/d:4",
+                "reg.example/f:6",
                 "${UNSET}",
             ],
         )
