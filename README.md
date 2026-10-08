@@ -64,6 +64,25 @@ tags are what make the features Renovate-visible, and that bump is what triggers
 [`devcontainer-lock.json`](.devcontainer/devcontainer-lock.json) regeneration under
 [Automation](#automation), which CI then verifies.
 
+**Release binaries**: bazelisk, buildifier, shellcheck, actionlint and yq are downloaded from their
+projects' GitHub releases, and the Dockerfile checks each download against a sha512 pinned in the
+repo before installing it. There is one `ARG <TOOL>_SHA512_<ARCH>` per architecture, directly under
+the tool's `<TOOL>_VERSION`, and a mismatch fails the image build. The digest is pinned here rather
+than read from a checksums file in the same release because that file only catches corruption:
+anyone who can replace an asset can replace its checksums too, and buildtools and shellcheck publish
+none. A pin makes a changed asset under an unchanged tag fail the build. It is still
+trust-on-first-use: a new version's pin is only as good as the release was when Renovate read it.
+Each pin carries a `# renovate: datasource=github-release-attachments depName=<repo>
+digestVersion=<version>` marker. On a version bump Renovate finds the asset that matches the old
+digest, hashes the new release's equivalent, and commits both in the same PR. The digest is sha512
+rather than sha256 because Renovate first looks for the old digest in any release asset under 5 KiB,
+as the first field of a line. It misreads bazelisk's filename-less `.sha256` files there and would
+pin the checksum file's own hash. No release here has a small sha512 file in that form (yq lists
+sha512 as one column of a 110 KB file), so Renovate always hashes the asset itself.
+[`test_devcontainer_config.py`](.devcontainer/test_devcontainer_config.py) holds the shape,
+including that `renovate.json` still reads every pin and that the Dockerfile fetches nothing else.
+To add a tool, copy an existing block.
+
 **Known limitations**: the Docker and Kubernetes VS Code extensions install but aren't wired to a
 daemon or `kubectl` inside the container
 ([#242](https://github.com/Syndic/unnatural_designs/issues/242)); BuildBuddy credentials still need
@@ -405,6 +424,8 @@ difference matters when adding one:
   line **immediately above** the value, and the value must be quoted in the workflow case
   (`key: "1.2.3"`). The key name is not constrained, so both `version:` and `TY_VERSION:` are
   tracked.
+  A Dockerfile digest pin is the one variant: its marker adds `digestVersion=<version>` and the
+  `ARG` holds a sha512 (see "Release binaries" under [Dev Environment](#dev-environment)).
 - **Structural** — the two `MODULE.bazel` patterns, which carry `datasourceTemplate`/`depNameTemplate`
   in the config and match the pin site directly (`go_sdk.download(… version = "…")`, and any
   `python_version = "…"`). There is no marker comment to grep for, so these are easy to forget when

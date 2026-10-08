@@ -1,6 +1,6 @@
 """Tests for the wiring between devcontainer.json, the Dockerfile, the base image, and .vscode.
 
-Five couplings live across those files and none of them fails loudly:
+Six couplings live across those files and none of them fails loudly:
 
   - The `BASE_IMAGE` override has an exact working shape. Every nearby shape either breaks
     every local `devcontainer up` (an empty `--build-arg` overriding the Dockerfile default)
@@ -16,10 +16,13 @@ Five couplings live across those files and none of them fails loudly:
     of volume targets. Too narrow a target leaves the siblings ephemeral, too wide a one
     shadows image content with a stale volume copy, and a target with no chown entry comes up
     root-owned.
+  - Every `curl`/`wget` a Dockerfile RUN runs is a GitHub release download, verified against a
+    per-arch sha512 pin that renovate.json can read. A pin Renovate cannot see goes stale, and
+    nothing notices until the next version bump fails the image build.
 
 The rationale for the first three is in meta/devcontainer-base/README.md, "Consuming the
 image"; for the mounts — which are this repo's, not the base image's — it is in
-.claude/CLAUDE.md, "Devcontainer cache volumes".
+.claude/CLAUDE.md, "Devcontainer cache volumes"; for the release pins, README "Release binaries".
 The parsing helpers are pure so they can be exercised directly, same split as the shell tests
 in this directory.
 """
@@ -40,6 +43,7 @@ _SETTINGS_JSON = _HERE.parent / ".vscode" / "settings.json"
 _EXTENSIONS_JSON = _HERE.parent / ".vscode" / "extensions.json"
 _CI_WORKFLOW = _HERE.parent / ".github" / "workflows" / "ci.yml"
 _DOCKERFILE = _HERE / "Dockerfile"
+_RENOVATE_JSON = _HERE.parent / "renovate.json"
 _HOOKS = (_HERE / "post-create.sh", _HERE / "post-start.sh")
 _DEVCONTAINER_WORKFLOW = _HERE.parent / ".github" / "workflows" / "devcontainer.yml"
 
@@ -188,26 +192,48 @@ def expand_home(path: str, home: str) -> str:
     return path
 
 
-def dockerfile_instructions(text: str) -> list[tuple[str, str]]:
-    """Ordered instruction *heads* — `(FIRST_WORD, rest)` per non-comment, non-blank line.
+# A heredoc body is not instructions; see dockerfile_instructions.
+_HEREDOC_RE = re.compile(r"<<-?\s*[\"']?[A-Za-z_]\w*")
 
-    Not a Dockerfile parser: `\\`-continuation lines come back as their own entries (a `&& ...`
-    head). That is enough for the FROM/ARG identity and ordering questions asked below, none of
-    which spans a continuation, and it keeps the indices monotonic in file order.
+
+def dockerfile_instructions(text: str) -> list[tuple[str, str]]:
+    """Ordered `(KEYWORD, arguments)`, one per instruction, with `\\`-continuations joined.
+
+    Comment lines are dropped, inside a continuation too, as Docker drops them. A heredoc raises
+    instead of being read: its body would come back as instructions it isn't, and every check
+    built on this would then be judging the wrong text.
     """
-    instructions = []
+    instructions, current = [], None
     for line in text.splitlines():
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             continue
-        head, _, rest = stripped.partition(" ")
-        instructions.append((head.upper(), rest.strip()))
+        if _HEREDOC_RE.search(stripped):
+            raise ValueError(f"heredocs are not supported by this reader: {stripped!r}")
+        piece = stripped.removesuffix("\\").strip()
+        current = piece if current is None else f"{current} {piece}"
+        if not stripped.endswith("\\"):
+            head, _, rest = current.partition(" ")
+            instructions.append((head.upper(), rest.strip()))
+            current = None
+    if current is not None:
+        raise ValueError("the Dockerfile ends inside a `\\` continuation")
     return instructions
 
 
+def split_flags(arguments: str) -> tuple[list[str], str]:
+    """Split an instruction's leading `--flag[=value]` tokens from the rest of its arguments."""
+    flags, rest = [], arguments
+    while rest.startswith("--"):
+        flag, _, rest = rest.partition(" ")
+        flags.append(flag)
+        rest = rest.lstrip()
+    return flags, rest
+
+
 def parse_from(argument: str) -> tuple[str, str | None]:
-    """Split a FROM argument into `(image, stage_alias)`."""
-    parts = argument.split()
+    """Split a FROM argument into `(image, stage_alias)`, past any `--platform=` flag."""
+    parts = split_flags(argument)[1].split()
     if len(parts) >= 3 and parts[1].upper() == "AS":
         return parts[0], parts[2]
     return parts[0], None
@@ -400,12 +426,174 @@ class TestPinnedShellcheck(unittest.TestCase):
             "ARG SHELLCHECK_VERSION=" in self.workflow,
             "ci.yml no longer derives the shellcheck version from the Dockerfile",
         )
+        self.assertTrue(
+            "ARG SHELLCHECK_SHA512_AMD64=" in self.workflow,
+            "ci.yml no longer derives the shellcheck digest from the Dockerfile",
+        )
+        self.assertTrue(
+            "sha512sum -c -" in self.workflow,
+            "ci.yml installs shellcheck without checking it against the Dockerfile's digest",
+        )
         restated = re.findall(r"shellcheck-v\d+\.\d+", self.workflow)
         self.assertEqual(
             restated,
             [],
             "ci.yml names a shellcheck version of its own; it must read the Dockerfile's ARG",
         )
+
+
+def renovate_regex(pattern: str) -> re.Pattern:
+    """Compile one of renovate.json's `matchStrings` — JS named groups — as a Python regex."""
+    return re.compile(re.sub(r"\(\?<(?=[A-Za-z_])", "(?P<", pattern))
+
+
+class TestRenovateRegex(unittest.TestCase):
+    def test_named_groups_are_translated(self):
+        self.assertEqual(renovate_regex("(?<v>\\d+)").match("12").group("v"), "12")
+
+    def test_lookbehinds_are_left_alone(self):
+        self.assertIsNotNone(renovate_regex("(?<=a)(?<!b)(?<v>c)").search("ac"))
+
+
+class TestVerifiedReleaseDownloads(unittest.TestCase):
+    """What the Dockerfile's own downloads must look like.
+
+    Every `curl`/`wget` a RUN runs is a GitHub release download, saved with `-o` and checked with
+    `sha512sum -c` before anything touches that file, and no `ADD` fetches a URL. Every arch has a
+    pin naming the same release as the version ARG the download uses, and renovate.json's
+    Dockerfile managers still extract every version and pin. Package-manager fetches (apt, uv)
+    are out of scope.
+    """
+
+    # The base image is published for these (meta/devcontainer-base/BUILD.bazel), and each is a
+    # `dpkg --print-architecture` value the install RUNs switch on.
+    _ARCHES = ("amd64", "arm64")
+    _VERSION_ARG_RE = re.compile(
+        r"^# renovate: datasource=github-releases depName=(?P<dep>\S+)\n"
+        r"ARG (?P<tool>\w+)_VERSION=(?P<version>\S+)$",
+        re.MULTILINE,
+    )
+    # Any mention is a fetch, however it is invoked. The one exemption is an `apt-get install`
+    # package list, which installs curl rather than running it; the list stops at a command
+    # substitution, so nothing can run inside it unseen.
+    _FETCH_RE = re.compile(r"\b(?:curl|wget)\b")
+    _APT_INSTALL_RE = re.compile(r"\bapt-get\s+(?:-\S+\s+)*install\b[^&;|$`()]*")
+    _RELEASE_URL_RE = re.compile(r"https://github\.com/(?P<dep>[^/]+/[^/]+)/releases/download/")
+    _OUTPUT_RE = re.compile(r"\bcurl\b[^&|;]*?\s-o\s+(?P<path>\S+)")
+    _VERSION_REF_RE = re.compile(r"\$\{(?P<tool>\w+)_VERSION\b")
+
+    @classmethod
+    def setUpClass(cls):
+        cls.dockerfile = _DOCKERFILE.read_text(encoding="utf-8")
+        cls.renovate = json.loads(_RENOVATE_JSON.read_text(encoding="utf-8"))
+        cls.instructions = dockerfile_instructions(cls.dockerfile)
+        cls.fetches = [
+            command
+            for kind, arguments in cls.instructions
+            if kind == "RUN"
+            for command in [cls._APT_INSTALL_RE.sub(" ", split_flags(arguments)[1])]
+            if cls._FETCH_RE.search(command)
+        ]
+        cls.versions = {
+            m.group("tool"): (m.group("dep"), m.group("version"))
+            for m in cls._VERSION_ARG_RE.finditer(cls.dockerfile)
+        }
+
+    def release(self, run: str) -> tuple[str, str, str]:
+        """`(dep, tool, version)` for a download RUN, asserting its URL and version ARG agree."""
+        url = self._RELEASE_URL_RE.search(run)
+        self.assertIsNotNone(url, f"fetch is not a GitHub release download: {run[:120]}")
+        tools = {m.group("tool") for m in self._VERSION_REF_RE.finditer(run)}
+        self.assertEqual(len(tools), 1, f"expected one *_VERSION ARG in: {run[:120]}")
+        (tool,) = tools
+        self.assertIn(tool, self.versions, f"no github-releases marker above {tool}_VERSION")
+        dep, version = self.versions[tool]
+        self.assertEqual(url.group("dep"), dep, f"{tool}_VERSION tracks {dep}, not the URL's repo")
+        return dep, tool, version
+
+    def pin(self, dep: str, tool: str, version: str, arch: str) -> str:
+        """The digest pinned for `arch`, asserting the comment Renovate reads above it."""
+        match = re.search(
+            rf"^# renovate: datasource=github-release-attachments depName={re.escape(dep)} "
+            rf"digestVersion=(?P<version>\S+)\nARG {tool}_SHA512_{arch.upper()}=(?P<digest>\S*)$",
+            self.dockerfile,
+            re.MULTILINE,
+        )
+        self.assertIsNotNone(match, f"no {tool}_SHA512_{arch.upper()} pin for {dep}")
+        self.assertEqual(
+            match.group("version"),
+            version,
+            f"{tool}_SHA512_{arch.upper()} is pinned for a different release than "
+            f"{tool}_VERSION downloads",
+        )
+        self.assertRegex(match.group("digest"), r"\A[0-9a-f]{128}\Z", "not a sha512 hex digest")
+        return match.group("digest")
+
+    def test_there_are_fetches_to_check(self):
+        # Guards the rest against vacuous passes if the fetch pattern ever stops matching.
+        self.assertTrue(self.fetches)
+
+    def test_each_fetch_is_one_pinned_release_download(self):
+        for run in self.fetches:
+            with self.subTest(run=run[:80]):
+                # One per RUN, so every URL, output path and check below is unambiguous.
+                self.assertEqual(len(self._FETCH_RE.findall(run)), 1)
+                dep, tool, version = self.release(run)
+                for arch in self._ARCHES:
+                    self.pin(dep, tool, version, arch)
+                    self.assertIn(f"${{{tool}_SHA512_{arch.upper()}}}", run)
+
+    def test_each_download_is_verified_before_use(self):
+        for run in self.fetches:
+            with self.subTest(run=run[:80]):
+                output = self._OUTPUT_RE.search(run)
+                self.assertIsNotNone(output, "download is not saved with `curl -o`")
+                path = output.group("path")
+                check = f'echo "${{SHA512}}  {path}" | sha512sum -c -'
+                self.assertIn(check, run, f"{path} is not the file sha512sum checks")
+                # The lookahead stops `/tmp/yq` from matching `/tmp/yq-unchecked`.
+                mention = rf"{re.escape(path)}(?![^\s\"'])"
+                unchecked = run[output.end() : run.index(check)]
+                self.assertNotRegex(unchecked, mention, f"{path} is used before its check")
+                uses = [
+                    m.start()
+                    for m in re.finditer(rf"\b(?:install|tar)\b[^&|;]*{mention}", run)
+                    if m.start() > run.index(check)
+                ]
+                self.assertTrue(uses, f"nothing installs or extracts the checked {path}")
+
+    def test_no_add_fetches_a_url(self):
+        # ADD's own download is unverified unless it carries `--checksum`, which nothing here
+        # uses; a verified curl in a RUN is the one shape these checks understand.
+        for kind, arguments in self.instructions:
+            if kind == "ADD":
+                with self.subTest(add=arguments[:80]):
+                    self.assertNotRegex(split_flags(arguments)[1], r"\w+://|\bgit@")
+
+    def test_renovate_reads_every_version_and_pin(self):
+        managers = [
+            renovate_regex(pattern)
+            for manager in self.renovate["customManagers"]
+            if "/^\\.devcontainer/Dockerfile$/" in manager["managerFilePatterns"]
+            for pattern in manager["matchStrings"]
+        ]
+        extracted = {
+            (
+                m.groupdict().get("datasource"),
+                m.group("depName"),
+                m.group("currentValue"),
+                m.groupdict().get("currentDigest"),
+            )
+            for regex in managers
+            for m in regex.finditer(self.dockerfile)
+        }
+        for run in self.fetches:
+            dep, tool, version = self.release(run)
+            with self.subTest(tool=tool):
+                self.assertIn(("github-releases", dep, version, None), extracted)
+                for arch in self._ARCHES:
+                    digest = self.pin(dep, tool, version, arch)
+                    self.assertIn(("github-release-attachments", dep, version, digest), extracted)
 
 
 class TestLocalEnvParsing(unittest.TestCase):
