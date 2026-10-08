@@ -25,7 +25,7 @@ endpoint cannot reach at all and which gates no merge.
 Two axes cross here, and NOT_REQUIRED divides on only one of them:
 
   - A **check** verifies an invariant and has no side effects. An **automated task** acts on the
-    repo's behalf and does. Three of the four NOT_REQUIRED entries are tasks, which is why they
+    repo's behalf and does. Three of the five NOT_REQUIRED entries are tasks, which is why they
     gate nothing without being decorations. Nothing branches on the distinction, so it is not a
     field — each reason string says which it is.
   - **Blocking** or not, relative to the gate of the context a job runs in. In CI that means named
@@ -200,9 +200,16 @@ NOT_REQUIRED: Final = {
         "Advisory check. Its failure is a judgement call rather than a defect, and Codecov's own "
         "project/patch statuses are threshold-based."
     ),
+    "Base image pin published": (
+        "Check, deliberately advisory: red while GHCR does not serve the pinned base image, so a "
+        "failed publish is visible on every PR. Registry state is not a property of the PR's tree, "
+        "and blocking on it would also block the fix that republishes; the blocking evidence is "
+        "the base build `Base image (all platforms)` and `Build devcontainer and smoke test` run "
+        "instead."
+    ),
     "Publish the shared base image": (
         "Automated task: pushes the base image to GHCR, where Syndic/.dotfiles expects to find "
-        "it. Gated to `github.event_name == 'push'` on main, so it never reports on a PR at all."
+        "it. Gated to a push or a manual run on main, so it never reports on a PR at all."
     ),
     "Re-derive lock files": (
         "Automated task: regenerates the derived files Mend-hosted Renovate cannot and commits "
@@ -241,8 +248,8 @@ FAN_IN_EXEMPTIONS: Final = (
         upstream="base-image",
         accepted="skipped",
         reason=(
-            "`base-image` is path-gated on `needs.changes.outputs.base`, so a skipped matrix is "
-            "the ordinary no-op path rather than rows left unrun. The fan-in stays strict about "
+            "`base-image` runs only when the pin is not the published image, so a skipped matrix "
+            "is the ordinary no-op path rather than rows left unrun. The fan-in stays strict about "
             "`changes` itself, since a gate that did not run is not a gate that said no — which "
             "is why the exemption names one upstream job and not the whole fan-in."
         ),

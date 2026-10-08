@@ -72,20 +72,27 @@ no-op-when-no-diff behavior.
 ## Which workflow a check belongs in
 
 `ci.yml` and `security.yml` are split on **what makes a check's result change**, not on subject
-matter:
+matter, because that is what decides when a check is worth running:
 
 - **A check that reads only the tree belongs in `ci.yml`.** Same commit, same answer, forever — so
   re-running it tells you nothing you did not already know.
-- **A check whose verdict moves with an input we don't pin belongs in `security.yml`.** Four fetch
-  a database at run time — govulncheck the Go vuln DB, pip-audit PyPI advisories, Semgrep the
-  registry rule packs, Trivy its own DB — so an advisory landing turns them red on an untouched
-  commit. `codeql` qualifies by a different route: the SHA pin fixes the *action*, not the analysis
-  engine, which GitHub selects per run (see "CodeQL runs as advanced setup"). Either way the Monday
-  cron is what surfaces it.
+- **A check whose verdict moves with an input we don't pin belongs in `security.yml`**, whose
+  Monday cron re-runs it against an unchanged tree. Four fetch a database at run time —
+  govulncheck the Go vuln DB, pip-audit PyPI advisories, Semgrep the registry rule packs, Trivy its
+  own DB — so an advisory landing turns them red on an untouched commit. `codeql` qualifies by a
+  different route: the SHA pin fixes the *action*, not the analysis engine, which GitHub selects
+  per run (see "CodeQL runs as advanced setup"). Either way the Monday cron is what surfaces it.
 
 Read the criterion as "does anything reach this check from outside the tree", not as "is there an
 advisory database" — the narrower reading misses CodeQL, and a pinned `uses:` is not evidence that
 a check is tree-only.
+
+That split is between the two general-purpose workflows. A workflow scoped to one subject, like
+`devcontainer.yml`, keeps that subject's checks together whichever kind they are, and the axis only
+asks whether its out-of-tree checks deserve a schedule of their own. `Base image pin published` is
+one: it reads GHCR, and sits beside the probe whose answer the workflow's required jobs act on. It
+needs no schedule, since a publish can only fail on a push to `main` and the next PR or push runs
+the check.
 
 That axis is why `golangci-lint` moved out of Security in #18, and why `modules-check` later
 followed it out — a completeness gate over hand-listed matrices is a pure function of the tree, so
@@ -590,10 +597,12 @@ What is local to this repo:
   `base-image-pin` pre-commit hook for our edits, this workflow for Renovate's, and
   `//.devcontainer:test_base_image_pin` as the check under both — hooks are bypassable and the
   workflow only fires for Renovate's own PRs. Renovate is configured to ignore the dep. The cost
-  is that a base-editing branch pins an image the registry doesn't have yet; set
-  `DEVCONTAINER_BASE_IMAGE` to the published `:latest` to keep working. Don't reach for
-  `bazel run :load` locally — it needs a Docker daemon the devcontainer doesn't have, which is why
-  that path is CI's.
+  is that a pin can name an image the registry doesn't have yet: on a base-editing branch, and on
+  any branch that inherits the pin between a base-changing merge and `publish` pushing it, or
+  after a publish that failed. CI answers it with a blocking base build and an advisory red (see
+  README.md "What makes a check binding"). Locally, set `DEVCONTAINER_BASE_IMAGE` to the published
+  `:latest` to keep working. Don't reach for `bazel run :load` locally — it needs a Docker daemon
+  the devcontainer doesn't have, which is why that path is CI's.
 - **`.devcontainer/initialize.sh` is the host stub** — the read-and-drop half the image cannot
   carry, since it runs on the host before any container exists. It writes `.git-plumbing/` and the
   `.host-*` symlinks `devcontainer.json` binds.

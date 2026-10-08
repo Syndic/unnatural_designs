@@ -10,6 +10,9 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Republish: run on main to build, test and publish the base image the tree pins, e.g. after a
+  # publish failed and the `Base image pin published` check went red.
+  workflow_dispatch:
 
 # Supersede in-flight runs for the same PR; see .claude/CLAUDE.md "Superseding CI runs".
 concurrency:
@@ -31,6 +34,7 @@ jobs:
     outputs:
       changed: ${{ steps.classify.outputs.changed }}
       base: ${{ steps.classify.outputs.base }}
+      pin: ${{ steps.pin.outputs.pin }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -39,10 +43,15 @@ jobs:
 
       # Pick the base to diff against (the classifier handles the diff, the zero-SHA
       # branch-creation case, and emitting `changed`). PRs diff the base branch tip;
-      # pushes diff the previous tip.
+      # pushes diff the previous tip. A manual run is a republish, so it takes the base path.
       - id: classify
         run: |
           set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "base=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             base="${{ github.event.pull_request.base.sha }}"
           else
@@ -57,6 +66,29 @@ jobs:
             --emit changed \
             --emit base
 
+      # `published`, `unpublished`, or `edited` when this change moves the pin, whose image
+      # `publish` pushes on merge. Anything short of GHCR resolving the exact digest is
+      # `unpublished`, which the jobs below answer with a base build rather than a pass; see
+      # README.md "What makes a check binding". An error in the helper, as opposed to its
+      # not-served answer (3), fails the job rather than picking a state.
+      - id: pin
+        env:
+          BASE_EDITED: ${{ steps.classify.outputs.base }}
+        run: |
+          set -euo pipefail
+          case "$BASE_EDITED" in
+            true) echo "pin=edited" >> "$GITHUB_OUTPUT"; exit 0 ;;
+            false) ;;
+            *) echo "::error::unexpected base classification '${BASE_EDITED}'"; exit 1 ;;
+          esac
+          rc=0
+          python3 meta/scripts/base_image_served.py || rc=$?
+          case "$rc" in
+            0) echo "pin=published" >> "$GITHUB_OUTPUT" ;;
+            3) echo "pin=unpublished" >> "$GITHUB_OUTPUT" ;;
+            *) exit "$rc" ;;
+          esac
+
   # ── Shared base image ───────────────────────────────────────────────────────────────
   # meta/devcontainer-base/ is published for other Syndic repos to FROM. Bazel assembles it and
   # unit-tests its layer layout without a daemon (//meta/devcontainer-base:test_image_layers,
@@ -68,10 +100,12 @@ jobs:
   # assembled, and arm64 is the architecture developer hosts actually run. The runners are
   # native (`ubuntu-24.04-arm`, as ci.yml already uses), so this costs no QEMU — which is the
   # constraint the image is shaped around.
+  #
+  # Runs whenever the base the consumer builds on is the tree's own rather than the published pin.
   base-image:
     name: Base image (${{ matrix.platform }})
     needs: changes
-    if: needs.changes.outputs.base == 'true'
+    if: needs.changes.outputs.pin != 'published'
     strategy:
       fail-fast: false
       matrix:
@@ -127,9 +161,8 @@ jobs:
   # same pattern as ci.yml's `build-and-test-all`. Adding an architecture then needs no branch
   # protection edit, and a failure on any row blocks the merge.
   #
-  # Unlike ci.yml's equivalent, `skipped` has to pass: that matrix is gated on the base image
-  # actually having changed, so most PRs legitimately skip it. Only failure and cancellation
-  # are real.
+  # Unlike ci.yml's equivalent, `skipped` has to pass: that matrix runs only when the pin is not
+  # the published image, so most PRs legitimately skip it. Only failure and cancellation are real.
   #
   # That is why `changes` is a separate question rather than one more result to accept: a gate
   # that *failed to evaluate* skips the matrix byte-identically to a gate that ran and said no.
@@ -217,14 +250,14 @@ jobs:
       # Only the consumer build needs a ref computed here; the base image's own repository is
       # declared on the `oci_push` target in meta/devcontainer-base/BUILD.bazel.
       - id: img
-        if: needs.changes.outputs.changed == 'true'
+        if: needs.changes.outputs.changed == 'true' || needs.changes.outputs.pin == 'unpublished'
         run: echo "ref=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')-devcontainer" >> "$GITHUB_OUTPUT"
 
       # Auth for the GHCR cache. Skipped on fork PRs — their read-only token can't reach the
       # package, so they fall back to a cold build. Needs the packages: write permission above.
       # The base image's own push authenticates separately, in the publish job.
       - if: >-
-          needs.changes.outputs.changed == 'true'
+          (needs.changes.outputs.changed == 'true' || needs.changes.outputs.pin == 'unpublished')
           && github.event.pull_request.head.repo.fork != true
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
@@ -232,12 +265,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # When this PR moves the shared base image, build the consumer against the image the PR
-      # *would* publish instead of the digest pinned in the Dockerfile. That is what makes a
-      # base change smoke-tested against a real consumer before it can reach the registry —
-      # otherwise the pin only picks it up a Renovate bump later, after publication.
-      # `:load` produces the `devcontainer-base:ci` tag the BASE_IMAGE env below names.
-      - if: needs.changes.outputs.base == 'true'
+      # The consumer builds on the tree's own base, tagged `devcontainer-base:ci` by `:load`,
+      # whenever the pin is not the published image: so a base change is smoke-tested before it
+      # can publish, and an unpublished pin still gets a blocking build of what it names.
+      - if: needs.changes.outputs.pin != 'published'
         uses: ./.github/actions/setup-bazel-remote
         with:
           buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
@@ -249,7 +280,7 @@ jobs:
       # The `.bazelrc.user` removal is not tidiness: setup-bazel-remote writes the BuildBuddy
       # key into it, in the workspace devcontainers/ci bind-mounts into the container a few
       # steps below. Nothing here reads it again.
-      - if: needs.changes.outputs.base == 'true'
+      - if: needs.changes.outputs.pin != 'published'
         name: Load the shared base image into Docker
         run: |
           bazel run --config=ci --config=linux_x86_64 //meta/devcontainer-base:load
@@ -258,21 +289,17 @@ jobs:
       # devcontainers/ci builds with the full feature set (so feature bumps are exercised,
       # not just the Dockerfile) and runs the smoke command inside the resulting container.
       # cacheFrom reuses the previously-built layers; push: filter seeds the cache on pushes
-      # to main only (PRs build against the cache but don't publish).
-      #
-      # Expect a cold window after a base change merges: that push seeds the cache from
-      # `devcontainer-base:ci`, while the Dockerfile still pins the *previous* digest, so every
-      # PR until Renovate's bump lands misses the cache from the FROM layer down. It re-seeds
-      # itself on the next main push after that bump — slow, not broken.
-      - if: needs.changes.outputs.changed == 'true'
+      # to main only (PRs build against the cache but don't publish). A main push built against
+      # `devcontainer-base:ci` seeds a cache the next pinned builds miss; see "Consuming the
+      # image" in meta/devcontainer-base/README.md.
+      - if: needs.changes.outputs.changed == 'true' || needs.changes.outputs.pin == 'unpublished'
         uses: devcontainers/ci@513af61f4de4f75d37e4438f184ba4358f0fc1ca # v0.3.1900000450
         env:
           # The action has no build-arg input, so the override travels through
           # devcontainer.json's `build.args` as ${localEnv:DEVCONTAINER_BASE_IMAGE}.
           # `pinned-base` is the Dockerfile's stage alias for the pinned digest, not a registry
-          # reference — passing it explicitly keeps both branches of this expression the same
-          # shape.
-          DEVCONTAINER_BASE_IMAGE: ${{ needs.changes.outputs.base == 'true' && 'devcontainer-base:ci' || 'pinned-base' }}
+          # reference.
+          DEVCONTAINER_BASE_IMAGE: ${{ needs.changes.outputs.pin == 'published' && 'pinned-base' || 'devcontainer-base:ci' }}
         with:
           imageName: ${{ steps.img.outputs.ref }}
           cacheFrom: ${{ steps.img.outputs.ref }}
@@ -346,8 +373,35 @@ jobs:
             test -w "$HOME/.ssh/known_hosts"
             test ! -w "$HOME/.ssh/allowed_signers"
 
-      - if: needs.changes.outputs.changed != 'true'
+      - if: needs.changes.outputs.changed != 'true' && needs.changes.outputs.pin == 'published'
         run: echo "No devcontainer changes in this PR; skipping build."
+
+  # Not required, deliberately: a failed publish turns PRs red here without blocking them, since
+  # the blocking evidence for an unpublished pin is the base build the jobs above run instead.
+  pin-published:
+    name: Base image pin published
+    needs: changes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the pinned base image is published
+        env:
+          PIN: ${{ needs.changes.outputs.pin }}
+        run: |
+          set -euo pipefail
+          case "$PIN" in
+            published) echo "GHCR serves the base image this tree pins." ;;
+            edited) echo "This run builds the pinned image from the tree; publish pushes it on main." ;;
+            unpublished)
+              msg="GHCR does not serve the base image this tree pins; the probe in 'Detect"
+              msg="${msg} devcontainer changes' logs the digest and the registry's response. This"
+              msg="${msg} run built and tested the base from the tree instead. If the publish for"
+              msg="${msg} the merge that moved the pin is still running, re-run all jobs once"
+              msg="${msg} it finishes. Otherwise republish: run the Devcontainer workflow on main."
+              echo "::error title=Base image pin not published::${msg}"
+              exit 1
+              ;;
+            *) echo "::error::unexpected pin state '${PIN}'"; exit 1 ;;
+          esac
 
   # Publish LAST — `needs` both smoke jobs, so a base that failed on either architecture, or
   # that broke this repo's own devcontainer build, never reaches the registry.
@@ -369,7 +423,8 @@ jobs:
       - base-image-all
       - build-and-smoke-test
     if: >-
-      github.event_name == 'push' && github.ref == 'refs/heads/main'
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      && github.ref == 'refs/heads/main'
       && needs.changes.outputs.base == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -393,11 +448,8 @@ jobs:
 
       # The one loose end neither the pre-commit hook nor renovate-derived-files.yml can see:
       # both run before the merge, and this is the step that can fail after it. `crane push`
-      # then one `crane tag` per tag is not atomic, so a failure in between leaves main pinned
-      # to a digest the registry does not serve — silent until someone rebuilds a devcontainer.
-      #
-      # Reads the pin with sync_base_image_pin.py rather than a grep of its own, so the digest
-      # has one parser and this cannot degrade into a check that always passes.
+      # then one `crane tag` per tag is not atomic, so a failure part-way leaves a tag behind
+      # the pin — silent until a consumer reading the tag rebuilds.
       #
       # Retried because GHCR does not document tag resolution as read-your-writes and this runs
       # seconds after `crane tag`. A transient miss would turn main red for exactly the reason
@@ -405,38 +457,28 @@ jobs:
       - name: Verify the registry serves what main pins
         run: |
           set -euo pipefail
-          repo=ghcr.io/syndic/unnatural_designs-devcontainer-base
-          pinned="$(python3 meta/scripts/sync_base_image_pin.py --print-pinned)"
-          err="${RUNNER_TEMP}/imagetools-inspect.err"
           attempts=3
 
-          # `@digest` is what a consumer's FROM resolves; the tags are what Renovate and any
+          # The digest is what a consumer's FROM resolves; the tags are what Renovate and any
           # non-deriving consumer read, and they are the half `crane tag` can leave behind.
-          # One tool for all three: `imagetools inspect` takes a digest reference too, and
-          # `docker manifest` is still nominally an experimental CLI command.
-          for ref in "@${pinned}" ":latest" ":sha-${GITHUB_SHA}"; do
-            resolved=""
-            rc=0
+          # An empty tag argument asks about the pinned digest itself.
+          for tag in "" ":latest" ":sha-${GITHUB_SHA}"; do
             for attempt in $(seq "$attempts"); do
-              # stderr and the exit status are both kept: propagation lag, an auth failure and
-              # an unreachable registry otherwise look alike, and a `timeout` kill writes no
-              # stderr at all, so the status is the only thing that names that one.
               rc=0
-              resolved="$(timeout 60 docker buildx imagetools inspect \
-                --format '{{.Manifest.Digest}}' "${repo}${ref}" 2>"$err")" || rc=$?
-              [ "$resolved" = "$pinned" ] && break
-              # `||` rather than `&&`: a failing `&&` guard returns 1, which set -e traps.
+              python3 meta/scripts/base_image_served.py ${tag:+"$tag"} || rc=$?
+              # Only a not-served answer (3) is worth retrying; 0 is done, anything else is an
+              # error in the helper. `||` rather than `&&`: a failing `&&` guard trips set -e.
+              [ "$rc" -eq 3 ] || break
               [ "$attempt" -eq "$attempts" ] || sleep $((attempt * 5))
             done
-            if [ "$resolved" != "$pinned" ]; then
-              echo "::error::${repo}${ref} resolved to '${resolved:-nothing}' after" \
-                   "${attempts} attempts, but main pins ${pinned}." \
-                   "Re-run this job — crane tags non-atomically."
-              hint=""
-              [ "$rc" -ne 124 ] || hint=" (timed out)"
-              echo "Last attempt exited ${rc}${hint}; its stderr follows:"
-              cat "$err"
+            if [ "$rc" -ne 0 ] && [ "$rc" -ne 3 ]; then
+              echo "::error::base_image_served.py failed (exit ${rc}); see its output above."
+              exit 1
+            fi
+            if [ "$rc" -ne 0 ]; then
+              echo "::error::The base image${tag:+ tag $tag} is not served as main pins it" \
+                   "after ${attempts} attempts. Re-run this job — crane tags non-atomically."
               exit 1
             fi
           done
-          echo "${repo}@${pinned} is published and both tags point at it."
+          echo "The pinned base image is published and both tags point at it."
