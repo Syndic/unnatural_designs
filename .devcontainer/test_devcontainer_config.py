@@ -29,6 +29,7 @@ in this directory.
 
 import json
 import re
+import shlex
 import sys
 import unittest
 from pathlib import Path
@@ -707,6 +708,108 @@ class TestBaseImageOverride(unittest.TestCase):
         # last, the override would resolve and then be ignored.
         _, image, _ = self.froms[-1]
         self.assertEqual(image, "${BASE_IMAGE}")
+
+
+_ARG_REF_RE = re.compile(r"\$(?:\{(?P<braced>\w+)\}|(?P<bare>\w+))")
+
+
+def image_references(instructions: list[tuple[str, str]]) -> list[str]:
+    """Images the build pulls: `FROM`, `COPY --from=`, and `RUN --mount=…,from=` sources.
+
+    `$NAME`/`${NAME}` resolve to the latest ARG default above them; one with no default stays
+    as written, so it fails a pin check rather than being skipped. A stage alias (compared
+    case-insensitively, as Docker does) or a stage index names a stage of this build, not an
+    image, which is how `${BASE_IMAGE}` drops out: its default is the `pinned-base` alias.
+    """
+    defaults, stages, images = {}, set(), []
+
+    def resolve(reference: str) -> str:
+        return _ARG_REF_RE.sub(lambda m: defaults.get(m["braced"] or m["bare"], m[0]), reference)
+
+    for kind, arguments in instructions:
+        flags, rest = split_flags(arguments)
+        alias = None
+        if kind == "ARG":
+            # One ARG can declare several `NAME[=default]` pairs; shlex keeps quoted values whole.
+            for declaration in shlex.split(rest):
+                name, has_default, default = declaration.partition("=")
+                if has_default:
+                    defaults[name] = default
+            continue
+        if kind == "FROM":
+            image, alias = parse_from(arguments)
+            sources = [image]
+        elif kind == "COPY":
+            sources = [f.removeprefix("--from=") for f in flags if f.startswith("--from=")]
+        elif kind == "RUN":
+            sources = [
+                option.removeprefix("from=")
+                for f in flags
+                if f.startswith("--mount=")
+                for option in f.removeprefix("--mount=").split(",")
+                if option.startswith("from=")
+            ]
+        else:
+            continue
+        for source in map(resolve, sources):
+            if source.lower() not in stages and not source.isdigit():
+                images.append(source)
+        if alias:
+            stages.add(alias.lower())
+    return images
+
+
+class TestImageReferencesArePinned(unittest.TestCase):
+    """Every pulled image carries a tag for Renovate and an index digest for the build.
+
+    The convention is README's "Image references"; the base image's own pin is additionally
+    held by TestBaseImageOverride and //.devcontainer:test_base_image_pin. Whether a digest is
+    the multi-arch index rather than one platform's needs the registry, so nothing here checks it.
+    """
+
+    _PINNED_RE = re.compile(r"\A[\w.-]+(?::\d+)?(?:/[\w.-]+)*:[\w][\w.-]*@sha256:[0-9a-f]{64}\Z")
+    _DIGEST = "@sha256:" + "0" * 64
+
+    def test_every_image_is_pinned_by_tag_and_digest(self):
+        images = image_references(dockerfile_instructions(_DOCKERFILE.read_text(encoding="utf-8")))
+        # Guards against a vacuous pass if the parsing ever stops finding the base and uv.
+        self.assertGreaterEqual(len(images), 2)
+        for image in images:
+            with self.subTest(image=image):
+                self.assertRegex(image, self._PINNED_RE)
+
+    def test_a_docker_hub_short_name_can_be_pinned(self):
+        self.assertRegex("debian:bookworm" + self._DIGEST, self._PINNED_RE)
+
+    def test_references_are_found_through_every_shape(self):
+        dockerfile = "\n".join(
+            [
+                "ARG BASE_IMAGE=Pinned",
+                "FROM reg.example/a:1 AS pinned",
+                "FROM --platform=$BUILDPLATFORM reg.example/b:2 AS Builder",
+                "FROM ${BASE_IMAGE}",
+                "ARG TOOL_IMAGE=reg.example/c:3",
+                "COPY --from=builder /x /y",
+                "COPY --from=0 /x /y",
+                "COPY --chown=1:1 \\",
+                "    --from=$TOOL_IMAGE /x /y",
+                "RUN --mount=type=bind,from=reg.example/d:4,source=/d,target=/d true",
+                'ARG FIRST=reg.example/e:5 SECOND="reg.example/f:6"',
+                "COPY --from=${SECOND} /x /y",
+                "COPY --from=${UNSET} /x /y",
+            ]
+        )
+        self.assertEqual(
+            image_references(dockerfile_instructions(dockerfile)),
+            [
+                "reg.example/a:1",
+                "reg.example/b:2",
+                "reg.example/c:3",
+                "reg.example/d:4",
+                "reg.example/f:6",
+                "${UNSET}",
+            ],
+        )
 
 
 # Loop fixtures for the chown_targets tests: one header, a body swapped per case.
