@@ -90,7 +90,9 @@ a check is tree-only.
 That split is between the two general-purpose workflows. A workflow scoped to one subject, like
 `devcontainer.yml`, keeps that subject's checks together whichever kind they are, and the axis only
 asks whether its out-of-tree checks deserve a schedule of their own. `Base image pin published` is
-one: it reads GHCR, and sits beside the probe whose answer the workflow's required jobs act on.
+one: it reads GHCR, and sits beside the probe whose answer the workflow's required jobs act on. It
+needs no schedule, since a publish can only fail on a push to `main` and the next PR or push runs
+the check.
 
 That axis is why `golangci-lint` moved out of Security in #18, and why `modules-check` later
 followed it out — a completeness gate over hand-listed matrices is a pure function of the tree, so
