@@ -473,12 +473,11 @@ class TestVerifiedReleaseDownloads(unittest.TestCase):
         r"ARG (?P<tool>\w+)_VERSION=(?P<version>\S+)$",
         re.MULTILINE,
     )
-    # Command position only, so `curl` as an apt package name is not a fetch; an `env` or
-    # `VAR=value` prefix still leaves it in command position.
-    _FETCH_RE = re.compile(
-        r"(?:^|&&|\|\||[;|(]|\b(?:then|do|else)\b)\s*"
-        r"(?:env\s+(?:-\S+\s+)*)?(?:[A-Za-z_]\w*=\S*\s+)*(?:curl|wget)\b"
-    )
+    # Any mention is a fetch, however it is invoked. The one exemption is an `apt-get install`
+    # package list, which installs curl rather than running it; the list stops at a command
+    # substitution, so nothing can run inside it unseen.
+    _FETCH_RE = re.compile(r"\b(?:curl|wget)\b")
+    _APT_INSTALL_RE = re.compile(r"\bapt-get\s+(?:-\S+\s+)*install\b[^&;|$`()]*")
     _RELEASE_URL_RE = re.compile(r"https://github\.com/(?P<dep>[^/]+/[^/]+)/releases/download/")
     _OUTPUT_RE = re.compile(r"\bcurl\b[^&|;]*?\s-o\s+(?P<path>\S+)")
     _VERSION_REF_RE = re.compile(r"\$\{(?P<tool>\w+)_VERSION\b")
@@ -492,7 +491,7 @@ class TestVerifiedReleaseDownloads(unittest.TestCase):
             command
             for kind, arguments in cls.instructions
             if kind == "RUN"
-            for command in [split_flags(arguments)[1]]
+            for command in [cls._APT_INSTALL_RE.sub(" ", split_flags(arguments)[1])]
             if cls._FETCH_RE.search(command)
         ]
         cls.versions = {
