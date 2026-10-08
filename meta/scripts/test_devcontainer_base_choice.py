@@ -9,12 +9,11 @@ goes red. Two failures here pass every check while hiding the state they exist t
   - **A gate stops reading the probe.** An unpublished pin then builds against an image GHCR does
     not serve and fails on the pull, or skips the base build that is the merge's evidence.
 
-The shells are run against stub `docker` and `python3` rather than matched, for the reason
-//meta/scripts:test_devcontainer_required_checks gives; those two always stand in, since they play
-the registry and the pin. `timeout` is the host's own wherever it has one, and a strict stand-in
-only where it does not, so a host with GNU coreutils still checks the real invocation.
-`TimeoutStubTest` holds the stand-in to the real tool on those hosts. The `if:` conditions have no
-runnable equivalent and are compared.
+The shells are run rather than matched, for the reason
+//meta/scripts:test_devcontainer_required_checks gives: in a scratch tree holding the real
+base_image_served.py and a Dockerfile the test controls, under the test's own interpreter, with a
+stub `docker` playing the registry. The `if:` conditions have no runnable equivalent and are
+compared.
 """
 
 import os
@@ -22,6 +21,7 @@ import re
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -37,44 +37,34 @@ _JOBS = yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8"))["jobs"]
 _REPO = "ghcr.io/syndic/unnatural_designs-devcontainer-base"
 _PIN = "sha256:" + "a" * 64
 _OTHER = "sha256:" + "b" * 64
+_SHA = "c" * 40
 
 # The condition under which a consumer's base is the tree's own rather than the published pin.
 _FROM_TREE = "needs.changes.outputs.pin != 'published'"
 _PIN_VALUE_RE = re.compile(r"needs\.changes\.outputs\.pin\s*[!=]=\s*'([^']*)'")
 
-# Answers only the one invocation the probe may read the pin through, so a second parser (a grep
-# of the Dockerfile) fails here instead of drifting from the one `publish` uses.
-_PYTHON3_STUB = """#!/bin/bash
-if [ "$*" = "meta/scripts/sync_base_image_pin.py --print-pinned" ] && [ -n "$STUB_PIN" ]; then
-  echo "$STUB_PIN"
-  exit 0
-fi
-echo "unexpected python3 call: $*" >&2
-exit 97
-"""
+# What the steps run, copied into each scratch tree from beside this file.
+_HELPERS = ("base_image_served.py", "sync_base_image_pin.py")
 
-# `serves` echoes the requested digest back, as `imagetools inspect` does for a digest reference.
+# The registry. `serves` answers a digest reference with that digest and a tag with the pin, as
+# `imagetools inspect` does when everything is published. `stale-latest` leaves :latest on another
+# digest; `late-latest` does so only on the first ask, as propagation lag would.
 _DOCKER_STUB = """#!/bin/bash
-echo "$*" >> "$STUB_DOCKER_LOG"
-case "$STUB_DOCKER" in
-  serves) ref="${!#}"; echo "${ref#*@}" ;;
-  other) echo "$STUB_OTHER" ;;
-  hangs) exit 124 ;;
-  *) echo "ERROR: ${!#}: not found" >&2; exit 1 ;;
+ref="${!#}"
+echo "$ref" >> "$STUB_DOCKER_LOG"
+case "$ref" in *@*) answer="${ref#*@}" ;; *) answer="$STUB_PIN" ;; esac
+case "$STUB_DOCKER:$ref" in
+  serves:*) ;;
+  stale-latest:*:latest) answer="$STUB_OTHER" ;;
+  stale-latest:*) ;;
+  late-latest:*:latest)
+    seen="$STUB_DOCKER_LOG.seen"
+    if [ ! -e "$seen" ]; then touch "$seen"; answer="$STUB_OTHER"; fi ;;
+  late-latest:*) ;;
+  other:*) answer="$STUB_OTHER" ;;
+  *) echo "ERROR: $ref: not found" >&2; exit 1 ;;
 esac
-"""
-
-
-# GNU timeout's contract, as far as the probe uses it: a duration then a command, exit 125 on a
-# duration it cannot parse, and the command's own status otherwise. Options are not modelled, so a
-# probe that starts passing one fails here until this learns it. It enforces no limit.
-_TIMEOUT_STUB = r"""#!/bin/bash
-if [ $# -lt 2 ] || ! [[ "$1" =~ ^([0-9]+(\.[0-9]*)?|\.[0-9]+)[smhd]?$ ]]; then
-  echo "timeout: invalid time interval '$1'" >&2
-  exit 125
-fi
-shift
-"$@"
+echo "$answer"
 """
 
 
@@ -102,17 +92,26 @@ def build_step() -> dict:
 
 
 class Run:
-    """One execution of a step's shell, with stub tools and the runner's output files."""
+    """One execution of a step's shell in a scratch tree, with the runner's output files."""
 
-    def __init__(self, script: str, env: dict[str, str], docker: str = "serves", pin: str = _PIN):
+    def __init__(
+        self, script: str, env: dict[str, str], docker: str = "serves", pin: str | None = _PIN
+    ):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
+            scripts = root / "meta/scripts"
+            scripts.mkdir(parents=True)
+            for name in _HELPERS:
+                shutil.copy(Path(__file__).parent / name, scripts / name)
+            (root / ".devcontainer").mkdir()
+            pin_line = f"FROM {_REPO}:latest@{pin} AS pinned-base" if pin else "FROM debian"
+            (root / ".devcontainer/Dockerfile").write_text(
+                f"ARG BASE_IMAGE=pinned-base\n{pin_line}\nFROM ${{BASE_IMAGE}}\n", encoding="utf-8"
+            )
             bin_dir = root / "bin"
             bin_dir.mkdir()
-            install(bin_dir, "python3", _PYTHON3_STUB)
             install(bin_dir, "docker", _DOCKER_STUB)
-            if shutil.which("timeout") is None:
-                install(bin_dir, "timeout", _TIMEOUT_STUB)
+            (bin_dir / "python3").symlink_to(sys.executable)
             output, log = root / "output", root / "docker.log"
             output.touch()
             log.touch()
@@ -120,13 +119,15 @@ class Run:
                 ["bash", "-c", script],
                 capture_output=True,
                 text=True,
+                cwd=root,
                 env={
                     **os.environ,
                     **env,
                     "PATH": f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '/usr/bin:/bin')}",
                     "RUNNER_TEMP": tmp,
                     "GITHUB_OUTPUT": str(output),
-                    "STUB_PIN": pin,
+                    "GITHUB_SHA": _SHA,
+                    "STUB_PIN": pin or "",
                     "STUB_OTHER": _OTHER,
                     "STUB_DOCKER": docker,
                     "STUB_DOCKER_LOG": str(log),
@@ -138,11 +139,16 @@ class Run:
             self.outputs = dict(
                 line.split("=", 1) for line in output.read_text(encoding="utf-8").splitlines()
             )
-            self.docker_calls = log.read_text(encoding="utf-8").splitlines()
+            self.asked = log.read_text(encoding="utf-8").splitlines()
 
 
 def probe(base_edited: str, **kwargs) -> Run:
     return Run(probe_step()["run"], {"BASE_EDITED": base_edited}, **kwargs)
+
+
+def verify(**kwargs) -> Run:
+    script = step("publish", lambda s: s.get("name") == "Verify the registry serves what main pins")
+    return Run(script["run"], {}, **kwargs)
 
 
 def advisory(pin: str) -> Run:
@@ -161,14 +167,12 @@ class ProbeTest(unittest.TestCase):
         """Its image publishes on merge, so an unresolvable pin there is expected, not a failure."""
         run = probe("true")
         self.assert_state(run, "edited")
-        self.assertEqual(run.docker_calls, [])
+        self.assertEqual(run.asked, [])
 
     def test_a_served_pin_is_published(self):
         run = probe("false", docker="serves")
         self.assert_state(run, "published")
-        self.assertEqual(len(run.docker_calls), 1)
-        self.assertTrue(run.docker_calls[0].startswith("buildx imagetools inspect"))
-        self.assertTrue(run.docker_calls[0].endswith(f"{_REPO}@{_PIN}"))
+        self.assertEqual(run.asked, [f"{_REPO}@{_PIN}"])
 
     def test_a_missing_pin_is_unpublished_and_logs_the_registry_response(self):
         run = probe("false", docker="missing")
@@ -179,17 +183,11 @@ class ProbeTest(unittest.TestCase):
     def test_a_pin_resolving_to_another_digest_is_unpublished(self):
         self.assert_state(probe("false", docker="other"), "unpublished")
 
-    def test_a_timeout_is_unpublished_and_says_so(self):
-        """A `timeout` kill writes no stderr, so the exit status is the only thing naming it."""
-        run = probe("false", docker="hangs")
-        self.assert_state(run, "unpublished")
-        self.assertIn("(timed out)", run.stdout)
-
     def test_an_unreadable_pin_fails_rather_than_reporting_a_state(self):
-        run = probe("false", pin="")
+        run = probe("false", pin=None)
         self.assertNotEqual(run.returncode, 0, run.log)
         self.assertEqual(run.outputs, {})
-        self.assertEqual(run.docker_calls, [])
+        self.assertEqual(run.asked, [])
 
     def test_an_unexpected_classification_fails(self):
         for value in ("", "True", "1"):
@@ -199,31 +197,34 @@ class ProbeTest(unittest.TestCase):
                 self.assertEqual(run.outputs, {})
 
 
-class TimeoutStubTest(unittest.TestCase):
-    """The stand-in answers as GNU timeout does, checked wherever the real one exists."""
+class VerifyTest(unittest.TestCase):
+    """`publish`'s check that the push it just made is what main pins, digest and both tags."""
 
-    _CASES = (
-        (["60", "true"], "a whole number of seconds"),
-        (["1.5m", "sh", "-c", "exit 7"], "a fractional duration with a unit"),
-        (["60", "false"], "the command's failure passed through"),
-        (["sixty", "true"], "a duration it cannot parse"),
-        (["", "true"], "an empty duration"),
-        (["-5", "true"], "an option it does not model"),
-        (["60", "no-such-command-anywhere"], "a command that does not exist"),
-    )
+    def test_a_complete_publish_passes(self):
+        run = verify(docker="serves")
+        self.assertEqual(run.returncode, 0, run.log)
+        self.assertEqual(run.asked, [f"{_REPO}@{_PIN}", f"{_REPO}:latest", f"{_REPO}:sha-{_SHA}"])
 
-    def test_the_stub_matches_the_real_tool(self):
-        real = shutil.which("timeout")
-        if real is None:
-            self.skipTest("no real timeout on this host to compare the stand-in against")
-        with tempfile.TemporaryDirectory() as tmp:
-            stub = Path(tmp) / "timeout"
-            install(Path(tmp), "timeout", _TIMEOUT_STUB)
-            for args, case in self._CASES:
-                with self.subTest(case=case):
-                    want = subprocess.run([real, *args], capture_output=True).returncode
-                    got = subprocess.run([str(stub), *args], capture_output=True).returncode
-                    self.assertEqual(got, want, f"timeout {' '.join(args)!r}")
+    def test_a_tag_that_catches_up_on_retry_passes(self):
+        run = verify(docker="late-latest")
+        self.assertEqual(run.returncode, 0, run.log)
+        self.assertEqual(run.asked.count(f"{_REPO}:latest"), 2)
+
+    def test_a_tag_left_behind_fails_naming_it(self):
+        run = verify(docker="stale-latest")
+        self.assertNotEqual(run.returncode, 0)
+        errors = [line for line in run.stdout.splitlines() if line.startswith("::error")]
+        self.assertEqual(len(errors), 1, run.log)
+        self.assertIn(":latest", errors[0])
+        self.assertEqual(run.asked.count(f"{_REPO}:latest"), 3)
+
+    def test_a_helper_error_fails_at_once_without_retrying(self):
+        """An unreadable pin is not lag; retrying it would only delay the same failure."""
+        run = verify(pin=None)
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn("base_image_served.py failed", run.stdout)
+        self.assertEqual(run.asked, [])
+        self.assertEqual(run.log.count("Traceback"), 1, "the helper ran more than once")
 
 
 class AdvisoryCheckTest(unittest.TestCase):

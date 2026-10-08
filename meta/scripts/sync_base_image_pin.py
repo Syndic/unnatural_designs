@@ -37,12 +37,12 @@ import re
 import sys
 from pathlib import Path
 
-_BASE_REPOSITORY = "ghcr.io/syndic/unnatural_designs-devcontainer-base"
+BASE_REPOSITORY = "ghcr.io/syndic/unnatural_designs-devcontainer-base"
 
 # The one pinned reference in the Dockerfile: `FROM <repo>:<tag>@sha256:<digest> AS <alias>`.
 # Anchored on the repository so the uv `COPY --from=` reference can never match.
 _PIN_RE = re.compile(
-    rf"(?m)^(?P<head>FROM\s+{re.escape(_BASE_REPOSITORY)}:[\w][\w.-]*@)"
+    rf"(?m)^(?P<head>FROM\s+{re.escape(BASE_REPOSITORY)}:[\w][\w.-]*@)"
     r"(?P<digest>sha256:[0-9a-f]{64})"
 )
 
@@ -84,7 +84,7 @@ def _match(dockerfile: str) -> re.Match[str]:
     matches = list(_PIN_RE.finditer(dockerfile))
     if len(matches) != 1:
         raise ValueError(
-            f"expected exactly one pinned `FROM {_BASE_REPOSITORY}:<tag>@sha256:…` line, "
+            f"expected exactly one pinned `FROM {BASE_REPOSITORY}:<tag>@sha256:…` line, "
             f"found {len(matches)}"
         )
     return matches[0]

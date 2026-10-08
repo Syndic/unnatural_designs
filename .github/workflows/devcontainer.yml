@@ -69,8 +69,8 @@ jobs:
       # `published`, `unpublished`, or `edited` when this change moves the pin, whose image
       # `publish` pushes on merge. Anything short of GHCR resolving the exact digest is
       # `unpublished`, which the jobs below answer with a base build rather than a pass; see
-      # README.md "What makes a check binding". Reads the pin through sync_base_image_pin.py for
-      # the reason `publish`'s verify step gives.
+      # README.md "What makes a check binding". An error in the helper, as opposed to its
+      # not-served answer (3), fails the job rather than picking a state.
       - id: pin
         env:
           BASE_EDITED: ${{ steps.classify.outputs.base }}
@@ -81,23 +81,13 @@ jobs:
             false) ;;
             *) echo "::error::unexpected base classification '${BASE_EDITED}'"; exit 1 ;;
           esac
-          repo=ghcr.io/syndic/unnatural_designs-devcontainer-base
-          pinned="$(python3 meta/scripts/sync_base_image_pin.py --print-pinned)"
-          err="${RUNNER_TEMP}/imagetools-inspect.err"
           rc=0
-          resolved="$(timeout 60 docker buildx imagetools inspect \
-            --format '{{.Manifest.Digest}}' "${repo}@${pinned}" 2>"$err")" || rc=$?
-          if [ "$resolved" = "$pinned" ]; then
-            echo "${repo}@${pinned} is published."
-            echo "pin=published" >> "$GITHUB_OUTPUT"
-          else
-            hint=""
-            [ "$rc" -ne 124 ] || hint=" (timed out)"
-            echo "${repo}@${pinned} did not resolve: inspect exited ${rc}${hint} and" \
-                 "returned '${resolved:-nothing}'. Its stderr follows:"
-            cat "$err"
-            echo "pin=unpublished" >> "$GITHUB_OUTPUT"
-          fi
+          python3 meta/scripts/base_image_served.py || rc=$?
+          case "$rc" in
+            0) echo "pin=published" >> "$GITHUB_OUTPUT" ;;
+            3) echo "pin=unpublished" >> "$GITHUB_OUTPUT" ;;
+            *) exit "$rc" ;;
+          esac
 
   # ── Shared base image ───────────────────────────────────────────────────────────────
   # meta/devcontainer-base/ is published for other Syndic repos to FROM. Bazel assembles it and
@@ -400,7 +390,7 @@ jobs:
           set -euo pipefail
           case "$PIN" in
             published) echo "GHCR serves the base image this tree pins." ;;
-            edited) echo "This change moves the pin; the publish job pushes its image on merge." ;;
+            edited) echo "This run builds the pinned image from the tree; publish pushes it on main." ;;
             unpublished)
               msg="GHCR does not serve the base image this tree pins; the probe in 'Detect"
               msg="${msg} devcontainer changes' logs the digest and the registry's response. This"
@@ -458,11 +448,8 @@ jobs:
 
       # The one loose end neither the pre-commit hook nor renovate-derived-files.yml can see:
       # both run before the merge, and this is the step that can fail after it. `crane push`
-      # then one `crane tag` per tag is not atomic, so a failure in between leaves main pinned
-      # to a digest the registry does not serve — silent until someone rebuilds a devcontainer.
-      #
-      # Reads the pin with sync_base_image_pin.py rather than a grep of its own, so the digest
-      # has one parser and this cannot degrade into a check that always passes.
+      # then one `crane tag` per tag is not atomic, so a failure part-way leaves a tag behind
+      # the pin — silent until a consumer reading the tag rebuilds.
       #
       # Retried because GHCR does not document tag resolution as read-your-writes and this runs
       # seconds after `crane tag`. A transient miss would turn main red for exactly the reason
@@ -470,38 +457,28 @@ jobs:
       - name: Verify the registry serves what main pins
         run: |
           set -euo pipefail
-          repo=ghcr.io/syndic/unnatural_designs-devcontainer-base
-          pinned="$(python3 meta/scripts/sync_base_image_pin.py --print-pinned)"
-          err="${RUNNER_TEMP}/imagetools-inspect.err"
           attempts=3
 
-          # `@digest` is what a consumer's FROM resolves; the tags are what Renovate and any
+          # The digest is what a consumer's FROM resolves; the tags are what Renovate and any
           # non-deriving consumer read, and they are the half `crane tag` can leave behind.
-          # One tool for all three: `imagetools inspect` takes a digest reference too, and
-          # `docker manifest` is still nominally an experimental CLI command.
-          for ref in "@${pinned}" ":latest" ":sha-${GITHUB_SHA}"; do
-            resolved=""
-            rc=0
+          # An empty tag argument asks about the pinned digest itself.
+          for tag in "" ":latest" ":sha-${GITHUB_SHA}"; do
             for attempt in $(seq "$attempts"); do
-              # stderr and the exit status are both kept: propagation lag, an auth failure and
-              # an unreachable registry otherwise look alike, and a `timeout` kill writes no
-              # stderr at all, so the status is the only thing that names that one.
               rc=0
-              resolved="$(timeout 60 docker buildx imagetools inspect \
-                --format '{{.Manifest.Digest}}' "${repo}${ref}" 2>"$err")" || rc=$?
-              [ "$resolved" = "$pinned" ] && break
-              # `||` rather than `&&`: a failing `&&` guard returns 1, which set -e traps.
+              python3 meta/scripts/base_image_served.py ${tag:+"$tag"} || rc=$?
+              # Only a not-served answer (3) is worth retrying; 0 is done, anything else is an
+              # error in the helper. `||` rather than `&&`: a failing `&&` guard trips set -e.
+              [ "$rc" -eq 3 ] || break
               [ "$attempt" -eq "$attempts" ] || sleep $((attempt * 5))
             done
-            if [ "$resolved" != "$pinned" ]; then
-              echo "::error::${repo}${ref} resolved to '${resolved:-nothing}' after" \
-                   "${attempts} attempts, but main pins ${pinned}." \
-                   "Re-run this job — crane tags non-atomically."
-              hint=""
-              [ "$rc" -ne 124 ] || hint=" (timed out)"
-              echo "Last attempt exited ${rc}${hint}; its stderr follows:"
-              cat "$err"
+            if [ "$rc" -ne 0 ] && [ "$rc" -ne 3 ]; then
+              echo "::error::base_image_served.py failed (exit ${rc}); see its output above."
+              exit 1
+            fi
+            if [ "$rc" -ne 0 ]; then
+              echo "::error::The base image${tag:+ tag $tag} is not served as main pins it" \
+                   "after ${attempts} attempts. Re-run this job — crane tags non-atomically."
               exit 1
             fi
           done
-          echo "${repo}@${pinned} is published and both tags point at it."
+          echo "The pinned base image is published and both tags point at it."

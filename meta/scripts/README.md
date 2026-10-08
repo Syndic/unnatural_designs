@@ -115,11 +115,15 @@ the extraction report's position after `analyze`. Same reason it rides `bazel te
 couplings are between checked-in files, and nothing fails while they drift — not until `go.work`
 outruns the runner image's Go. The `codeql-all` fan-in is the manifest test's, below.
 
-`test_devcontainer_base_choice.py` has no script half either. It runs `devcontainer.yml`'s pin
-probe and the advisory `Base image pin published` check against stub `docker` and `python3` (and a
-strict `timeout` stand-in on hosts without GNU coreutils, held to the real tool where it exists),
-and holds the base matrix, the consumer's `:load` and its `BASE_IMAGE` to the probe's answer: the
-tree's own base whenever the pin is not the published image.
+`base_image_served.py` is the one definition of "GHCR serves the pinned base image", shared by
+`devcontainer.yml`'s pin probe and `publish`'s verify step. Its exit status is the contract both
+branch on: 0 served, 3 not served for any reason, anything else an error neither may read as an
+answer. `test_base_image_served.py` covers it.
+
+`test_devcontainer_base_choice.py` runs those two steps and the advisory `Base image pin published`
+check, using the real helper against a stub `docker`, and holds the base matrix, the consumer's
+`:load` and its `BASE_IMAGE` to the probe's answer: the tree's own base whenever the pin is not the
+published image.
 
 `test_commit_file_via_app_selftest.py` has no script half either. `Action self-test` is a required
 status check, and what every required check needs is the manifest test's, below; this holds what is

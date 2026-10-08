@@ -249,7 +249,11 @@ py_test(
     name = "test_devcontainer_base_choice",
     size = "small",
     srcs = ["test_devcontainer_base_choice.py"],
-    data = ["//:.github/workflows/devcontainer.yml"],
+    data = [
+        "base_image_served.py",
+        "sync_base_image_pin.py",
+        "//:.github/workflows/devcontainer.yml",
+    ],
     main = "test_devcontainer_base_choice.py",
     deps = [
         ":_workflows_lib",
@@ -531,6 +535,23 @@ py_library(
     name = "sync_base_image_pin_lib",
     srcs = ["sync_base_image_pin.py"],
     visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "base_image_served_lib",
+    srcs = ["base_image_served.py"],
+    deps = [":sync_base_image_pin_lib"],
+)
+
+py_test(
+    name = "test_base_image_served",
+    size = "small",
+    srcs = ["test_base_image_served.py"],
+    main = "test_base_image_served.py",
+    deps = [
+        ":base_image_served_lib",
+        ":sync_base_image_pin_lib",
+    ],
 )
 
 py_test(
