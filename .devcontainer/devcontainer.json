@@ -16,13 +16,13 @@
     }
   },
   "features": {
-    "ghcr.io/devcontainers/features/common-utils:2.7.0": {
+    "ghcr.io/devcontainers/features/common-utils:2.7.1": {
       "installZsh": true,
       "configureZshAsDefaultShell": false,
       "upgradePackages": false
     },
     "ghcr.io/devcontainers/features/go:1.4.0": {
-      "version": "1.27.1"
+      "version": "1.27.2"
     },
     // Python is NOT a devcontainer feature: that feature compiles CPython from source
     // (~2 min/build). The Dockerfile installs a prebuilt uv-managed interpreter instead
