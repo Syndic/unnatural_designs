@@ -223,15 +223,17 @@ jobs:
         run: |
           set -euo pipefail
           version="$(sed -n 's/^ARG SHELLCHECK_VERSION=//p' .devcontainer/Dockerfile)"
+          sha512="$(sed -n 's/^ARG SHELLCHECK_SHA512_AMD64=//p' .devcontainer/Dockerfile)"
           # An ARG that moved or got renamed must fail here, not silently fall through to
           # whatever the runner image happens to ship.
-          if [ -z "${version}" ]; then
-            echo "no SHELLCHECK_VERSION in .devcontainer/Dockerfile" >&2
+          if [ -z "${version}" ] || [ -z "${sha512}" ]; then
+            echo "no SHELLCHECK_VERSION/SHELLCHECK_SHA512_AMD64 in .devcontainer/Dockerfile" >&2
             exit 1
           fi
-          curl -fsSL \
-            "https://github.com/koalaman/shellcheck/releases/download/${version}/shellcheck-${version}.linux.x86_64.tar.xz" \
-            | tar -xJ -C /tmp
+          curl -fsSL -o /tmp/shellcheck.tar.xz \
+            "https://github.com/koalaman/shellcheck/releases/download/${version}/shellcheck-${version}.linux.x86_64.tar.xz"
+          echo "${sha512}  /tmp/shellcheck.tar.xz" | sha512sum -c -
+          tar -xJf /tmp/shellcheck.tar.xz -C /tmp
           # Ahead of the runner's own copy on PATH.
           sudo install -m 0755 "/tmp/shellcheck-${version}/shellcheck" /usr/local/bin/shellcheck
           # That ordering is an assumption about the runner image, and the whole point of the

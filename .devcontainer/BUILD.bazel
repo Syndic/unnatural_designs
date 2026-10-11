@@ -26,6 +26,7 @@ py_test(
         "//:.github/workflows/devcontainer.yml",
         "//:.vscode/extensions.json",
         "//:.vscode/settings.json",
+        "//:renovate.json",
     ],
     main = "test_devcontainer_config.py",
     deps = ["//meta/scripts:sync_base_image_pin_lib"],

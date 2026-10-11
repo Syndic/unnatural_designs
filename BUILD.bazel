@@ -15,7 +15,8 @@ exports_files([
     # its sweep over the repo's real YAML compares against the same value CI does.
     ".python-version",
     # Renovate's config, read by //meta/scripts:test_renovate_grouping — one grouping rule is
-    # correct only while it sits after the catch-all, and a reorder breaks it with no error.
+    # correct only while it sits after the catch-all, and a reorder breaks it with no error. Also
+    # by //.devcontainer:test_devcontainer_config, which checks its managers read every pin.
     "renovate.json",
     # The generated lock file, read by //meta/scripts:test_semgrep_budget: Semgrep's
     # per-rule budget was sized against this file's size, and it grows on ordinary
