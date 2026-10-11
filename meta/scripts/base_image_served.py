@@ -4,9 +4,9 @@
     python3 meta/scripts/base_image_served.py            # the pinned digest itself
     python3 meta/scripts/base_image_served.py :latest    # a tag, which must resolve to the pin
 
-The one definition of "the registry serves the pin", for `devcontainer.yml`'s probe in `changes`
-and `publish`'s verify step. The pin and the repository come from sync_base_image_pin.py, so the
-digest has one parser.
+The one definition of "the registry serves the pin", for `devcontainer.yml`'s probe in `changes`,
+its `Base image pin published` check, and `publish`'s verify step. The pin and the repository come
+from sync_base_image_pin.py, so the digest has one parser.
 
 Exit status: 0 when the reference resolves to the pinned digest; 3 when it does not, whatever the
 reason (absent, another digest, inspect failed or timed out); anything else is an error in this

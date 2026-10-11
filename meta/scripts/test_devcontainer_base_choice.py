@@ -151,9 +151,9 @@ def verify(**kwargs) -> Run:
     return Run(script["run"], {}, **kwargs)
 
 
-def advisory(pin: str) -> Run:
+def advisory(state: str, **kwargs) -> Run:
     script = step("pin-published", lambda s: "run" in s)["run"]
-    return Run(script, {"PIN": pin})
+    return Run(script, {"PIN": state}, **kwargs)
 
 
 class ProbeTest(unittest.TestCase):
@@ -228,30 +228,59 @@ class VerifyTest(unittest.TestCase):
 
 
 class AdvisoryCheckTest(unittest.TestCase):
-    """`Base image pin published`: red on exactly the state the probe cannot vouch for."""
+    """`Base image pin published`: red exactly while GHCR does not serve the pin, asked again.
 
-    def test_published_and_edited_pass(self):
-        for state in ("published", "edited"):
-            with self.subTest(pin=state):
-                run = advisory(state)
+    It takes only the `edited` classification from the probe. Whether the pin is served it asks
+    the registry itself, since re-running just this failed job reuses `changes`' old answer.
+    """
+
+    def test_a_change_moving_the_pin_passes_without_asking(self):
+        run = advisory("edited", docker="missing")
+        self.assertEqual(run.returncode, 0, run.log)
+        self.assertEqual(run.asked, [])
+
+    def test_a_served_pin_passes_whatever_the_probe_said(self):
+        """`unpublished` here is the re-run after the publish landed, which has to go green."""
+        for state in ("published", "unpublished"):
+            with self.subTest(probe=state):
+                run = advisory(state, docker="serves")
                 self.assertEqual(run.returncode, 0, run.log)
+                self.assertEqual(run.asked, [f"{_REPO}@{_PIN}"])
 
-    def test_unpublished_fails_and_names_the_republish(self):
-        run = advisory("unpublished")
+    def test_an_unserved_pin_fails_whatever_the_probe_said(self):
+        for state in ("published", "unpublished"):
+            for docker in ("missing", "other"):
+                with self.subTest(probe=state, registry=docker):
+                    run = advisory(state, docker=docker)
+                    self.assertNotEqual(run.returncode, 0)
+                    errors = [ln for ln in run.stdout.splitlines() if ln.startswith("::error")]
+                    self.assertEqual(len(errors), 1, run.log)
+                    self.assertIn("re-run this check", errors[0])
+                    self.assertIn("run the Devcontainer workflow on main", errors[0])
+
+    def test_a_helper_error_fails_without_reporting_a_state(self):
+        run = advisory("published", pin=None)
         self.assertNotEqual(run.returncode, 0)
-        errors = [line for line in run.stdout.splitlines() if line.startswith("::error")]
-        self.assertEqual(len(errors), 1, run.log)
-        self.assertIn("run the Devcontainer workflow on main", errors[0])
+        self.assertIn("base_image_served.py failed", run.stdout)
+        self.assertNotIn("Base image pin not published", run.stdout)
 
-    def test_anything_else_fails(self):
+    def test_anything_else_fails_without_asking(self):
         """Empty is what a failed `changes` leaves, and is not evidence of a published pin."""
         for state in ("", "Published", "unknown"):
             with self.subTest(pin=state):
-                self.assertNotEqual(advisory(state).returncode, 0)
+                run = advisory(state)
+                self.assertNotEqual(run.returncode, 0)
+                self.assertEqual(run.asked, [])
 
-    def test_it_reads_the_probe(self):
+    def test_it_reads_the_probe_and_checks_out_the_helper_first(self):
+        steps = _JOBS["pin-published"]["steps"]
         check = step("pin-published", lambda s: "run" in s)
         self.assertEqual(check.get("env", {}).get("PIN"), "${{ needs.changes.outputs.pin }}")
+        checkout = [
+            i for i, s in enumerate(steps) if str(s.get("uses", "")).startswith("actions/checkout@")
+        ]
+        self.assertTrue(checkout, "the check runs base_image_served.py, so it needs the tree")
+        self.assertLess(checkout[0], steps.index(check))
 
 
 class WiringTest(unittest.TestCase):

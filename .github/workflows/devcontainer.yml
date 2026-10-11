@@ -383,24 +383,38 @@ jobs:
     needs: changes
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Check the pinned base image is published
         env:
           PIN: ${{ needs.changes.outputs.pin }}
         run: |
           set -euo pipefail
           case "$PIN" in
-            published) echo "GHCR serves the base image this tree pins." ;;
-            edited) echo "This run builds the pinned image from the tree; publish pushes it on main." ;;
-            unpublished)
-              msg="GHCR does not serve the base image this tree pins; the probe in 'Detect"
-              msg="${msg} devcontainer changes' logs the digest and the registry's response. This"
-              msg="${msg} run built and tested the base from the tree instead. If the publish for"
-              msg="${msg} the merge that moved the pin is still running, re-run all jobs once"
-              msg="${msg} it finishes. Otherwise republish: run the Devcontainer workflow on main."
+            edited)
+              echo "This run builds the pinned image from the tree; publish pushes it on main."
+              exit 0
+              ;;
+            published | unpublished) ;;
+            *) echo "::error::unexpected pin state '${PIN}'"; exit 1 ;;
+          esac
+          # Asked again rather than read from `changes`: re-running only this failed job reuses
+          # that job's answer, so a publish that has since landed would stay red.
+          rc=0
+          python3 meta/scripts/base_image_served.py || rc=$?
+          case "$rc" in
+            0) echo "GHCR serves the base image this tree pins." ;;
+            3)
+              msg="GHCR does not serve the base image this tree pins; the output above logs the"
+              msg="${msg} digest and the registry's response. If the publish for the merge that"
+              msg="${msg} moved the pin is still running, re-run this check once it finishes."
+              msg="${msg} Otherwise republish: run the Devcontainer workflow on main."
               echo "::error title=Base image pin not published::${msg}"
               exit 1
               ;;
-            *) echo "::error::unexpected pin state '${PIN}'"; exit 1 ;;
+            *)
+              echo "::error::base_image_served.py failed (exit ${rc}); see its output above."
+              exit 1
+              ;;
           esac
 
   # Publish LAST — `needs` both smoke jobs, so a base that failed on either architecture, or

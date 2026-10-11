@@ -55,6 +55,15 @@ source, so a pre-commit hook writes it with
 [`sync_base_image_pin.py`](meta/scripts/sync_base_image_pin.py) and `bazel test //...` fails when
 it drifts — see [Automation](#automation).
 
+**Image references**: every other image the Dockerfile pulls (today, uv's `COPY --from=`) is pinned
+as `<image>:<tag>@sha256:<index digest>`. The digest is what gets pulled, so an upstream tag moved
+onto different content changes nothing here. The tag gives Renovate a version to compare: its
+docker manager updates tag and digest together on a bump, and raises a moved tag as a `digest`
+update in its own PR (see "Dependency updates" under [Automation](#automation)). Pin the multi-arch
+index digest, not one platform's, because the image builds for amd64 and arm64.
+[`test_devcontainer_config.py`](.devcontainer/test_devcontainer_config.py) fails any `FROM`,
+`COPY --from=` or `RUN --mount=…,from=` image that lacks either half, after resolving ARG defaults.
+
 **Feature pinning**: the `ghcr.io/devcontainers/features/*` references in
 [`devcontainer.json`](.devcontainer/devcontainer.json) are pinned to **full semver**
 (`features/go:1.3.4`), not the floating major tags (`:1`) the devcontainer templates emit, and carry
@@ -293,7 +302,9 @@ image the tree pins, so a failed publish shows on every PR. It does not block be
 registry's state is not the PR's to fix, and blocking on it would also block a fix that has to
 merge before it can republish. What blocks instead is evidence: while the pin is unpublished, `Base
 image (all platforms)` and `Build devcontainer and smoke test` build and test the base from the
-tree. To republish, run the `Devcontainer` workflow on `main` from the Actions tab.
+tree. To republish, run the `Devcontainer` workflow on `main` from the Actions tab. The check asks
+GHCR itself rather than reusing the probe's answer, so once a publish lands, re-running just the
+check turns it green.
 
 Three jobs gate nothing for a different reason: they are automated tasks rather than checks, acting
 on the repo's behalf instead of verifying it. That is not what makes them non-blocking - an
