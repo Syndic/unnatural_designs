@@ -302,7 +302,9 @@ image the tree pins, so a failed publish shows on every PR. It does not block be
 registry's state is not the PR's to fix, and blocking on it would also block a fix that has to
 merge before it can republish. What blocks instead is evidence: while the pin is unpublished, `Base
 image (all platforms)` and `Build devcontainer and smoke test` build and test the base from the
-tree. To republish, run the `Devcontainer` workflow on `main` from the Actions tab.
+tree. To republish, run the `Devcontainer` workflow on `main` from the Actions tab. The check asks
+GHCR itself rather than reusing the probe's answer, so once a publish lands, re-running just the
+check turns it green.
 
 Three jobs gate nothing for a different reason: they are automated tasks rather than checks, acting
 on the repo's behalf instead of verifying it. That is not what makes them non-blocking - an

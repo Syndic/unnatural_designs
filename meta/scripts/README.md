@@ -116,9 +116,9 @@ couplings are between checked-in files, and nothing fails while they drift — n
 outruns the runner image's Go. The `codeql-all` fan-in is the manifest test's, below.
 
 `base_image_served.py` is the one definition of "GHCR serves the pinned base image", shared by
-`devcontainer.yml`'s pin probe and `publish`'s verify step. Its exit status is the contract both
-branch on: 0 served, 3 not served for any reason, anything else an error neither may read as an
-answer. `test_base_image_served.py` covers it.
+`devcontainer.yml`'s pin probe, the advisory `Base image pin published` check, and `publish`'s
+verify step. Its exit status is the contract all three branch on: 0 served, 3 not served for any
+reason, anything else an error none may read as an answer. `test_base_image_served.py` covers it.
 
 `test_devcontainer_base_choice.py` runs those two steps and the advisory `Base image pin published`
 check, using the real helper against a stub `docker`, and holds the base matrix, the consumer's
