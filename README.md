@@ -212,8 +212,9 @@ future toolchain changes.
 
 ## CI
 
-Three GitHub Actions workflows run on every push and pull request to `main`, and a fourth
-on pull requests only. What makes any of their jobs binding is the ruleset, not the `needs:` edges
+Three GitHub Actions workflows run on every push to `main` and on every pull request, whatever
+branch it targets, so a PR stacked on another PR is checked too; a fourth runs on pull requests
+only. What makes any of their jobs binding is the ruleset, not the `needs:` edges
 between them — see [What makes a check binding](#what-makes-a-check-binding) below.
 
 **CI** - code-change-driven checks:

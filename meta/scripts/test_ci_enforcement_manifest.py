@@ -77,10 +77,6 @@ _ALWAYS_RUN = frozenset({"always()", "!cancelled()"})
 # manifest, which is also what the comparison against GitHub asks about.
 _PROTECTED_BRANCH = PROTECTED_BRANCH
 
-# GitHub's filter-pattern characters. A branch list using any of them needs glob semantics to
-# resolve, which this file refuses to guess at rather than approximate.
-_GLOB_RE = re.compile(r"[*?\[\]!+]")
-
 # Matrix sections rather than axes: neither is a dimension of the cross product.
 _INCLUDE = "include"
 _EXCLUDE = "exclude"
@@ -278,32 +274,20 @@ def run_fan_in(job: Job, results: dict[str, str]) -> subprocess.CompletedProcess
 
 
 def branch_filter_problem(filters: dict) -> str | None:
-    """Why a `pull_request:` filter might keep a required check off the protected branch.
+    """Why a `pull_request:` branch filter on a workflow with a required check is a problem.
 
-    `branches-ignore:` is refused outright rather than read: it can only subtract, and deciding
-    whether it subtracts the protected branch needs GitHub's own glob semantics. A pattern in
-    `branches:` is refused for the same reason, and refused rather than waved through because the
-    direction that matters — a filter that quietly stops admitting `main` — is the one a guess
-    would get wrong. Every workflow here lists the branch literally.
+    Any branch filter is one, whichever branches it names. One that stops admitting the protected
+    branch leaves a required check that never reports; one that admits only the protected branch
+    leaves a PR stacked on another PR with no checks at all until it is retargeted. Neither shows
+    up as a failure, so a filter is refused rather than read.
     """
-    if "branches-ignore" in filters:
-        return (
-            "`branches-ignore:` can only remove branches from the set, and whether it removes "
-            f"`{_PROTECTED_BRANCH}` needs GitHub's glob semantics rather than a literal read"
-        )
-    branches = filters.get("branches")
-    if branches is None:
-        return None
-    if not isinstance(branches, list):
-        return "`branches:` is not a list, so the branches it admits cannot be read here"
-    if _PROTECTED_BRANCH in branches:
-        return None
-    if any(isinstance(b, str) and _GLOB_RE.search(b) for b in branches):
-        return (
-            f"`branches:` uses a pattern, and whether it admits `{_PROTECTED_BRANCH}` needs "
-            "GitHub's glob semantics rather than a literal match — teach this function"
-        )
-    return f"`branches:` does not list `{_PROTECTED_BRANCH}`"
+    for key in ("branches", "branches-ignore"):
+        if key in filters:
+            return (
+                f"`pull_request` carries `{key}:`, so whether a PR gets these checks depends on "
+                "the branch it targets"
+            )
+    return None
 
 
 def exemption_for(job: Job, upstream: str, result: str) -> FanInExemption | None:
@@ -495,16 +479,27 @@ class RequiredReachTest(unittest.TestCase):
                         "instead, the way devcontainer.yml does.",
                     )
 
-    def test_no_required_check_is_filtered_off_the_protected_branch(self):
+    def test_no_required_check_is_filtered_by_base_branch(self):
         for job in self.required_jobs():
             problem = branch_filter_problem(self.filters(job))
             with self.subTest(check=job.check):
                 self.assertIsNone(
                     problem,
-                    f"{job.workflow} may not run for PRs targeting `{_PROTECTED_BRANCH}`, which "
-                    f"is the branch the ruleset protects and `{job.check}` is required on: "
-                    f"{problem}",
+                    f"{job.workflow} runs `{job.check}`, a required check, but {problem}. Drop "
+                    "the filter: the ruleset already decides where the check binds.",
                 )
+
+    def test_any_branch_filter_is_a_problem(self):
+        for filters in (
+            {"branches": [_PROTECTED_BRANCH]},
+            {"branches": ["other"]},
+            {"branches": ["**"]},
+            {"branches-ignore": ["wip/**"]},
+        ):
+            with self.subTest(filters=filters):
+                self.assertIsNotNone(branch_filter_problem(filters))
+        self.assertIsNone(branch_filter_problem({}))
+        self.assertIsNone(branch_filter_problem({"types": ["opened"]}))
 
     def test_no_required_check_is_gated_by_its_own_condition(self):
         """The trigger decides whether the workflow runs; this decides whether the job does."""

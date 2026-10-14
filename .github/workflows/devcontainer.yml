@@ -8,8 +8,9 @@ name: Devcontainer
 on:
   push:
     branches: [main]
+  # Every base branch, so a PR stacked on another gets checked; see .claude/CLAUDE.md
+  # "A required check cannot be filtered at the trigger".
   pull_request:
-    branches: [main]
   # Republish: run on main to build, test and publish the base image the tree pins, e.g. after a
   # publish failed and the `Base image pin published` check went red.
   workflow_dispatch:

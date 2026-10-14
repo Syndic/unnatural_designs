@@ -18,9 +18,10 @@ name: Self-test — commit-file-via-app
 # filtered at the trigger".
 
 on:
+  # Every base branch, so a PR stacked on another gets checked; see .claude/CLAUDE.md
+  # "A required check cannot be filtered at the trigger".
   pull_request:
     types: [opened, synchronize, reopened]
-    branches: [main]
 
 # Supersede in-flight runs for the same PR; see .claude/CLAUDE.md "Superseding CI runs".
 concurrency:
