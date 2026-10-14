@@ -304,8 +304,11 @@ jobs:
     runs-on: ${{ matrix.runner }}
     # Anchored: the gate every expensive Bazel job waits on, aliased by `coverage` below. Lint via
     # its fan-in, since a non-matrix job needing the matrix would read as a second fan-in.
+    # `bazel-lock-check` is in it for cost, not correctness — `--lockfile_mode=update` keeps a
+    # build green over a stale lock. //meta/scripts:test_ci_derived_file_gating holds that edge.
     needs: &expensive-work-gate [
       gazelle-check,
+      bazel-lock-check,
       modules-check,
       go-work-check,
       python-version-check,
