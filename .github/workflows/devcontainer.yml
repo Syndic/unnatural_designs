@@ -316,6 +316,16 @@ jobs:
             go version
             python3 --version
 
+            # Docker pulls uv by digest, so a bump that moved only the tag would leave the old uv
+            # running under the new version's name; the installed version must match the tag.
+            want="$(sed -n 's|^COPY --from=ghcr.io/astral-sh/uv:\([^@ ]*\)@.*|\1|p' \
+              .devcontainer/Dockerfile)"
+            have="$(uv --version | cut -d' ' -f2)"
+            if [ -z "${want}" ] || [ "${have}" != "${want}" ]; then
+              echo "uv is '${have}' but the Dockerfile pins '${want}'" >&2
+              exit 1
+            fi
+
             # Agent tools no gate runs. A failed install already fails the build; these catch
             # one that installs but won't run for remoteUser (wrong-arch asset, unreachable
             # interpreter) or isn't on PATH. jq has no pin of ours: common-utils provides it.
