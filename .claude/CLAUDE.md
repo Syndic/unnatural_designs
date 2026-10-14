@@ -198,9 +198,9 @@ to remember.
 and it gates on `github.actor == 'renovate[bot]'` besides. That is now machine-checked rather than
 merely true: `//meta/scripts:test_ci_enforcement_manifest` fails a required check whose workflow
 filters `pull_request` on `paths:` or on base branch at all (`branches:` or `branches-ignore:`), or
-narrows `types:` past `opened`/`synchronize`. The branch half is stricter than "admits `main`"
-because a filter naming only `main` leaves a PR stacked on another PR with no checks until it is
-retargeted; where a check binds is the ruleset's question, not the trigger's.
+narrows `types:` past `opened`/`synchronize`. Any base-branch filter is refused, because one naming
+only `main` leaves a PR stacked on another PR unchecked until it is retargeted; where a check binds
+is the ruleset's question, not the trigger's.
 
 **A job's own gate reaches the same place from the other side**, and is the half worth watching: a
 required job carrying `if: github.event_name == 'push'` reports `skipped` on every PR, and skipped

@@ -14,12 +14,10 @@ name: Self-test — commit-file-via-app
 # only the last of them. The scratch branch is deleted even on failure.
 #
 # `Action self-test` is a required status check, so the workflow always runs and always reports,
-# and the path filtering happens in the job. See .claude/CLAUDE.md "A required check cannot be
-# filtered at the trigger".
+# for a PR whatever branch it targets, and the path filtering happens in the job. See
+# .claude/CLAUDE.md "A required check cannot be filtered at the trigger".
 
 on:
-  # Every base branch, so a PR stacked on another gets checked; see .claude/CLAUDE.md
-  # "A required check cannot be filtered at the trigger".
   pull_request:
     types: [opened, synchronize, reopened]
 

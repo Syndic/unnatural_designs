@@ -73,10 +73,6 @@ _NOT_SUCCESS = ("failure", "cancelled", "skipped")
 # `!cancelled()` is what `build-and-smoke-test` carries.
 _ALWAYS_RUN = frozenset({"always()", "!cancelled()"})
 
-# The branch the rules protect, and so the one a required check has to report on. Read from the
-# manifest, which is also what the comparison against GitHub asks about.
-_PROTECTED_BRANCH = PROTECTED_BRANCH
-
 # Matrix sections rather than axes: neither is a dimension of the cross product.
 _INCLUDE = "include"
 _EXCLUDE = "exclude"
@@ -491,7 +487,7 @@ class RequiredReachTest(unittest.TestCase):
 
     def test_any_branch_filter_is_a_problem(self):
         for filters in (
-            {"branches": [_PROTECTED_BRANCH]},
+            {"branches": [PROTECTED_BRANCH]},
             {"branches": ["other"]},
             {"branches": ["**"]},
             {"branches-ignore": ["wip/**"]},
