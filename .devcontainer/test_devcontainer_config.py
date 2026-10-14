@@ -767,11 +767,15 @@ def image_references(instructions: list[tuple[str, str]]) -> list[str]:
 class TestSmokeTestChecksTheUvVersion(unittest.TestCase):
     """The smoke test fails when the uv it runs is not the version the Dockerfile's tag names.
 
-    The pin test above holds both halves present; this holds them in agreement, which only a
-    built image can show. The block is run as written, against the real Dockerfile and a stub uv.
+    The pin test below holds both halves present; this holds them in agreement, which only a
+    built image can show. The block is run as written, against the real Dockerfile and a stub uv,
+    and found by its code rather than its comment, so rewording the comment cannot hide it.
     """
 
-    _BLOCK_RE = re.compile(r"^( *)# Docker pulls uv by digest.*?^\1fi$", re.MULTILINE | re.DOTALL)
+    _BLOCK_RE = re.compile(
+        r"^( *)want=\"\$\(sed -n 's\|\^COPY --from=ghcr\.io/astral-sh/uv:.*?^\1fi$",
+        re.MULTILINE | re.DOTALL,
+    )
 
     def run_block(self, reported: str, dockerfile: str) -> subprocess.CompletedProcess:
         block = self._BLOCK_RE.search(_DEVCONTAINER_WORKFLOW.read_text(encoding="utf-8"))
@@ -793,10 +797,16 @@ class TestSmokeTestChecksTheUvVersion(unittest.TestCase):
             )
 
     def pinned_tag(self) -> str:
+        """The tag as the image-pin test reads it, ARGs resolved, rather than another copy of the
+        smoke test's own parse, so a uv line the sed cannot read fails here instead of agreeing."""
         dockerfile = _DOCKERFILE.read_text(encoding="utf-8")
-        match = re.search(r"^COPY --from=ghcr\.io/astral-sh/uv:([^@ ]+)@", dockerfile, re.M)
-        self.assertIsNotNone(match)
-        return match.group(1)
+        uv = [
+            image
+            for image in image_references(dockerfile_instructions(dockerfile))
+            if image.startswith("ghcr.io/astral-sh/uv:")
+        ]
+        self.assertEqual(len(uv), 1, f"expected one uv image reference, got {uv}")
+        return uv[0].removeprefix("ghcr.io/astral-sh/uv:").partition("@")[0]
 
     def test_the_pinned_version_passes(self):
         done = self.run_block(self.pinned_tag(), _DOCKERFILE.read_text(encoding="utf-8"))
@@ -808,10 +818,18 @@ class TestSmokeTestChecksTheUvVersion(unittest.TestCase):
         self.assertIn(f"pins '{self.pinned_tag()}'", done.stderr)
 
     def test_a_dockerfile_it_cannot_read_fails(self):
-        """A reworded COPY line must not leave an empty expectation that nothing is held to."""
+        """A reworded COPY line must not leave an empty expectation that nothing is held to.
+
+        Against a real version the mismatch branch already fails; a uv reporting no version would
+        equal the empty expectation, and only the empty-expectation guard stops that passing.
+        """
         tag = self.pinned_tag()
-        done = self.run_block(tag, f"COPY --from=ghcr.io/astral-sh/uv:{tag} /uv /usr/local/bin/\n")
-        self.assertNotEqual(done.returncode, 0)
+        unreadable = f"COPY --from=ghcr.io/astral-sh/uv:{tag} /uv /usr/local/bin/\n"
+        for reported in (tag, ""):
+            with self.subTest(reported=reported):
+                done = self.run_block(reported, unreadable)
+                self.assertNotEqual(done.returncode, 0)
+                self.assertIn("pins ''", done.stderr)
 
 
 class TestImageReferencesArePinned(unittest.TestCase):
