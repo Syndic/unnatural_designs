@@ -293,8 +293,11 @@ jobs:
   build-and-test-per-target:
     name: Build and test (${{ matrix.platform }})
     runs-on: ${{ matrix.runner }}
+    # `bazel-lock-check` gates for cost, not correctness — `--lockfile_mode=update` keeps a build
+    # green over a stale lock. //meta/scripts:test_ci_derived_file_gating holds the edge.
     needs: [
       gazelle-check,
+      bazel-lock-check,
       modules-check,
       go-work-check,
       python-version-check,
