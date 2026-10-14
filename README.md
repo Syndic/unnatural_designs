@@ -63,6 +63,8 @@ update in its own PR (see "Dependency updates" under [Automation](#automation)).
 index digest, not one platform's, because the image builds for amd64 and arm64.
 [`test_devcontainer_config.py`](.devcontainer/test_devcontainer_config.py) fails any `FROM`,
 `COPY --from=` or `RUN --mount=…,from=` image that lacks either half, after resolving ARG defaults.
+Whether the two halves agree only a built image can show, so the devcontainer smoke test fails when
+`uv --version` is not the version uv's tag names.
 
 **Feature pinning**: the `ghcr.io/devcontainers/features/*` references in
 [`devcontainer.json`](.devcontainer/devcontainer.json) are pinned to **full semver**
