@@ -2,6 +2,7 @@ import tempfile
 import textwrap
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import yaml
 from meta.scripts import check_composite_action_scripts as cca
@@ -58,14 +59,34 @@ class TestLocate(ScriptsTestCase):
         self.assertFalse(script.exact)
         self.assertEqual(text.splitlines()[script.run_line - 1].strip(), "run: >")
 
-    def test_an_expression_spanning_lines_makes_it_inexact(self):
-        # actionlint masks the newline inside it too, so later script lines are renumbered.
-        text = action("- shell: bash\n  run: |\n    echo ${{ a\n      }}\n    echo $b\n")
-        self.assertFalse(self.one(text).exact)
+    def test_expressions_leave_a_literal_block_exact(self):
+        # body_position undoes actionlint's masking, so only the scalar's style decides.
+        text = action("- shell: bash\n  run: |\n    echo ${{ 'é'\n      }}\n    echo $b\n")
+        self.assertTrue(self.one(text).exact)
 
-    def test_a_non_ascii_expression_makes_it_inexact(self):
-        # actionlint masks bytes, so a multi-byte character shifts later columns.
-        self.assertFalse(self.one(action("- shell: bash\n  run: echo ${{ 'é' }} $x\n")).exact)
+
+class TestBodyPosition(unittest.TestCase):
+    def test_a_body_without_expressions_is_unchanged(self):
+        self.assertEqual(cca.body_position("echo a\necho $b\n", 2, 6), (2, 6))
+
+    def test_a_line_after_a_two_line_expression_is_renumbered(self):
+        # actionlint masks the newline inside the expression, so `$b` is on its script line 2.
+        self.assertEqual(cca.body_position("echo ${{ a\n  }}\necho $b\n", 2, 6), (3, 6))
+
+    def test_a_column_after_a_multi_line_expression_on_the_same_line(self):
+        body = 'echo "${{ a\n}}" $x'
+        masked_column = len('echo "') + len("${{ a\n}}") + len('" $')  # 1-based column of `$`
+        self.assertEqual(cca.body_position(body, 1, masked_column), (2, 5))
+
+    def test_a_non_ascii_expression_is_counted_in_characters(self):
+        # `${{ 'é' }}` is ten characters but eleven bytes, and actionlint masks bytes.
+        self.assertEqual(cca.body_position("echo ${{ 'é' }} $x", 1, 18), (1, 17))
+
+    def test_a_position_inside_an_expression_maps_to_its_start(self):
+        self.assertEqual(cca.body_position("echo ${{ a }}", 1, 9), (1, 6))
+
+    def test_a_position_past_the_body_is_returned_unchanged(self):
+        self.assertEqual(cca.body_position("echo", 4, 2), (4, 2))
 
 
 class TestShells(ScriptsTestCase):
@@ -113,18 +134,32 @@ class TestFormatFindings(unittest.TestCase):
     rel = Path("a/action.yml")
 
     def test_an_exact_script_adds_its_line_and_indentation(self):
-        script = cca.Script(5, 10, 9, True, "bash", "")
+        script = cca.Script(5, 10, 9, True, "bash", "echo a\necho $b\n")
         # Script line 2 is file line 11; column 6 shifts by the 8-space indent.
         self.assertEqual(
             cca.format_findings(script, self.rel, [finding(2, 6)]),
             ["a/action.yml:11:14-15: SC2086 (info): Quote it"],
         )
 
-    def test_an_inexact_script_reports_at_the_run_key_and_keeps_the_script_position(self):
-        script = cca.Script(5, 6, 1, False, "bash", "")
+    def test_an_inexact_script_reports_at_the_run_key_and_keeps_the_body_position(self):
+        script = cca.Script(5, 6, 1, False, "bash", "echo a\necho $b\n")
         self.assertEqual(
             cca.format_findings(script, self.rel, [finding(2, 6)]),
-            ["a/action.yml:5:1-2: SC2086 (info): Quote it (script line 2, column 6)"],
+            ["a/action.yml:5:1-2: SC2086 (info): Quote it (`run:` line 2, column 6)"],
+        )
+
+    def test_an_inexact_position_after_a_two_line_expression_is_corrected(self):
+        script = cca.Script(5, 6, 1, False, "bash", "echo ${{ a\n  }}\necho $b\n")
+        self.assertEqual(
+            cca.format_findings(script, self.rel, [finding(2, 6)]),
+            ["a/action.yml:5:1-2: SC2086 (info): Quote it (`run:` line 3, column 6)"],
+        )
+
+    def test_an_exact_position_after_a_two_line_expression_is_corrected(self):
+        script = cca.Script(5, 10, 9, True, "bash", "echo ${{ a\n  }}\necho $b\n")
+        self.assertEqual(
+            cca.format_findings(script, self.rel, [finding(2, 6)]),
+            ["a/action.yml:12:14-15: SC2086 (info): Quote it"],
         )
 
     def test_other_rules_are_dropped(self):
@@ -140,11 +175,29 @@ class TestFormatFindings(unittest.TestCase):
 
 
 class TestVersions(unittest.TestCase):
-    def test_the_pin_is_read_without_its_v(self):
-        self.assertEqual(
-            cca.pinned_version("ARG SHELLCHECK_VERSION=v1.2.3\n", "shellcheck"), "1.2.3"
-        )
+    def test_the_pin_is_read_without_its_v_and_located(self):
+        dockerfile = "FROM x\n# renovate: ...\nARG SHELLCHECK_VERSION=v1.2.3\n"
+        self.assertEqual(cca.pinned_version(dockerfile, "shellcheck"), cca.Pin("1.2.3", 3, 30))
         self.assertIsNone(cca.pinned_version("ARG OTHER_VERSION=v1.2.3\n", "shellcheck"))
+
+    def test_a_mismatch_points_at_the_pin(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / ".devcontainer").mkdir()
+            (root / ".devcontainer" / "Dockerfile").write_text(
+                "FROM x\nARG SHELLCHECK_VERSION=v1.2.3\nARG ACTIONLINT_VERSION=v4.5.6\n"
+            )
+            with mock.patch.object(cca.subprocess, "run", side_effect=FileNotFoundError):
+                problems = cca.tool_problems(root)
+        self.assertEqual(
+            problems,
+            [
+                ".devcontainer/Dockerfile:2:1-30: shellcheck on PATH is missing, "
+                "but the pin is 1.2.3",
+                ".devcontainer/Dockerfile:3:1-30: actionlint on PATH is missing, "
+                "but the pin is 4.5.6",
+            ],
+        )
 
     def test_both_tools_version_output_is_read(self):
         shellcheck = "ShellCheck - shell script analysis tool\nversion: 0.11.0\nlicense: GPL\n"

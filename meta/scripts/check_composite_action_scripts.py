@@ -53,9 +53,9 @@ class Script(NamedTuple):
     """One shell `run:` step, located well enough to put a finding back on its source line.
 
     `first_line` is the 1-based file line holding the body's first line, and `column` the column
-    that line's text starts at, so a script (line, column) maps back by plain addition. Where that
-    correspondence does not hold, `exact` is False and findings are reported at the `run:` key,
-    carrying the script position in their message instead.
+    that line's text starts at, so a body (line, column) maps back by plain addition. Where the
+    scalar's style breaks that correspondence, `exact` is False and findings are reported at the
+    `run:` key, carrying the body position in their message instead.
     """
 
     run_line: int
@@ -72,10 +72,6 @@ def _locate(value: yaml.ScalarNode, lines: list[str]) -> tuple[int, int, bool]:
     # Optional in the stubs, always set by yaml.compose.
     if mark is None:
         raise ValueError("yaml.compose returned a node with no source position")
-    # actionlint masks an expression byte for byte, newlines included, so one spanning lines or
-    # holding non-ASCII shifts every position after it.
-    if any("\n" in e or not e.isascii() for e in _EXPRESSION_RE.findall(value.value)):
-        return mark.line + 1, 1, False
     if value.style == "|":
         # The body starts on the line after the `|` indicator, at the block's indentation.
         body_lines = lines[mark.line + 1 :]
@@ -123,6 +119,37 @@ def scripts(action_file: Path) -> tuple[list[Script], list[tuple[int, str]]]:
     return found, problems
 
 
+def body_position(body: str, line: int, column: int) -> tuple[int, int]:
+    """Where actionlint's script `(line, column)` falls in `body`.
+
+    actionlint replaces every byte of each `${{ }}` with `_`, newlines included, before shellcheck
+    reads the script, so an expression spanning lines or holding non-ASCII moves every position
+    after it. A position inside an expression maps to the expression's start, and one this cannot
+    place is returned unchanged.
+    """
+    masked: list[str] = []
+    origin: list[int] = []  # body offset of each masked character
+    pos = 0
+    for match in _EXPRESSION_RE.finditer(body):
+        masked.append(body[pos : match.start()])
+        origin.extend(range(pos, match.start()))
+        width = len(match.group().encode())
+        masked.append("_" * width)
+        origin.extend([match.start()] * width)
+        pos = match.end()
+    masked.append(body[pos:])
+    origin.extend(range(pos, len(body)))
+
+    masked_lines = "".join(masked).split("\n")
+    if not 1 <= line <= len(masked_lines):
+        return line, column
+    offset = sum(len(ln) + 1 for ln in masked_lines[: line - 1]) + column - 1
+    if not 0 <= offset < len(origin):
+        return line, column
+    target = origin[offset]
+    return body.count("\n", 0, target) + 1, target - body.rfind("\n", 0, target)
+
+
 def wrapper_workflow(script: Script) -> str:
     """A one-step workflow running `script` the way the action does, for actionlint to read."""
     step = {"shell": script.shell, "run": script.body}
@@ -144,14 +171,14 @@ def format_findings(script: Script, rel: Path, errors: list[dict]) -> list[str]:
             # A wording this cannot place is still a finding, not something to drop.
             found.append(f"{rel}:{script.run_line}:1-2: {error['message']}")
             continue
-        line, column = int(match["line"]), int(match["column"])
+        line, column = body_position(script.body, int(match["line"]), int(match["column"]))
         text = f"SC{match['code']} ({match['level']}): {match['message']}"
         if script.exact:
             start = column + script.column - 1
             found.append(f"{rel}:{script.first_line + line - 1}:{start}-{start + 1}: {text}")
         else:
             found.append(
-                f"{rel}:{script.run_line}:1-2: {text} (script line {line}, column {column})"
+                f"{rel}:{script.run_line}:1-2: {text} (`run:` line {line}, column {column})"
             )
     return found
 
@@ -169,10 +196,19 @@ def lint(script: Script, rel: Path) -> list[str]:
     return format_findings(script, rel, json.loads(result.stdout or "[]"))
 
 
-def pinned_version(dockerfile: str, tool: str) -> str | None:
-    """The Dockerfile's `<TOOL>_VERSION`, without its leading `v`."""
+class Pin(NamedTuple):
+    """A Dockerfile `<TOOL>_VERSION`, without its leading `v`, and where it sits."""
+
+    version: str
+    line: int
+    end_column: int
+
+
+def pinned_version(dockerfile: str, tool: str) -> Pin | None:
     match = re.search(rf"^ARG {tool.upper()}_VERSION=v?(\S+)$", dockerfile, re.M)
-    return match.group(1) if match else None
+    if match is None:
+        return None
+    return Pin(match.group(1), dockerfile.count("\n", 0, match.start()) + 1, len(match[0]) + 1)
 
 
 def reported_version(output: str) -> str | None:
@@ -186,16 +222,17 @@ def tool_problems(root: Path) -> list[str]:
     dockerfile = (root / ".devcontainer" / "Dockerfile").read_text(encoding="utf-8")
     problems = []
     for tool in ("shellcheck", "actionlint"):
-        pinned = pinned_version(dockerfile, tool)
+        pin = pinned_version(dockerfile, tool)
         try:
             output = subprocess.run([tool, "--version"], capture_output=True, text=True).stdout
         except FileNotFoundError:
             output = ""
         on_path = reported_version(output)
-        if pinned is None or on_path != pinned:
+        if pin is None or on_path != pin.version:
+            where = f"{pin.line}:1-{pin.end_column}" if pin else "1:1-2"
             problems.append(
-                f".devcontainer/Dockerfile:1:1-2: {tool} on PATH is {on_path or 'missing'}, "
-                f"but the pin is {pinned or 'missing'}"
+                f".devcontainer/Dockerfile:{where}: {tool} on PATH is {on_path or 'missing'}, "
+                f"but the pin is {pin.version if pin else 'missing'}"
             )
     return problems
 
