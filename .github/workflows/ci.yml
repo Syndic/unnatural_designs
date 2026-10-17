@@ -220,34 +220,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install the pinned shellcheck
-        run: |
-          set -euo pipefail
-          version="$(sed -n 's/^ARG SHELLCHECK_VERSION=//p' .devcontainer/Dockerfile)"
-          sha512="$(sed -n 's/^ARG SHELLCHECK_SHA512_AMD64=//p' .devcontainer/Dockerfile)"
-          # An ARG that moved or got renamed must fail here, not silently fall through to
-          # whatever the runner image happens to ship.
-          if [ -z "${version}" ] || [ -z "${sha512}" ]; then
-            echo "no SHELLCHECK_VERSION/SHELLCHECK_SHA512_AMD64 in .devcontainer/Dockerfile" >&2
-            exit 1
-          fi
-          curl -fsSL -o /tmp/shellcheck.tar.xz \
-            "https://github.com/koalaman/shellcheck/releases/download/${version}/shellcheck-${version}.linux.x86_64.tar.xz"
-          echo "${sha512}  /tmp/shellcheck.tar.xz" | sha512sum -c -
-          tar -xJf /tmp/shellcheck.tar.xz -C /tmp
-          # Ahead of the runner's own copy on PATH.
-          sudo install -m 0755 "/tmp/shellcheck-${version}/shellcheck" /usr/local/bin/shellcheck
-          # That ordering is an assumption about the runner image, and the whole point of the
-          # pin is that the gate and the editor cannot disagree — so a shadowed binary has to
-          # fail here rather than lint green under some other version.
-          on_path="$(shellcheck --version | sed -n 's/^version: //p')"
-          if [ "${on_path}" != "${version#v}" ]; then
-            echo "shellcheck on PATH is ${on_path}, expected ${version#v}" >&2
-            exit 1
-          fi
+      - uses: ./.github/actions/install-pinned-release-binary
+        with:
+          tool: shellcheck
       - run: |
           set -euo pipefail
-          shellcheck --version | sed -n '2p'
           mapfile -t files < <(git ls-files '*.sh')
           # An empty argument list makes shellcheck exit 1; can't happen today, but a
           # future .sh-free tree should report "nothing to check", not a red job.
@@ -257,6 +234,24 @@ jobs:
           fi
           printf 'checking %d file(s)\n' "${#files[@]}"
           shellcheck "${files[@]}"
+
+  # actionlint: lints every workflow, and each `run:` block through whatever shellcheck is on
+  # PATH, so it installs the pinned shellcheck as well as its own pin — the same reasoning as the
+  # shellcheck job above.
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/install-pinned-release-binary
+        with:
+          tool: shellcheck
+      - uses: ./.github/actions/install-pinned-release-binary
+        with:
+          tool: actionlint
+      # No arguments: actionlint finds .github/workflows/ itself, so a new workflow is linted
+      # with no edit here.
+      - run: actionlint
 
   # ty: Astral's static type checker. Config lives in `[tool.ty]` in
   # //:pyproject.toml — same single-source-of-truth posture as ruff. No
