@@ -123,6 +123,7 @@ RULES: Final[tuple[dict, ...]] = tuple(
                     {"context": "Secrets check", "integration_id": 15368},
                     {"context": "Semgrep", "integration_id": 15368},
                     {"context": "Trivy", "integration_id": 15368},
+                    {"context": "actionlint", "integration_id": 15368},
                     {"context": "go.work consistency/completeness check", "integration_id": 15368},
                     {"context": "golangci-lint (all modules)", "integration_id": 15368},
                     {"context": "govulncheck (all modules)", "integration_id": 15368},

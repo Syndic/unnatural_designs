@@ -1,0 +1,22 @@
+name: Install a release binary pinned in the devcontainer
+description: >-
+  Downloads a tool's GitHub release at the version and sha512 the devcontainer's Dockerfile pins
+  for the runner's architecture, verifies it, and installs it to /usr/local/bin, so a CI gate runs
+  the same binary the editor does.
+
+inputs:
+  tool:
+    description: >-
+      `shellcheck` or `actionlint`. Its upper-cased form is the Dockerfile's ARG prefix, so
+      `shellcheck` reads `SHELLCHECK_VERSION` and `SHELLCHECK_SHA512_<ARCH>`.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # A tracked .sh rather than an inline `run:` body, so the shellcheck job lints it — actionlint
+    # does not read composite actions' scripts.
+    - shell: bash
+      env:
+        TOOL: ${{ inputs.tool }}
+      run: bash "${GITHUB_ACTION_PATH}/install.sh"

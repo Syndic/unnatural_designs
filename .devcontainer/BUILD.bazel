@@ -1,4 +1,5 @@
 load("@rules_python//python:defs.bzl", "py_test")
+load("@unnatural_designs_pypi//:requirements.bzl", "requirement")
 
 # The host stub is shell (it runs before any container exists), but its decision logic is
 # unit-tested from Python so it rides the authoritative `bazel test //...` gate. The shared
@@ -22,14 +23,20 @@ py_test(
         "devcontainer.json",
         "post-create.sh",
         "post-start.sh",
+        "//:.github/actions/install-pinned-release-binary/install.sh",
         "//:.github/workflows/ci.yml",
         "//:.github/workflows/devcontainer.yml",
         "//:.vscode/extensions.json",
         "//:.vscode/settings.json",
+        "//:composite_actions",
         "//:renovate.json",
+        "//:workflows",
     ],
     main = "test_devcontainer_config.py",
-    deps = ["//meta/scripts:sync_base_image_pin_lib"],
+    deps = [
+        "//meta/scripts:sync_base_image_pin_lib",
+        requirement("pyyaml"),
+    ],
 )
 
 # The pin is a derived file (see meta/scripts/sync_base_image_pin.py). The `base-image-pin`
