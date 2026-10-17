@@ -187,7 +187,7 @@ jobs:
       # requirements_lock.txt moved (parenthesized because GitHub Actions binds && tighter
       # than ||). Gated on no ratify conflicts either way. bazelisk reads the checked-out
       # .bazelversion, so a version bump regenerates the lock with the bumped bazel.
-      - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+      - uses: bazel-contrib/setup-bazel@104e3eea9447cdaa4b00d0fb46191a3985d26ab3 # 0.19.1
         if: (steps.changed.outputs.bazel == 'true' || steps.lock.outputs.moved == 'true') && steps.ratify.outputs.conflicts == ''
         with:
           bazelisk-cache: true
@@ -267,7 +267,7 @@ jobs:
         if: steps.changed.outputs.devcontainer == 'true' && steps.ratify.outputs.conflicts == ''
         with:
           # renovate: datasource=node-version depName=node
-          node-version: "24.21.0"
+          node-version: "24.22.0"
 
       # `--ignore-scripts` because nothing here needs them: the package publishes no install
       # script (`hasInstallScript` is absent on the registry entry), so this is free hardening on
@@ -283,7 +283,7 @@ jobs:
         if: steps.changed.outputs.devcontainer == 'true' && steps.ratify.outputs.conflicts == ''
         run: devcontainer upgrade --workspace-folder .
 
-      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         id: app-token
         with:
           client-id: ${{ vars.RENOVATE_HELPER_CLIENT_ID }}

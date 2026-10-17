@@ -39,12 +39,12 @@ done
 
 # Install golangci-lint. Version is pinned and tracked by Renovate (see renovate.json).
 # renovate: datasource=github-releases depName=golangci/golangci-lint
-GOLANGCI_LINT_VERSION=v2.14.0
+GOLANGCI_LINT_VERSION=v2.15.0
 go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}"
 
 # Install gopls (Go language server) for hover, jump-to-definition, refactor.
 # renovate: datasource=go depName=golang.org/x/tools/gopls
-GOPLS_VERSION=v0.23.0
+GOPLS_VERSION=v0.24.0
 go install "golang.org/x/tools/gopls@${GOPLS_VERSION}"
 
 # Install delve (Go debugger) — wires up the VS Code "Run & Debug" pane.
