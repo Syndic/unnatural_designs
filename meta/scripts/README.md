@@ -13,6 +13,7 @@ without blocking).
 | `check_adr_numbers.py`  | ADR numbers are unique repo-wide and filenames are `NNNN-kebab-slug.md`         | `ci.yml`                      | —                     | `check: adr numbers`              |
 | `check_secrets_dir.py`  | `secrets/` contains no committed files other than `secrets.md`                                 | `ci.yml`                      | `check-secrets-dir`   | —                                 |
 | `check_python_version.py` | Every Python language-level declaration agrees with `//:.python-version` (see below)          | `ci.yml`                      | —                     | `check: python version`           |
+| `check_composite_action_scripts.py` | shellcheck is clean over every composite action's shell `run:` steps, as actionlint checks workflows' | `ci.yml` (`actionlint`) | —                     | —                                 |
 
 `check_modules.py`'s matrix check parses the workflow as YAML (`_workflows.py`, the one module
 here with a third-party dependency), so how a matrix is *written* — block or flow style,

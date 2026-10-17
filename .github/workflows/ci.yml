@@ -237,7 +237,7 @@ jobs:
 
   # actionlint: lints every workflow, and each `run:` block through whatever shellcheck is on
   # PATH, so it installs the pinned shellcheck as well as its own pin — the same reasoning as the
-  # shellcheck job above.
+  # shellcheck job above. Composite actions' `run:` steps get that shellcheck pass too, below.
   actionlint:
     name: actionlint
     runs-on: ubuntu-latest
@@ -253,6 +253,18 @@ jobs:
       # linted with no edit here. `-pyflakes=` because actionlint otherwise lints Python `run:`
       # blocks with any pyflakes on PATH, which nothing here pins.
       - run: actionlint -pyflakes=
+      # actionlint reads only .github/workflows/, so composite actions' `run:` steps get the same
+      # shellcheck pass from this script. `uv run` for PyYAML, as modules-check does.
+      # `!cancelled()` so these still run when the actionlint step above fails: both sets of
+      # findings show up together, rather than this one only after that one is fixed.
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        if: ${{ !cancelled() }}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        if: ${{ !cancelled() }}
+        with:
+          python-version-file: .python-version
+      - if: ${{ !cancelled() }}
+        run: uv run --frozen python3 meta/scripts/check_composite_action_scripts.py
 
   # ty: Astral's static type checker. Config lives in `[tool.ty]` in
   # //:pyproject.toml — same single-source-of-truth posture as ruff. No

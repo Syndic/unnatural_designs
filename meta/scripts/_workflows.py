@@ -295,6 +295,15 @@ def _step_nodes(root: yaml.Node | None) -> list[tuple[yaml.Node, dict[str, list[
     return found
 
 
+def _compose(yaml_file: Path) -> tuple[yaml.Node | None, dict[int, str]]:
+    """The file's node tree, or None and `{line: problem}` saying why it would not parse."""
+    try:
+        return yaml.compose(yaml_file.read_text(encoding="utf-8")), {}
+    except yaml.YAMLError as exc:
+        mark = getattr(exc, "problem_mark", None)
+        return None, {mark.line + 1 if mark else 1: f"could not be parsed as YAML ({exc.args[0]})"}
+
+
 def action_steps(yaml_file: Path) -> tuple[list[Step], dict[int, str]]:
     """Every step in a workflow or composite action, as (uses, line, {input: (value, line)}).
 
@@ -308,12 +317,8 @@ def action_steps(yaml_file: Path) -> tuple[list[Step], dict[int, str]]:
     mapping) is reported as None rather than dropped, so a caller can tell "absent" from
     "present but not a plain string".
     """
-    problems: dict[int, str] = {}
-    try:
-        root = yaml.compose(yaml_file.read_text(encoding="utf-8"))
-    except yaml.YAMLError as exc:
-        mark = getattr(exc, "problem_mark", None)
-        problems[mark.line + 1 if mark else 1] = f"could not be parsed as YAML ({exc.args[0]})"
+    root, problems = _compose(yaml_file)
+    if root is None:
         return [], problems
 
     collected: list[Step] = []
@@ -352,6 +357,42 @@ def action_yaml_files(root: Path) -> list[Path]:
         if directory.is_dir():
             found.extend(p for p in directory.glob(pattern) if p.suffix in (".yml", ".yaml"))
     return sorted(found)
+
+
+class RunStep(NamedTuple):
+    """A `run:` step's script, with the nodes a caller needs to place a finding in the file.
+
+    `line` is the `run:` key's 1-based line, and `shell` the step's `shell:` value, or None when
+    it is absent or not a plain string.
+    """
+
+    line: int
+    value: yaml.Node
+    shell: str | None
+
+
+def run_steps(yaml_file: Path) -> tuple[list[RunStep], dict[int, str]]:
+    """Every `run:` step in a workflow or composite action, from the same walk `action_steps` uses.
+
+    Nodes rather than strings, because placing a shell finding back in the file needs the
+    scalar's position and style, not just its value.
+    """
+    root, problems = _compose(yaml_file)
+    found: list[RunStep] = []
+    for node, _ in _step_nodes(root):
+        run = _lookup(node, "run")
+        if run is None:
+            continue
+        shell = _lookup(node, "shell")
+        value = shell[1].value if shell and isinstance(shell[1], yaml.ScalarNode) else None
+        found.append(RunStep(_line(run[0]), run[1], value))
+    return found, problems
+
+
+def composite_action_files(root: Path) -> list[Path]:
+    """The composite actions among `action_yaml_files`, for a check that wants only those."""
+    actions = root / ".github" / "actions"
+    return [p for p in action_yaml_files(root) if p.is_relative_to(actions)]
 
 
 class StepContainer(NamedTuple):

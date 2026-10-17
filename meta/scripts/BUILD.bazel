@@ -452,6 +452,41 @@ py_test(
 )
 
 py_library(
+    name = "check_composite_action_scripts_lib",
+    srcs = ["check_composite_action_scripts.py"],
+    deps = [
+        ":_workflows_lib",
+        ":_workspace_lib",
+        requirement("pyyaml"),
+    ],
+)
+
+py_binary(
+    name = "check_composite_action_scripts",
+    srcs = ["check_composite_action_scripts.py"],
+    main = "check_composite_action_scripts.py",
+    deps = [":check_composite_action_scripts_lib"],
+)
+
+# Pure functions only: the real shellcheck run is the actionlint job's, since a Bazel sandbox on
+# every platform runner has no pinned shellcheck to call.
+py_test(
+    name = "test_check_composite_action_scripts",
+    size = "small",
+    srcs = ["test_check_composite_action_scripts.py"],
+    data = [
+        "//:.github/workflows/ci.yml",
+        "//:composite_actions",
+    ],
+    main = "test_check_composite_action_scripts.py",
+    deps = [
+        ":_workflows_lib",
+        ":check_composite_action_scripts_lib",
+        requirement("pyyaml"),
+    ],
+)
+
+py_library(
     name = "check_secrets_dir_lib",
     srcs = ["check_secrets_dir.py"],
     deps = [":_workspace_lib"],
