@@ -33,7 +33,7 @@ jobs:
     name: Semgrep
     runs-on: ubuntu-latest
     container:
-      image: semgrep/semgrep:1.180.0@sha256:529ee8a277ec8adc5b534d7c74eea0a47e9de21d62852b6ba7ac6ba9566845c3
+      image: semgrep/semgrep:1.181.0@sha256:81474464c1f07483ba0682a44787fd93c91397419762a04abe2bafaae396304b
     permissions:
       contents: read
     steps:
@@ -114,13 +114,13 @@ jobs:
             go.work.sum
             **/go.sum
 
-      - uses: github/codeql-action/init@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+      - uses: github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
           languages: ${{ matrix.language }}
           # No separate autobuild step: that action documents itself as superseded by this input.
           build-mode: ${{ matrix.build-mode }}
 
-      - uses: github/codeql-action/analyze@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+      - uses: github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         id: analyze
         with:
           # The string default setup uploaded under; it is what separates one language's
@@ -291,7 +291,7 @@ jobs:
           format: sarif
           output: trivy.sarif
 
-      - uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+      - uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         if: always()
         with:
           sarif_file: trivy.sarif

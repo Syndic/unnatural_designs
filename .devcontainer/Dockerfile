@@ -12,7 +12,7 @@ FROM ${BASE_IMAGE}
 # the `uv tool install` layers below can build on it.
 # Pinned by tag and index digest, both moved by Renovate's docker manager; see README's
 # "Image references".
-COPY --from=ghcr.io/astral-sh/uv:0.13.0@sha256:cdc6093146eb3ff6a40107b38f008b789e050e77ad87865e381d9917da55a168 /uv /uvx /usr/local/bin/
+COPY --from=ghcr.io/astral-sh/uv:0.13.1@sha256:4a1f3666816dafadd20ceb71eac9a7d56d7ef30279f7d64048519ab901ada336 /uv /uvx /usr/local/bin/
 
 # ruff: format + lint. Installed via `uv tool install` so the binary lives in
 # /usr/local/bin and `ruff` is on PATH for the pre-commit hooks and the VS Code
@@ -21,18 +21,18 @@ COPY --from=ghcr.io/astral-sh/uv:0.13.0@sha256:cdc6093146eb3ff6a40107b38f008b789
 # /root (mode 700) and the vscode user could not follow the bin/ symlink.
 # Renovate's regex manager tracks RUFF_VERSION via the comment above the ARG.
 # renovate: datasource=pypi depName=ruff
-ARG RUFF_VERSION=0.17.0
+ARG RUFF_VERSION=0.17.1
 # ty: static type checker. Same `uv tool install` pattern as ruff so the
 # binary lands on PATH for CI, pre-commit, and the `astral-sh.ty` editor
 # extension. UV_TOOL_{BIN_DIR,DIR} are shared across all uv tool installs.
 # renovate: datasource=pypi depName=ty
-ARG TY_VERSION=0.0.86
+ARG TY_VERSION=0.0.89
 # pre-commit: the hook runner. Installed via `uv tool install` (not pip) so
 # we have a single Python package manager in the devcontainer; the binary
 # lands at /usr/local/bin/pre-commit, so post-create.sh and any contributor
 # shell can invoke it directly without a $HOME/.local/bin PATH dance.
 # renovate: datasource=pypi depName=pre-commit
-ARG PRE_COMMIT_VERSION=4.6.2
+ARG PRE_COMMIT_VERSION=4.7.0
 # UV_TOOL_DIR holds the per-tool venvs; UV_PYTHON_INSTALL_DIR is where uv
 # downloads its managed Python interpreters (both the pre-commit tool venv's
 # interpreter and the interactive `python3` installed below). Both must be
@@ -67,7 +67,7 @@ RUN uv tool install --no-cache "check-jsonschema==${CHECK_JSONSCHEMA_VERSION}"
 # so this ARG cannot read that file. Renovate keeps the two level (Language toolchain SDKs) and
 # //meta/scripts:check_python_version fails the build if they ever disagree.
 # renovate: datasource=python-version depName=python
-ARG PYTHON_VERSION=3.14
+ARG PYTHON_VERSION=3.15
 RUN uv python install "${PYTHON_VERSION}" \
     && ln -sfn "$(uv python find --no-project --managed-python "${PYTHON_VERSION}")" /usr/local/bin/python3 \
     && ln -sfn /usr/local/bin/python3 /usr/local/bin/python
