@@ -380,14 +380,13 @@ match CI:
 - [`ryanluker.vscode-coverage-gutters`](https://marketplace.visualstudio.com/items?itemName=ryanluker.vscode-coverage-gutters) -
   paints gutter marks in Go files from a local `bazel coverage //...` run.
 - [`timonwong.shellcheck`](https://marketplace.visualstudio.com/items?itemName=timonwong.shellcheck) -
-  surfaces `shellcheck` diagnostics inline on save, matching what the CI `shellcheck` job
-  enforces. Config lives in [`.shellcheckrc`](.shellcheckrc), shared with that job, and the
-  extension is pointed at the container's own `shellcheck` by `devcontainer.json`. Its version
-  is pinned once, as `SHELLCHECK_VERSION` in the Dockerfile, which the CI `shellcheck` and
-  `actionlint` jobs read through
-  [`install-pinned-release-binary`](.github/actions/install-pinned-release-binary/action.yml)
-  (actionlint's own pin is read the same way) — so the editor and the gates run the same binary. Container-side only: shell is edited in the
-  devcontainer, so a host window gets no shell lint.
+  surfaces `shellcheck` diagnostics inline on save, matching what the CI `shellcheck` job enforces.
+  Config lives in [`.shellcheckrc`](.shellcheckrc), shared with that job, and the extension is
+  pointed at the container's own `shellcheck` by `devcontainer.json`. Its version is pinned once, as
+  `SHELLCHECK_VERSION` in the Dockerfile, which the CI `shellcheck` and `actionlint` jobs read
+  via [`install-pinned-release-binary`](.github/actions/install-pinned-release-binary/action.yml)
+  (actionlint's own pin is read the same way) — so the editor and the gates run the same binary.
+  Container-side only: shell is edited in the devcontainer, so a host window gets no shell lint.
 
 | On-save check        | Triggers on                                |
 | -------------------- | ------------------------------------------ |
