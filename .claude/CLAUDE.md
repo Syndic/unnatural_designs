@@ -131,6 +131,15 @@ check.
   adding an edge to save a runner, is a scheduling change and never an enforcement change. That
   freedom is what the split buys, and it is why #311 left every `needs` edge exactly as it was and
   grew the ruleset instead.
+- **Free of enforcement consequence is not the same as unconstrained**, and one cost edge is
+  asserted: an expensive Bazel job must not start against a derived file a cheap check has already
+  called stale. `build-and-test-per-target` therefore `needs` `bazel-lock-check` as well as
+  `modules-check`, and `//meta/scripts:test_ci_derived_file_gating` fails a Bazel job in ci.yml
+  that is neither gated nor recorded as deliberately beside the gate — `gazelle-check` is beside
+  it, since serialising two jobs of the same cost charges every green PR their sum to save a
+  stale-lock PR their maximum. That gate fires by leaving the matrix `skipped`, and `Build and
+  test (all targets)` is the strict fan-in that refuses `skipped` in its place, so nothing there
+  moves what must pass.
 - **A matrix job is requirable only through a fan-in**, since its own check name carries the row
   that produced it. The fan-in carries `if: always()` for the reason the section below gives: a
   failed matrix would otherwise skip it, and a skipped required check reads as a pass.
@@ -267,10 +276,17 @@ concurrency:
 ```
 
 - **PRs group by number**, so a fast-follow push cancels the previous run. The motivating case is a
-  Renovate PR: the helper's derived-files commit lands ~30s after Renovate's push, so the first
-  devcontainer build spent ~5 of its ~5.5 minutes building a tree — bumped manifest, un-regenerated
-  lock — that never merges. Required status checks are evaluated against the PR's head SHA, so
-  cancelling a superseded SHA's run never leaves a requirement unmet.
+  Renovate PR: the helper's derived-files commit lands 33–151s after Renovate's push (median ~100s
+  over the 20 pushes to 2026-10-10), so the first devcontainer build spent ~5 of its ~5.5 minutes
+  building a tree — bumped manifest, un-regenerated lock — that never merges. Required status
+  checks are evaluated against the PR's head SHA, so cancelling a superseded SHA's run never
+  leaves a requirement unmet.
+
+  For the cheap jobs the supersession is a coin flip rather than a win: ci.yml concluded in
+  80–106s over that window, which overlaps the helper's distribution almost entirely — 15 of the
+  20 runs were cancelled and 5 concluded first, red against a tree that was stale on purpose.
+  Ordering answers that where the concurrency group cannot; see "Enforcement lives in the ruleset,
+  not in `needs`".
 - **Everything else keys on `run_id`**, which is unique per run, so non-PR runs are always alone in
   their group: nothing cancels them and — the subtler half — nothing *queues* behind them either.
   A shared non-PR group would have made a push to main wait on an in-progress weekly security scan
