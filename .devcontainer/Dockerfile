@@ -121,9 +121,9 @@ RUN ARCH="$(dpkg --print-architecture)" \
     && rm /tmp/buildifier
 
 # shellcheck from upstream rather than Debian's package, so the version is ours to pin: these
-# ARGs are the repo's only shellcheck version and digest, and ci.yml reads them out of this file
-# instead of using the runner image's copy. The editor extension is pointed at the binary this
-# installs.
+# ARGs are the repo's only shellcheck version and digest, and CI reads them out of this file
+# (.github/actions/install-pinned-release-binary) instead of using the runner image's copy. The
+# editor extension is pointed at the binary this installs.
 # Release assets use uname-style arch names, which dpkg's differ from.
 # renovate: datasource=github-releases depName=koalaman/shellcheck
 ARG SHELLCHECK_VERSION=v0.11.0
@@ -145,6 +145,7 @@ RUN ARCH="$(dpkg --print-architecture)" \
     && rm -rf /tmp/shellcheck.tar.xz "/tmp/shellcheck-${SHELLCHECK_VERSION}"
 
 # actionlint runs shellcheck over `run:` blocks, resolving it from PATH — the pinned copy above.
+# CI reads these ARGs the same way it reads shellcheck's.
 # Its asset names carry the version without the tag's leading `v`. `install` rather than
 # extracting in place: the tarball's entry is owned by uid 1001, which root's tar would keep.
 # renovate: datasource=github-releases depName=rhysd/actionlint

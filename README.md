@@ -230,6 +230,7 @@ between them — see [What makes a check binding](#what-makes-a-check-binding) b
 | `golangci-lint (all modules)`          | Fan-in over the per-module jobs - the name to require in the ruleset        |
 | ruff                                   | `ruff format --check` and `ruff check` over all Python                      |
 | shellcheck                             | lints every tracked `*.sh`                                                  |
+| actionlint                             | lints every workflow, with shellcheck over each `run:` block                |
 | ty                                     | `uvx ty@<pin> check` (Astral's static type checker, alpha) over all Python  |
 | `Build and test (<platform>)`          | `bazel test //...` - one job per supported platform                         |
 | `Build and test (all targets)`         | Fan-in over the per-platform jobs - the name to require in the ruleset      |
