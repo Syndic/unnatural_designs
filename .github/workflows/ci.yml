@@ -3,8 +3,9 @@ name: CI
 on:
   push:
     branches: [main]
+  # Every base branch, so a PR stacked on another gets checked; see .claude/CLAUDE.md
+  # "A required check cannot be filtered at the trigger".
   pull_request:
-    branches: [main]
 
 # Supersede in-flight runs for the same PR; see .claude/CLAUDE.md "Superseding CI runs".
 concurrency:

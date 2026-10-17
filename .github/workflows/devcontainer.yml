@@ -3,13 +3,13 @@ name: Devcontainer
 # Build the devcontainer and smoke-test the toolchain it ships. Catches breakage from
 # Renovate-driven bumps to the Debian base, the `features` block (go, etc.), the Dockerfile's
 # PYTHON_VERSION, or BAZELISK_VERSION before someone hits it locally.
-# The workflow always runs so the status check always reports; path filtering happens in the
-# `changes` job. See .claude/CLAUDE.md "A required check cannot be filtered at the trigger".
+# The workflow always runs, for a PR whatever branch it targets, so the status check always
+# reports; path filtering happens in the `changes` job. See .claude/CLAUDE.md "A required check
+# cannot be filtered at the trigger".
 on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
   # Republish: run on main to build, test and publish the base image the tree pins, e.g. after a
   # publish failed and the `Base image pin published` check went red.
   workflow_dispatch:

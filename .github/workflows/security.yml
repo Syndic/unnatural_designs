@@ -3,8 +3,9 @@ name: Security
 on:
   push:
     branches: [main]
+  # Every base branch, so a PR stacked on another gets checked; see .claude/CLAUDE.md
+  # "A required check cannot be filtered at the trigger".
   pull_request:
-    branches: [main]
   schedule:
     # Weekly scan every Monday at 02:00 UTC
     - cron: "0 2 * * 1"
