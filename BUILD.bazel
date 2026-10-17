@@ -6,6 +6,7 @@ gazelle(name = "gazelle")
 # Workflows read as *test data*, not built: several tests assert couplings that hold across files
 # and stay green while drifting, so each reads the real file rather than a fixture.
 exports_files([
+    ".github/actions/install-pinned-release-binary/install.sh",
     ".github/workflows/ci.yml",
     ".github/workflows/commit-file-via-app-selftest.yml",
     ".github/workflows/devcontainer.yml",

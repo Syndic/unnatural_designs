@@ -1,59 +1,22 @@
 name: Install a release binary pinned in the devcontainer
 description: >-
-  Downloads a tool's GitHub release at the version and amd64 sha512 the devcontainer's Dockerfile
-  pins, verifies it, and installs it to /usr/local/bin, so a CI gate runs the same binary the
-  editor does.
+  Downloads a tool's GitHub release at the version and sha512 the devcontainer's Dockerfile pins
+  for the runner's architecture, verifies it, and installs it to /usr/local/bin, so a CI gate runs
+  the same binary the editor does.
 
 inputs:
   tool:
     description: >-
       `shellcheck` or `actionlint`. Its upper-cased form is the Dockerfile's ARG prefix, so
-      `shellcheck` reads `SHELLCHECK_VERSION` and `SHELLCHECK_SHA512_AMD64`.
+      `shellcheck` reads `SHELLCHECK_VERSION` and `SHELLCHECK_SHA512_<ARCH>`.
     required: true
 
 runs:
   using: composite
   steps:
+    # A tracked .sh rather than an inline `run:` body, so the shellcheck job lints it — actionlint
+    # does not read composite actions' scripts.
     - shell: bash
       env:
         TOOL: ${{ inputs.tool }}
-      run: |
-        set -euo pipefail
-        prefix="${TOOL^^}"
-        version="$(sed -n "s/^ARG ${prefix}_VERSION=//p" .devcontainer/Dockerfile)"
-        sha512="$(sed -n "s/^ARG ${prefix}_SHA512_AMD64=//p" .devcontainer/Dockerfile)"
-        # An ARG that moved or got renamed must fail here, not silently fall through to whatever
-        # the runner image happens to ship.
-        if [ -z "${version}" ] || [ -z "${sha512}" ]; then
-          echo "no ${prefix}_VERSION/${prefix}_SHA512_AMD64 in .devcontainer/Dockerfile" >&2
-          exit 1
-        fi
-        # The asset layout each Dockerfile RUN downloads, for x86_64.
-        case "${TOOL}" in
-          shellcheck)
-            url="https://github.com/koalaman/shellcheck/releases/download/${version}/shellcheck-${version}.linux.x86_64.tar.xz"
-            member="shellcheck-${version}/shellcheck"
-            ;;
-          actionlint)
-            url="https://github.com/rhysd/actionlint/releases/download/${version}/actionlint_${version#v}_linux_amd64.tar.gz"
-            member="actionlint"
-            ;;
-          *)
-            echo "no release layout known for ${TOOL}" >&2
-            exit 1
-            ;;
-        esac
-        workdir="$(mktemp -d)"
-        curl -fsSL -o "${workdir}/archive" "${url}"
-        echo "${sha512}  ${workdir}/archive" | sha512sum -c -
-        tar -xf "${workdir}/archive" -C "${workdir}" "${member}"
-        sudo install -m 0755 "${workdir}/${member}" "/usr/local/bin/${TOOL}"
-        # The runner image ships its own copies of some of these, and /usr/local/bin winning on
-        # PATH is an assumption about that image — a shadowed binary has to fail here rather
-        # than lint green under some other version.
-        resolved="$(command -v "${TOOL}")"
-        if [ "${resolved}" != "/usr/local/bin/${TOOL}" ]; then
-          echo "${TOOL} on PATH resolves to ${resolved}, not the pinned /usr/local/bin/${TOOL}" >&2
-          exit 1
-        fi
-        "${TOOL}" --version
+      run: bash "${GITHUB_ACTION_PATH}/install.sh"

@@ -211,7 +211,7 @@ jobs:
   # .devcontainer/'s host stub and lifecycle hooks plus meta/devcontainer-base/scripts/ —
   # privileged writes against /etc and host-absolute paths, where `set -e` foot-guns (errexit
   # suspension inside `||` callees, most recently) are worth catching mechanically rather than
-  # in review.
+  # in review — and the install script behind .github/actions/install-pinned-release-binary/.
   # The version is the devcontainer's, read out of its Dockerfile rather than restated here —
   # the runner image ships its own shellcheck, and using it would make the gating job and the
   # editor separately versioned, with a finding's presence depending on where you looked.
@@ -249,9 +249,10 @@ jobs:
       - uses: ./.github/actions/install-pinned-release-binary
         with:
           tool: actionlint
-      # No arguments: actionlint finds .github/workflows/ itself, so a new workflow is linted
-      # with no edit here.
-      - run: actionlint
+      # No file arguments: actionlint finds .github/workflows/ itself, so a new workflow is
+      # linted with no edit here. `-pyflakes=` because actionlint otherwise lints Python `run:`
+      # blocks with any pyflakes on PATH, which nothing here pins.
+      - run: actionlint -pyflakes=
 
   # ty: Astral's static type checker. Config lives in `[tool.ty]` in
   # //:pyproject.toml — same single-source-of-truth posture as ruff. No
