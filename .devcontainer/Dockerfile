@@ -67,7 +67,7 @@ RUN uv tool install --no-cache "check-jsonschema==${CHECK_JSONSCHEMA_VERSION}"
 # so this ARG cannot read that file. Renovate keeps the two level (Language toolchain SDKs) and
 # //meta/scripts:check_python_version fails the build if they ever disagree.
 # renovate: datasource=python-version depName=python
-ARG PYTHON_VERSION=3.15
+ARG PYTHON_VERSION=3.14
 RUN uv python install "${PYTHON_VERSION}" \
     && ln -sfn "$(uv python find --no-project --managed-python "${PYTHON_VERSION}")" /usr/local/bin/python3 \
     && ln -sfn /usr/local/bin/python3 /usr/local/bin/python
