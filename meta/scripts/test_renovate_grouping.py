@@ -14,9 +14,10 @@ The ordering check selects rules by shape rather than by name, so the next toolc
 covered without an edit here: any rule that sets a `groupName` and can match a `minor` or `patch`
 update. A rule with no `matchUpdateTypes` matches every type, so it counts.
 
-Why the overlap is there at all, rather than being designed out: a toolchain's *patch* bumps stay
-in the batch while its *minor* bumps leave it, and no single rule expresses "minor-or-patch except
-Go minor". See README's "Dependency updates" and .claude/CLAUDE.md "CodeQL runs as advanced setup".
+Why the overlap is there at all, rather than being designed out: a toolchain's *patch* bumps stay in
+the batch while its *minor* bumps leave it, and no single rule expresses "minor-or-patch except a
+toolchain's minor". See README's "Dependency updates" and .claude/CLAUDE.md "CodeQL runs as advanced
+setup".
 
 The second rule is the one disabling the devcontainer base-image *pin*. Same ordering hazard, and
 the same silence: ahead of the catch-all it is overwritten, and Renovate starts proposing bumps to
@@ -48,7 +49,7 @@ _TOOLCHAIN_MINOR_GROUPS = {
     ),
     "Python language version": (
         "python",
-        "rules_python's coverage wheel table is keyed by minor (`cp315`), so a patch cannot trip "
+        "rules_python's coverage wheel table is keyed by minor (`cp314`), so a patch cannot trip "
         "it; every Python pin here is major.minor anyway, so Renovate proposes no patches",
     ),
 }
@@ -185,7 +186,8 @@ class ToolchainMinorGroupingTest(unittest.TestCase):
 
 class BaseImagePinDisabledTest(unittest.TestCase):
     """The pin is a derived file, so a Renovate PR against it is noise fighting three other
-    callers. The rule that says so is subject to the same last-writer-wins ordering as the Go one.
+        callers. The rule that says so is subject to the same last-writer-wins ordering as the
+    language-version groups.
     """
 
     def setUp(self):

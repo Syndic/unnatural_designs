@@ -648,12 +648,12 @@ Two conventions make that work, and both are load-bearing:
 Note the lock is keyed by the *reference string*, so a version bump restales every entry rather than
 just the one field — which is why the regeneration is a full `devcontainer upgrade` and not a patch.
 
-Python is deliberately **not** a devcontainer feature: that feature compiles CPython from source
-(~2 min per build). The Dockerfile installs a prebuilt uv-managed interpreter instead — `ARG
-PYTHON_VERSION` (Renovate-tracked via the Dockerfile custom manager, `depName=python`, so it stays
-in the "Language toolchain SDKs" group alongside `//:.python-version`, `MODULE.bazel`, and
-`pyproject.toml`'s `requires-python`) — and
-symlinks `python3`/`python` onto PATH. The CI `Devcontainer` job caches the built image in GHCR
+Python is deliberately **not** a devcontainer feature: that feature compiles CPython from source (~2
+min per build). The Dockerfile installs a prebuilt uv-managed interpreter instead — `ARG
+PYTHON_VERSION` (Renovate-tracked via the Dockerfile custom manager, `depName=python`, so it moves
+with `//:.python-version`, `MODULE.bazel`, and `pyproject.toml`'s `requires-python` — minors in the
+"Python language version" group, majors in "Language toolchain SDKs") — and symlinks
+`python3`/`python` onto PATH. The CI `Devcontainer` job caches the built image in GHCR
 (`imageName`/`cacheFrom`, `push: filter` seeds it on pushes to main), so the feature layers are
 reused across runs rather than rebuilt cold; this needs the workflow's `packages: write`.
 

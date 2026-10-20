@@ -299,10 +299,10 @@ Every job in the two tables above is required except `Coverage upload`, which is
 deliberately: Codecov is a service outside the tree, so its outage, or a fork PR without the token,
 must not block a merge. `Coverage` itself blocks, because it only fails when coverage could not run
 or measured nothing for a language that has tests. Whether coverage is *high enough* is Codecov's
-own `project`/`patch` statuses, which no ruleset names. Required too, from the two paragraphs before this section: `Build devcontainer
-and smoke test`, `Base image (all platforms)`, `Action self-test`, and the path-diff job the first
-two hang off, `Detect devcontainer changes` - both of those carry it in `needs:`, so leaving it
-unrequired would put two merge gates downstream of an unguarded job.
+own `project`/`patch` statuses, which no ruleset names. Required too, from the two paragraphs before
+this section: `Build devcontainer and smoke test`, `Base image (all platforms)`, `Action self-test`,
+and the path-diff job the first two hang off, `Detect devcontainer changes` - both of those carry it
+in `needs:`, so leaving it unrequired would put two merge gates downstream of an unguarded job.
 
 `Base image pin published` is advisory as well. It goes red while GHCR does not serve the base
 image the tree pins, so a failed publish shows on every PR. It does not block because the
@@ -530,12 +530,12 @@ Three grouping exceptions in [`renovate.json`](renovate.json)'s `packageRules` k
 atomic. Each is scoped with `matchUpdateTypes: ["major"]` so it cannot overlap the minor/patch
 catch-all, and the order those three appear in does not matter.
 
-Two more, `Go language version` and `Python language version`, **do** overlap the catch-all, and
-are the deliberate exception to the rule the previous paragraph would otherwise state. Renovate
-merges every matching rule in order and the last writer wins, so each has to sit *after* the
-catch-all or its minors fall back into the batch. The overlap is unavoidable rather than sloppy: a
-toolchain's *patch* bumps stay batched while its *minor* bumps leave it, and no single rule
-expresses "minor-or-patch except Go minor". Why each is worth the overlap is a tool that lags a new
+Two more, `Go language version` and `Python language version`, **do** overlap the catch-all, and are
+the deliberate exception to the rule the previous paragraph would otherwise state. Renovate merges
+every matching rule in order and the last writer wins, so each has to sit *after* the catch-all or
+its minors fall back into the batch. The overlap is unavoidable rather than sloppy: a toolchain's
+*patch* bumps stay batched while its *minor* bumps leave it, and no single rule expresses
+"minor-or-patch except a toolchain's minor". Why each is worth the overlap is a tool that lags a new
 minor:
 
 - **Go** - CodeQL's Go extractor is built against a Go release and lags a new one by roughly a
