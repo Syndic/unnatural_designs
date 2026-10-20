@@ -186,7 +186,7 @@ class ToolchainMinorGroupingTest(unittest.TestCase):
 
 class BaseImagePinDisabledTest(unittest.TestCase):
     """The pin is a derived file, so a Renovate PR against it is noise fighting three other
-        callers. The rule that says so is subject to the same last-writer-wins ordering as the
+    callers. The rule that says so is subject to the same last-writer-wins ordering as the
     language-version groups.
     """
 

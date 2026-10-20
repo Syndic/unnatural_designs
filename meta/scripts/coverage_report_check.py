@@ -49,8 +49,9 @@ MANUAL_TAG = r"[\[ ]manual[,\]]"
 TESTS_QUERY = f'tests(//...) except attr(tags, "{MANUAL_TAG}", //...)'
 
 # Printed by `cquery` per target: its label, or a blank line when the platform is incompatible.
+# `providers()` can return None, hence the `or {}` from Bazel's own incompatible-target recipe.
 COMPATIBLE_LABEL_EXPR = (
-    '"" if "IncompatiblePlatformProvider" in providers(target) else str(target.label)'
+    '"" if "IncompatiblePlatformProvider" in (providers(target) or {}) else str(target.label)'
 )
 
 
