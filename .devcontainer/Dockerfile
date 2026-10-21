@@ -12,7 +12,7 @@ FROM ${BASE_IMAGE}
 # the `uv tool install` layers below can build on it.
 # Pinned by tag and index digest, both moved by Renovate's docker manager; see README's
 # "Image references".
-COPY --from=ghcr.io/astral-sh/uv:0.13.1@sha256:4a1f3666816dafadd20ceb71eac9a7d56d7ef30279f7d64048519ab901ada336 /uv /uvx /usr/local/bin/
+COPY --from=ghcr.io/astral-sh/uv:0.13.4@sha256:9f130421e930bfbdc563c00740466603f8723158e90297d07957c2294640262b /uv /uvx /usr/local/bin/
 
 # ruff: format + lint. Installed via `uv tool install` so the binary lives in
 # /usr/local/bin and `ruff` is on PATH for the pre-commit hooks and the VS Code
@@ -26,7 +26,7 @@ ARG RUFF_VERSION=0.17.1
 # binary lands on PATH for CI, pre-commit, and the `astral-sh.ty` editor
 # extension. UV_TOOL_{BIN_DIR,DIR} are shared across all uv tool installs.
 # renovate: datasource=pypi depName=ty
-ARG TY_VERSION=0.0.89
+ARG TY_VERSION=0.0.90
 # pre-commit: the hook runner. Installed via `uv tool install` (not pip) so
 # we have a single Python package manager in the devcontainer; the binary
 # lands at /usr/local/bin/pre-commit, so post-create.sh and any contributor
@@ -84,11 +84,11 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
 # Upstream release binaries: each download is checked against a sha512 pinned per arch, which
 # Renovate re-derives on a version bump. The convention is under README's "Release binaries".
 # renovate: datasource=github-releases depName=bazelbuild/bazelisk
-ARG BAZELISK_VERSION=v1.29.0
-# renovate: datasource=github-release-attachments depName=bazelbuild/bazelisk digestVersion=v1.29.0
-ARG BAZELISK_SHA512_AMD64=a76360e844fc9ce7840234557a7568beb5ab77abdce231ea5c3c61f3a8638ff879b75130b955bb6544470ed9551a5d4bfde65e6e85444046c1f149582fc872bf
-# renovate: datasource=github-release-attachments depName=bazelbuild/bazelisk digestVersion=v1.29.0
-ARG BAZELISK_SHA512_ARM64=da5af216952f09771ce46c0aa644eea481330adef49b6e36213ecb1698d5dcf2f25bbae9bdab670b726ffe7b0a7f6ebfec8c5ff02b8b93255a93542f57c22706
+ARG BAZELISK_VERSION=v1.30.0
+# renovate: datasource=github-release-attachments depName=bazelbuild/bazelisk digestVersion=v1.30.0
+ARG BAZELISK_SHA512_AMD64=dd591811ede088ce9383827d8b05f31cd543aaa9b63d4dbacf5e1323cfdb70736781d626e6ca56bad8e2bbf74b79de3009f4d092e1871da97c1e178a82949772
+# renovate: datasource=github-release-attachments depName=bazelbuild/bazelisk digestVersion=v1.30.0
+ARG BAZELISK_SHA512_ARM64=2952a48ba644813cd746736ebaa26bbea8b193cd3e2dfbe5f5bdff4e28a9855b1a66996c552301a35094cc36e5b302c02812f979bfecd72e862e30e74e48a670
 RUN ARCH="$(dpkg --print-architecture)" \
     && case "${ARCH}" in \
         amd64) SHA512="${BAZELISK_SHA512_AMD64}" ;; \
