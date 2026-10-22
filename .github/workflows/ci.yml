@@ -302,14 +302,16 @@ jobs:
   build-and-test-per-target:
     name: Build and test (${{ matrix.platform }})
     runs-on: ${{ matrix.runner }}
-    needs: [
+    # Anchored: the gate every expensive Bazel job waits on, aliased by `coverage` below. Lint via
+    # its fan-in, since a non-matrix job needing the matrix would read as a second fan-in.
+    needs: &expensive-work-gate [
       gazelle-check,
       modules-check,
       go-work-check,
       python-version-check,
       secrets-check,
       no-cgo-check,
-      golangci-lint,
+      golangci-lint-all,
       ruff,
       ty,
     ]
@@ -354,20 +356,9 @@ jobs:
   coverage:
     name: Coverage
     runs-on: ubuntu-latest
-    # The platform builds' gate rather than their fan-in, so this runs beside them instead of
-    # after the slowest (usually darwin, behind a macOS runner queue). Lint via its fan-in: a
-    # non-matrix job needing the matrix would read as a second fan-in.
-    needs: [
-      gazelle-check,
-      modules-check,
-      go-work-check,
-      python-version-check,
-      secrets-check,
-      no-cgo-check,
-      golangci-lint-all,
-      ruff,
-      ty,
-    ]
+    # The platform builds' gate (anchored at build-and-test-per-target) rather than their fan-in,
+    # so this runs beside them instead of after the slowest, usually darwin behind a runner queue.
+    needs: *expensive-work-gate
     env:
       # Shared by the run and the check, whose `cquery` has to see the platform the run built for.
       COVERAGE_BAZEL_FLAGS: --config=ci --config=linux_x86_64
