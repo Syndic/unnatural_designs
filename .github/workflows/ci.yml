@@ -3,8 +3,9 @@ name: CI
 on:
   push:
     branches: [main]
+  # Every base branch, so a PR stacked on another gets checked; see .claude/CLAUDE.md
+  # "A required check cannot be filtered at the trigger".
   pull_request:
-    branches: [main]
 
 # Supersede in-flight runs for the same PR; see .claude/CLAUDE.md "Superseding CI runs".
 concurrency:
@@ -68,8 +69,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version-file: .python-version
       # `uv run`, unlike the other check jobs' bare `python3`: this is the one script that
@@ -83,7 +84,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version-file: .python-version
       - run: python3 meta/scripts/check_go_work.py
@@ -93,7 +94,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version-file: .python-version
       - run: python3 meta/scripts/check_adr_numbers.py
@@ -106,8 +107,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version-file: .python-version
       # `uv run`, for the same reason modules-check above uses it: this guard reads steps out of
@@ -119,7 +120,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version-file: .python-version
       - run: python3 meta/scripts/check_secrets_dir.py
@@ -129,7 +130,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version-file: .python-version
       # `go list -deps` is what surfaces transitive cgo, so the runner needs Go in PATH.
@@ -200,7 +201,7 @@ jobs:
       - uses: astral-sh/ruff-action@278981a28ce3188b1e39527901f38254bf3aac89 # v4.1.0
         with:
           # renovate: datasource=pypi depName=ruff
-          version: "0.17.0"
+          version: "0.17.2"
           args: format --check
       - run: ruff check
 
@@ -210,7 +211,7 @@ jobs:
   # .devcontainer/'s host stub and lifecycle hooks plus meta/devcontainer-base/scripts/ —
   # privileged writes against /etc and host-absolute paths, where `set -e` foot-guns (errexit
   # suspension inside `||` callees, most recently) are worth catching mechanically rather than
-  # in review.
+  # in review — and the install script behind .github/actions/install-pinned-release-binary/.
   # The version is the devcontainer's, read out of its Dockerfile rather than restated here —
   # the runner image ships its own shellcheck, and using it would make the gating job and the
   # editor separately versioned, with a finding's presence depending on where you looked.
@@ -219,36 +220,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install the pinned shellcheck
-        run: |
-          set -euo pipefail
-          version="$(sed -n 's/^ARG SHELLCHECK_VERSION=//p' .devcontainer/Dockerfile)"
-          sha512="$(sed -n 's/^ARG SHELLCHECK_SHA512_AMD64=//p' .devcontainer/Dockerfile)"
-          # An ARG that moved or got renamed must fail here, not silently fall through to
-          # whatever the runner image happens to ship.
-          if [ -z "${version}" ] || [ -z "${sha512}" ]; then
-            echo "no SHELLCHECK_VERSION/SHELLCHECK_SHA512_AMD64 in .devcontainer/Dockerfile" >&2
-            exit 1
-          fi
-          curl -fsSL -o /tmp/shellcheck.tar.xz \
-            "https://github.com/koalaman/shellcheck/releases/download/${version}/shellcheck-${version}.linux.x86_64.tar.xz"
-          echo "${sha512}  /tmp/shellcheck.tar.xz" | sha512sum -c -
-          tar -xJf /tmp/shellcheck.tar.xz -C /tmp
-          # Ahead of the runner's own copy on PATH.
-          sudo install -m 0755 "/tmp/shellcheck-${version}/shellcheck" /usr/local/bin/shellcheck
-          # That ordering is an assumption about the runner image, and the whole point of the
-          # pin is that the gate and the editor cannot disagree — so a shadowed binary has to
-          # fail here rather than lint green under some other version.
-          on_path="$(shellcheck --version | sed -n 's/^version: //p')"
-          if [ "${on_path}" != "${version#v}" ]; then
-            echo "shellcheck on PATH is ${on_path}, expected ${version#v}" >&2
-            exit 1
-          fi
+      - uses: ./.github/actions/install-pinned-release-binary
+        with:
+          tool: shellcheck
       - run: |
           set -euo pipefail
-          shellcheck --version | sed -n '2p'
           mapfile -t files < <(git ls-files '*.sh')
-          # shellcheck itself exits 1 on an empty argument list; can't happen today, but a
+          # An empty argument list makes shellcheck exit 1; can't happen today, but a
           # future .sh-free tree should report "nothing to check", not a red job.
           if [ "${#files[@]}" -eq 0 ]; then
             echo "no shell scripts tracked; nothing to check"
@@ -256,6 +234,37 @@ jobs:
           fi
           printf 'checking %d file(s)\n' "${#files[@]}"
           shellcheck "${files[@]}"
+
+  # actionlint: lints every workflow, and each `run:` block through whatever shellcheck is on
+  # PATH, so it installs the pinned shellcheck as well as its own pin — the same reasoning as the
+  # shellcheck job above. Composite actions' `run:` steps get that shellcheck pass too, below.
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/install-pinned-release-binary
+        with:
+          tool: shellcheck
+      - uses: ./.github/actions/install-pinned-release-binary
+        with:
+          tool: actionlint
+      # No file arguments: actionlint finds .github/workflows/ itself, so a new workflow is
+      # linted with no edit here. `-pyflakes=` because actionlint otherwise lints Python `run:`
+      # blocks with any pyflakes on PATH, which nothing here pins.
+      - run: actionlint -pyflakes=
+      # actionlint reads only .github/workflows/, so composite actions' `run:` steps get the same
+      # shellcheck pass from this script. `uv run` for PyYAML, as modules-check does.
+      # `!cancelled()` so these still run when the actionlint step above fails: both sets of
+      # findings show up together, rather than this one only after that one is fixed.
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        if: ${{ !cancelled() }}
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        if: ${{ !cancelled() }}
+        with:
+          python-version-file: .python-version
+      - if: ${{ !cancelled() }}
+        run: uv run --frozen python3 meta/scripts/check_composite_action_scripts.py
 
   # ty: Astral's static type checker. Config lives in `[tool.ty]` in
   # //:pyproject.toml — same single-source-of-truth posture as ruff. No
@@ -270,7 +279,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
       # `uv sync` materializes `.venv` from uv.lock so ty can resolve
       # third-party imports (e.g. the smoke target's `requests`). Without it,
       # ty's only search paths are first-party + stdlib and any non-stdlib
@@ -279,7 +288,7 @@ jobs:
       - name: ty check
         env:
           # renovate: datasource=pypi depName=ty
-          TY_VERSION: "0.0.86"
+          TY_VERSION: "0.0.91"
         run: uvx "ty@${TY_VERSION}" check
 
   # Build and test runs once per supported target platform, on a runner whose host matches
@@ -293,9 +302,11 @@ jobs:
   build-and-test-per-target:
     name: Build and test (${{ matrix.platform }})
     runs-on: ${{ matrix.runner }}
-    # `bazel-lock-check` gates for cost, not correctness — `--lockfile_mode=update` keeps a build
-    # green over a stale lock. //meta/scripts:test_ci_derived_file_gating holds the edge.
-    needs: [
+    # Anchored: the gate every expensive Bazel job waits on, aliased by `coverage` below. Lint via
+    # its fan-in, since a non-matrix job needing the matrix would read as a second fan-in.
+    # `bazel-lock-check` is in it for cost, not correctness — `--lockfile_mode=update` keeps a
+    # build green over a stale lock. //meta/scripts:test_ci_derived_file_gating holds that edge.
+    needs: &expensive-work-gate [
       gazelle-check,
       bazel-lock-check,
       modules-check,
@@ -303,7 +314,7 @@ jobs:
       python-version-check,
       secrets-check,
       no-cgo-check,
-      golangci-lint,
+      golangci-lint-all,
       ruff,
       ty,
     ]
@@ -348,7 +359,12 @@ jobs:
   coverage:
     name: Coverage
     runs-on: ubuntu-latest
-    needs: [build-and-test-all]
+    # The platform builds' gate (anchored at build-and-test-per-target) rather than their fan-in,
+    # so this runs beside them instead of after the slowest, usually darwin behind a runner queue.
+    needs: *expensive-work-gate
+    env:
+      # Shared by the run and the check, whose `cquery` has to see the platform the run built for.
+      COVERAGE_BAZEL_FLAGS: --config=ci --config=linux_x86_64
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-bazel-remote
@@ -365,17 +381,49 @@ jobs:
       #
       # TEND(lang-expand): `bazel coverage //...` picks up every language whose rules emit
       # coverage (rules_go does automatically; rules_python is wired via
-      # `configure_coverage_tool = True` on `python.toolchain` in MODULE.bazel). When adopting
-      # a new language, confirm its ruleset is wired into Bazel's coverage collection — e.g.
-      # rules_java needs JaCoCo. If coverage output is silently missing for a language,
-      # that's the thing to check.
-      - run: bazel coverage --config=ci --config=linux_x86_64 //...
+      # `configure_coverage_tool = True` on `python.toolchain` in MODULE.bazel). A new language's
+      # test rule kind fails the check step below until it is mapped in
+      # meta/scripts/coverage_report_check.py, which is when to confirm its ruleset is wired in —
+      # e.g. rules_java needs JaCoCo.
+      - run: |
+          read -ra flags <<< "${COVERAGE_BAZEL_FLAGS}"
+          bazel coverage "${flags[@]}" //...
       - name: Locate merged lcov
         id: lcov
         run: echo "path=$(bazel info output_path)/_coverage/_coverage_report.dat" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version-file: .python-version
+      # A green `bazel coverage` is not evidence every language was measured; this is.
+      - name: Check every tested language was measured
+        env:
+          LCOV: ${{ steps.lcov.outputs.path }}
+        run: |
+          read -ra flags <<< "${COVERAGE_BAZEL_FLAGS}"
+          python3 meta/scripts/coverage_report_check.py "${LCOV}" --summary "${GITHUB_STEP_SUMMARY}" \
+            -- "${flags[@]}"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-lcov
+          path: ${{ steps.lcov.outputs.path }}
+          if-no-files-found: error
+          retention-days: 7
+
+  # Advisory, unlike `coverage`: Codecov is a service outside the tree, so its outage, or a fork PR
+  # without the token, must not block a merge. Thresholds are Codecov's own statuses, also advisory.
+  coverage-upload:
+    name: Coverage upload
+    runs-on: ubuntu-latest
+    needs: [coverage]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: coverage-lcov
+          path: ${{ runner.temp }}/coverage
       - uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
-          files: ${{ steps.lcov.outputs.path }}
+          files: ${{ runner.temp }}/coverage/_coverage_report.dat
           disable_search: true
           fail_ci_if_error: true
           token: ${{ secrets.CODECOV_TOKEN }}

@@ -12,7 +12,7 @@ FROM ${BASE_IMAGE}
 # the `uv tool install` layers below can build on it.
 # Pinned by tag and index digest, both moved by Renovate's docker manager; see README's
 # "Image references".
-COPY --from=ghcr.io/astral-sh/uv:0.13.0@sha256:cdc6093146eb3ff6a40107b38f008b789e050e77ad87865e381d9917da55a168 /uv /uvx /usr/local/bin/
+COPY --from=ghcr.io/astral-sh/uv:0.13.5@sha256:32a7bb39b496babbd997b0a39a4d66c126bdaf5661b302bf6f06abda8deca6ff /uv /uvx /usr/local/bin/
 
 # ruff: format + lint. Installed via `uv tool install` so the binary lives in
 # /usr/local/bin and `ruff` is on PATH for the pre-commit hooks and the VS Code
@@ -21,18 +21,18 @@ COPY --from=ghcr.io/astral-sh/uv:0.13.0@sha256:cdc6093146eb3ff6a40107b38f008b789
 # /root (mode 700) and the vscode user could not follow the bin/ symlink.
 # Renovate's regex manager tracks RUFF_VERSION via the comment above the ARG.
 # renovate: datasource=pypi depName=ruff
-ARG RUFF_VERSION=0.17.0
+ARG RUFF_VERSION=0.17.2
 # ty: static type checker. Same `uv tool install` pattern as ruff so the
 # binary lands on PATH for CI, pre-commit, and the `astral-sh.ty` editor
 # extension. UV_TOOL_{BIN_DIR,DIR} are shared across all uv tool installs.
 # renovate: datasource=pypi depName=ty
-ARG TY_VERSION=0.0.86
+ARG TY_VERSION=0.0.91
 # pre-commit: the hook runner. Installed via `uv tool install` (not pip) so
 # we have a single Python package manager in the devcontainer; the binary
 # lands at /usr/local/bin/pre-commit, so post-create.sh and any contributor
 # shell can invoke it directly without a $HOME/.local/bin PATH dance.
 # renovate: datasource=pypi depName=pre-commit
-ARG PRE_COMMIT_VERSION=4.6.2
+ARG PRE_COMMIT_VERSION=4.7.0
 # UV_TOOL_DIR holds the per-tool venvs; UV_PYTHON_INSTALL_DIR is where uv
 # downloads its managed Python interpreters (both the pre-commit tool venv's
 # interpreter and the interactive `python3` installed below). Both must be
@@ -64,8 +64,9 @@ RUN uv tool install --no-cache "check-jsonschema==${CHECK_JSONSCHEMA_VERSION}"
 # `python` on PATH for the smoke test, the ms-python extension, and interactive use.
 # `--no-project` ignores any workspace .venv; `--managed-python` resolves the uv copy.
 # A copy of //:.python-version, not a second source: the build context never COPYs the workspace,
-# so this ARG cannot read that file. Renovate keeps the two level (Language toolchain SDKs) and
-# //meta/scripts:check_python_version fails the build if they ever disagree.
+# so this ARG cannot read that file. Renovate moves them together (Python language version for
+# minors, Language toolchain SDKs for majors) and //meta/scripts:check_python_version fails the
+# build if they ever disagree.
 # renovate: datasource=python-version depName=python
 ARG PYTHON_VERSION=3.14
 RUN uv python install "${PYTHON_VERSION}" \
@@ -84,11 +85,11 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
 # Upstream release binaries: each download is checked against a sha512 pinned per arch, which
 # Renovate re-derives on a version bump. The convention is under README's "Release binaries".
 # renovate: datasource=github-releases depName=bazelbuild/bazelisk
-ARG BAZELISK_VERSION=v1.29.0
-# renovate: datasource=github-release-attachments depName=bazelbuild/bazelisk digestVersion=v1.29.0
-ARG BAZELISK_SHA512_AMD64=a76360e844fc9ce7840234557a7568beb5ab77abdce231ea5c3c61f3a8638ff879b75130b955bb6544470ed9551a5d4bfde65e6e85444046c1f149582fc872bf
-# renovate: datasource=github-release-attachments depName=bazelbuild/bazelisk digestVersion=v1.29.0
-ARG BAZELISK_SHA512_ARM64=da5af216952f09771ce46c0aa644eea481330adef49b6e36213ecb1698d5dcf2f25bbae9bdab670b726ffe7b0a7f6ebfec8c5ff02b8b93255a93542f57c22706
+ARG BAZELISK_VERSION=v1.30.0
+# renovate: datasource=github-release-attachments depName=bazelbuild/bazelisk digestVersion=v1.30.0
+ARG BAZELISK_SHA512_AMD64=dd591811ede088ce9383827d8b05f31cd543aaa9b63d4dbacf5e1323cfdb70736781d626e6ca56bad8e2bbf74b79de3009f4d092e1871da97c1e178a82949772
+# renovate: datasource=github-release-attachments depName=bazelbuild/bazelisk digestVersion=v1.30.0
+ARG BAZELISK_SHA512_ARM64=2952a48ba644813cd746736ebaa26bbea8b193cd3e2dfbe5f5bdff4e28a9855b1a66996c552301a35094cc36e5b302c02812f979bfecd72e862e30e74e48a670
 RUN ARCH="$(dpkg --print-architecture)" \
     && case "${ARCH}" in \
         amd64) SHA512="${BAZELISK_SHA512_AMD64}" ;; \
@@ -121,9 +122,9 @@ RUN ARCH="$(dpkg --print-architecture)" \
     && rm /tmp/buildifier
 
 # shellcheck from upstream rather than Debian's package, so the version is ours to pin: these
-# ARGs are the repo's only shellcheck version and digest, and ci.yml reads them out of this file
-# instead of using the runner image's copy. The editor extension is pointed at the binary this
-# installs.
+# ARGs are the repo's only shellcheck version and digest, and CI reads them out of this file
+# (.github/actions/install-pinned-release-binary) instead of using the runner image's copy. The
+# editor extension is pointed at the binary this installs.
 # Release assets use uname-style arch names, which dpkg's differ from.
 # renovate: datasource=github-releases depName=koalaman/shellcheck
 ARG SHELLCHECK_VERSION=v0.11.0
@@ -145,6 +146,7 @@ RUN ARCH="$(dpkg --print-architecture)" \
     && rm -rf /tmp/shellcheck.tar.xz "/tmp/shellcheck-${SHELLCHECK_VERSION}"
 
 # actionlint runs shellcheck over `run:` blocks, resolving it from PATH — the pinned copy above.
+# CI reads these ARGs the same way it reads shellcheck's.
 # Its asset names carry the version without the tag's leading `v`. `install` rather than
 # extracting in place: the tarball's entry is owned by uid 1001, which root's tar would keep.
 # renovate: datasource=github-releases depName=rhysd/actionlint

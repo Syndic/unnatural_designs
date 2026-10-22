@@ -21,8 +21,10 @@ from meta.scripts._workflows import (
     StepContainer,
     action_steps,
     action_yaml_files,
+    composite_action_files,
     job_condition,
     job_needs,
+    run_steps,
     step_containers,
     unrecognised_matrix_keys,
     workflow_matrix_lists,
@@ -734,6 +736,52 @@ class TestActionYamlFiles(unittest.TestCase):
     def test_absent_directories_are_empty_not_an_error(self):
         with tempfile.TemporaryDirectory() as tmp:
             self.assertEqual(action_yaml_files(Path(tmp)), [])
+
+
+class TestCompositeActionFiles(unittest.TestCase):
+    def test_only_the_actions_tree_at_any_depth(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write(root, ".github/workflows/a.yml")
+            wanted = [
+                _write(root, ".github/actions/x/action.yml"),
+                _write(root, ".github/actions/y/z/action.yaml"),
+            ]
+            self.assertEqual(composite_action_files(root), sorted(wanted))
+
+
+class TestRunSteps(unittest.TestCase):
+    def _run_steps(self, content: str):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "action.yml"
+            path.write_text(textwrap.dedent(content))
+            return run_steps(path)
+
+    def test_run_steps_carry_their_nodes_and_shell(self):
+        steps, problems = self._run_steps("""\
+            runs:
+              using: composite
+              steps:
+                - uses: actions/checkout@abc
+                - shell: bash
+                  run: echo hi
+                - run: |
+                    echo there
+            """)
+        self.assertEqual(problems, {})
+        self.assertEqual(
+            [(s.value.value, s.shell) for s in steps], [("echo hi", "bash"), ("echo there\n", None)]
+        )
+        self.assertEqual(steps[0].line, 6)
+
+    def test_workflow_jobs_are_walked_too(self):
+        steps, _ = self._run_steps("jobs:\n  a:\n    steps:\n      - run: echo hi\n")
+        self.assertEqual(len(steps), 1)
+
+    def test_unparseable_yaml_is_reported(self):
+        steps, problems = self._run_steps("runs: [\n")
+        self.assertEqual(steps, [])
+        self.assertTrue(problems)
 
 
 class TestStepContainers(unittest.TestCase):

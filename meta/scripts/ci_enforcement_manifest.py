@@ -110,6 +110,7 @@ RULES: Final[tuple[dict, ...]] = tuple(
                     {"context": "Build and test (all targets)", "integration_id": 15368},
                     {"context": "Build devcontainer and smoke test", "integration_id": 15368},
                     {"context": "CodeQL Analysis (all languages)", "integration_id": 15368},
+                    {"context": "Coverage", "integration_id": 15368},
                     {"context": "Detect devcontainer changes", "integration_id": 15368},
                     {"context": "Gazelle BUILD file check", "integration_id": 15368},
                     {"context": "MODULE.bazel.lock freshness", "integration_id": 15368},
@@ -123,6 +124,7 @@ RULES: Final[tuple[dict, ...]] = tuple(
                     {"context": "Secrets check", "integration_id": 15368},
                     {"context": "Semgrep", "integration_id": 15368},
                     {"context": "Trivy", "integration_id": 15368},
+                    {"context": "actionlint", "integration_id": 15368},
                     {"context": "go.work consistency/completeness check", "integration_id": 15368},
                     {"context": "golangci-lint (all modules)", "integration_id": 15368},
                     {"context": "govulncheck (all modules)", "integration_id": 15368},
@@ -196,9 +198,10 @@ def required_check_names() -> frozenset[str]:
 # purpose. Membership is decided statically, by workflow trigger, so a job that never runs on an
 # ordinary PR still needs an entry — and saying why is the only place that fact is recorded.
 NOT_REQUIRED: Final = {
-    "Coverage": (
-        "Advisory check. Its failure is a judgement call rather than a defect, and Codecov's own "
-        "project/patch statuses are threshold-based."
+    "Coverage upload": (
+        "Automated task: sends the lcov `Coverage` already checked to Codecov, a service outside "
+        "the tree, so its outage or a fork PR without the token must not block a merge. Whether "
+        "coverage is high enough is Codecov's own project/patch statuses, which gate nothing."
     ),
     "Base image pin published": (
         "Check, deliberately advisory: red while GHCR does not serve the pinned base image, so a "

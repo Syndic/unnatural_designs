@@ -3,13 +3,13 @@ name: Devcontainer
 # Build the devcontainer and smoke-test the toolchain it ships. Catches breakage from
 # Renovate-driven bumps to the Debian base, the `features` block (go, etc.), the Dockerfile's
 # PYTHON_VERSION, or BAZELISK_VERSION before someone hits it locally.
-# The workflow always runs so the status check always reports; path filtering happens in the
-# `changes` job. See .claude/CLAUDE.md "A required check cannot be filtered at the trigger".
+# The workflow always runs, for a PR whatever branch it targets, so the status check always
+# reports; path filtering happens in the `changes` job. See .claude/CLAUDE.md "A required check
+# cannot be filtered at the trigger".
 on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
   # Republish: run on main to build, test and publish the base image the tree pins, e.g. after a
   # publish failed and the `Base image pin published` check went red.
   workflow_dispatch:
@@ -226,7 +226,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           # renovate: datasource=node-version depName=node
-          node-version: "24.21.0"
+          node-version: "24.22.1"
 
       - name: Check the feature lock is in sync
         env:
@@ -315,6 +315,16 @@ jobs:
             bazel --version
             go version
             python3 --version
+
+            # Docker pulls uv by digest, so a bump that moved only the tag would leave the old uv
+            # running under the new version's name; the installed version must match the tag.
+            want="$(sed -n 's|^COPY --from=ghcr.io/astral-sh/uv:\([^@ ]*\)@.*|\1|p' \
+              .devcontainer/Dockerfile)"
+            have="$(uv --version | cut -d' ' -f2)"
+            if [ -z "${want}" ] || [ "${have}" != "${want}" ]; then
+              echo "uv is '${have}' but the Dockerfile pins '${want}'" >&2
+              exit 1
+            fi
 
             # Agent tools no gate runs. A failed install already fails the build; these catch
             # one that installs but won't run for remoteUser (wrong-arch asset, unreachable

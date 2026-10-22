@@ -63,6 +63,8 @@ update in its own PR (see "Dependency updates" under [Automation](#automation)).
 index digest, not one platform's, because the image builds for amd64 and arm64.
 [`test_devcontainer_config.py`](.devcontainer/test_devcontainer_config.py) fails any `FROM`,
 `COPY --from=` or `RUN --mount=…,from=` image that lacks either half, after resolving ARG defaults.
+Whether the two halves agree only a built image can show, so the devcontainer smoke test fails when
+`uv --version` is not the version uv's tag names.
 
 **Feature pinning**: the `ghcr.io/devcontainers/features/*` references in
 [`devcontainer.json`](.devcontainer/devcontainer.json) are pinned to **full semver**
@@ -210,8 +212,9 @@ future toolchain changes.
 
 ## CI
 
-Three GitHub Actions workflows run on every push and pull request to `main`, and a fourth
-on pull requests only. What makes any of their jobs binding is the ruleset, not the `needs:` edges
+Three GitHub Actions workflows run on every push to `main` and on every pull request, whatever
+branch it targets, so a PR stacked on another PR is checked too; a fourth runs on pull requests
+only. What makes any of their jobs binding is the ruleset, not the `needs:` edges
 between them — see [What makes a check binding](#what-makes-a-check-binding) below.
 
 **CI** - code-change-driven checks:
@@ -230,10 +233,12 @@ between them — see [What makes a check binding](#what-makes-a-check-binding) b
 | `golangci-lint (all modules)`          | Fan-in over the per-module jobs - the name to require in the ruleset        |
 | ruff                                   | `ruff format --check` and `ruff check` over all Python                      |
 | shellcheck                             | lints every tracked `*.sh`                                                  |
+| actionlint                             | lints every workflow; shellcheck over each `run:` in workflows and actions  |
 | ty                                     | `uvx ty@<pin> check` (Astral's static type checker, alpha) over all Python  |
 | `Build and test (<platform>)`          | `bazel test //...` - one job per supported platform                         |
 | `Build and test (all targets)`         | Fan-in over the per-platform jobs - the name to require in the ruleset      |
-| Coverage                               | `bazel coverage //...`, uploads merged lcov to Codecov - advisory           |
+| Coverage                               | `bazel coverage //...`; fails if a language with tests reported no coverage |
+| Coverage upload                        | uploads the merged lcov to Codecov - advisory                               |
 
 **Security** - also runs on a weekly schedule (Mondays at 02:00 UTC):
 
@@ -290,12 +295,14 @@ repository to it: it reads what GitHub enforces on `main` and fails when the two
 way. Changing the demand goes through review like any other change - see
 [ADR 0003](meta/docs/adr/0003-the-enforcement-manifest-is-a-demand-not-a-mirror.md).
 
-Every job in the two tables above is required except `Coverage`, which is advisory deliberately:
-its failure is a judgement call rather than a defect, and Codecov's own `project`/`patch` statuses
-are threshold-based. Required too, from the two paragraphs before this section: `Build devcontainer
-and smoke test`, `Base image (all platforms)`, `Action self-test`, and the path-diff job the first
-two hang off, `Detect devcontainer changes` - both of those carry it in `needs:`, so leaving it
-unrequired would put two merge gates downstream of an unguarded job.
+Every job in the two tables above is required except `Coverage upload`, which is advisory
+deliberately: Codecov is a service outside the tree, so its outage, or a fork PR without the token,
+must not block a merge. `Coverage` itself blocks, because it only fails when coverage could not run
+or measured nothing for a language that has tests. Whether coverage is *high enough* is Codecov's
+own `project`/`patch` statuses, which no ruleset names. Required too, from the two paragraphs before
+this section: `Build devcontainer and smoke test`, `Base image (all platforms)`, `Action self-test`,
+and the path-diff job the first two hang off, `Detect devcontainer changes` - both of those carry it
+in `needs:`, so leaving it unrequired would put two merge gates downstream of an unguarded job.
 
 `Base image pin published` is advisory as well. It goes red while GHCR does not serve the base
 image the tree pins, so a failed publish shows on every PR. It does not block because the
@@ -376,12 +383,13 @@ match CI:
 - [`ryanluker.vscode-coverage-gutters`](https://marketplace.visualstudio.com/items?itemName=ryanluker.vscode-coverage-gutters) -
   paints gutter marks in Go files from a local `bazel coverage //...` run.
 - [`timonwong.shellcheck`](https://marketplace.visualstudio.com/items?itemName=timonwong.shellcheck) -
-  surfaces `shellcheck` diagnostics inline on save, matching what the CI `shellcheck` job
-  enforces. Config lives in [`.shellcheckrc`](.shellcheckrc), shared with that job, and the
-  extension is pointed at the container's own `shellcheck` by `devcontainer.json`. Its version
-  is pinned once, as `SHELLCHECK_VERSION` in the Dockerfile, which the CI job reads — so the
-  editor and the gate run the same binary. Container-side only: shell is edited in the
-  devcontainer, so a host window gets no shell lint.
+  surfaces `shellcheck` diagnostics inline on save, matching what the CI `shellcheck` job enforces.
+  Config lives in [`.shellcheckrc`](.shellcheckrc), shared with that job, and the extension is
+  pointed at the container's own `shellcheck` by `devcontainer.json`. Its version is pinned once, as
+  `SHELLCHECK_VERSION` in the Dockerfile, which the CI `shellcheck` and `actionlint` jobs read
+  via [`install-pinned-release-binary`](.github/actions/install-pinned-release-binary/action.yml)
+  (actionlint's own pin is read the same way) — so the editor and the gates run the same binary.
+  Container-side only: shell is edited in the devcontainer, so a host window gets no shell lint.
 
 | On-save check        | Triggers on                                |
 | -------------------- | ------------------------------------------ |
@@ -398,11 +406,11 @@ lives at `bazel-out/_coverage/_coverage_report.dat`; the extension is pre-config
 [`.vscode/settings.json`](.vscode/settings.json) to find it there. CI uploads the same file to
 Codecov, so local gutters and the Codecov dashboard reflect the same data.
 
-**Dependency updates** are managed automatically by [Renovate](https://docs.renovatebot.com).
-Minor and patch bumps, across every manager, land in a single recurring `all non-major
-dependencies` PR — with one exception, the Go **minor** bump, which gets its own `Go language
-version` PR (see below). Every other update type gets its own PR, so it is reviewed on its own
-terms: `major` (breaking), `replacement` (a package renamed out from under us —
+**Dependency updates** are managed automatically by [Renovate](https://docs.renovatebot.com). Minor
+and patch bumps, across every manager, land in a single recurring `all non-major dependencies` PR —
+with two exceptions, the Go and Python **minor** bumps, which get their own `Go language version`
+and `Python language version` PRs (see below). Every other update type gets its own PR, so it is
+reviewed on its own terms: `major` (breaking), `replacement` (a package renamed out from under us —
 `config:recommended` pulls in `replacements:all`), `rollback`, and `digest`.
 
 `digest` is the one worth calling out. Renovate raises it when a SHA-pinned reference's version
@@ -522,17 +530,26 @@ Three grouping exceptions in [`renovate.json`](renovate.json)'s `packageRules` k
 atomic. Each is scoped with `matchUpdateTypes: ["major"]` so it cannot overlap the minor/patch
 catch-all, and the order those three appear in does not matter.
 
-A fourth, `Go language version`, **does** overlap the catch-all, and is the deliberate exception to
-the rule the previous paragraph would otherwise state. Renovate merges every matching rule in order
-and the last writer wins, so this one has to sit *after* the catch-all or Go minors fall back into
-the batch. The overlap is unavoidable rather than sloppy: Go *patch* bumps must stay batched while
-Go *minor* bumps leave it, and no single rule expresses "minor-or-patch except Go minor". Why it is
-worth the overlap: CodeQL's Go extractor is built against a Go release and lags a new one by
-roughly a week, during which extraction fails and the CodeQL job is red — see
-[`.claude/CLAUDE.md`](.claude/CLAUDE.md), "CodeQL runs as advanced setup". Isolating the Go minor
-means that week blocks one PR rather than every dependency update. Because the ordering is
-load-bearing and its failure is silent — a reordered file just quietly re-batches Go minors —
-[`//meta/scripts:test_renovate_grouping`](meta/scripts/test_renovate_grouping.py) holds it.
+Two more, `Go language version` and `Python language version`, **do** overlap the catch-all, and are
+the deliberate exception to the rule the previous paragraph would otherwise state. Renovate merges
+every matching rule in order and the last writer wins, so each has to sit *after* the catch-all or
+its minors fall back into the batch. The overlap is unavoidable rather than sloppy: a toolchain's
+*patch* bumps stay batched while its *minor* bumps leave it, and no single rule expresses
+"minor-or-patch except a toolchain's minor". Why each is worth the overlap is a tool that lags a new
+minor:
+
+- **Go** - CodeQL's Go extractor is built against a Go release and lags a new one by roughly a
+  week, during which extraction fails and the CodeQL job is red — see
+  [`.claude/CLAUDE.md`](.claude/CLAUDE.md), "CodeQL runs as advanced setup".
+- **Python** - rules_python's coverage tool keys its coverage.py wheels by minor (`cp314`), and
+  has taken from two days (3.13) to seven months (3.14) to add a new one. Until it does, `bazel
+  coverage` fails or measures no Python, and `Coverage` is red.
+
+Isolating the minor means that wait blocks one PR rather than every dependency update. Because the
+ordering is load-bearing and its failure is silent — a reordered file just quietly re-batches the
+minors — [`//meta/scripts:test_renovate_grouping`](meta/scripts/test_renovate_grouping.py) holds
+it, selecting every grouping rule that can match a minor or patch update rather than a list of
+names.
 
 Two rules set no `groupName` at all. `matchManagers: ["devcontainer"]` with `pinDigests: false`
 turns off digest pinning for devcontainer features (the reason is in
@@ -548,7 +565,8 @@ observed lag and still lands the bump the same day. Under the default `internalC
 back, and joins on the next run once it has aged in.
 
 Both rules overlap the grouping rules, which is harmless because each is the only rule that touches
-its field. Keep that true, or make the order deliberate — as `Go language version` above does.
+its field. Keep that true, or make the order deliberate — as the two language-version groups above
+do.
 
 - **Language toolchain SDKs** — the Go and Python version pins, tracked across `MODULE.bazel`,
   `go.work`, per-module `go.mod`, [`.python-version`](.python-version), the devcontainer

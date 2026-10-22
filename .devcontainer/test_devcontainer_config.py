@@ -28,12 +28,18 @@ in this directory.
 """
 
 import json
+import os
 import re
 import shlex
+import stat
+import subprocess
 import sys
+import tempfile
+import textwrap
 import unittest
 from pathlib import Path
 
+import yaml
 from meta.scripts.sync_base_image_pin import pinned_digest
 
 # Not .resolve(): devcontainer.yml is a cross-package data dep and lives in the runfiles tree,
@@ -43,6 +49,11 @@ _DEVCONTAINER_JSON = _HERE / "devcontainer.json"
 _SETTINGS_JSON = _HERE.parent / ".vscode" / "settings.json"
 _EXTENSIONS_JSON = _HERE.parent / ".vscode" / "extensions.json"
 _CI_WORKFLOW = _HERE.parent / ".github" / "workflows" / "ci.yml"
+_WORKFLOWS_DIR = _HERE.parent / ".github" / "workflows"
+_INSTALL_PINNED_ACTION = (
+    _HERE.parent / ".github" / "actions" / "install-pinned-release-binary" / "action.yml"
+)
+_INSTALL_PINNED_SCRIPT = _INSTALL_PINNED_ACTION.parent / "install.sh"
 _DOCKERFILE = _HERE / "Dockerfile"
 _RENOVATE_JSON = _HERE.parent / "renovate.json"
 _HOOKS = (_HERE / "post-create.sh", _HERE / "post-start.sh")
@@ -393,12 +404,11 @@ class TestConfiguredExtensions(unittest.TestCase):
 
 
 class TestPinnedShellcheck(unittest.TestCase):
-    """One binary and one pin across the Dockerfile, devcontainer.json and ci.yml.
+    """The editor extension runs the shellcheck the Dockerfile installs.
 
-    Each reference fails quietly on its own: a wrong `executablePath` makes the extension fail
-    to spawn, so the editor shows no diagnostics and no error worth noticing, and a version
-    restated in ci.yml drifts from the container's, which makes whether a finding exists depend
-    on where you looked. Neither shows up in a build or a green run.
+    A wrong `executablePath` makes the extension fail to spawn, so the editor shows no
+    diagnostics and no error worth noticing. CI's half of the pin is
+    TestCiInstallsTheDevcontainerPins.
     """
 
     @classmethod
@@ -406,7 +416,6 @@ class TestPinnedShellcheck(unittest.TestCase):
         cls.dockerfile = _DOCKERFILE.read_text(encoding="utf-8")
         config = json.loads(strip_jsonc(_DEVCONTAINER_JSON.read_text(encoding="utf-8")))
         cls.settings = config["customizations"]["vscode"]["settings"]
-        cls.workflow = _CI_WORKFLOW.read_text(encoding="utf-8")
 
     def test_the_extension_points_at_the_binary_the_dockerfile_installs(self):
         # Pulled out rather than matched in place, so a mismatch reports two paths instead of
@@ -420,27 +429,78 @@ class TestPinnedShellcheck(unittest.TestCase):
             "installs shellcheck",
         )
 
-    def test_ci_reads_the_pin_instead_of_restating_it(self):
-        # assertTrue, not assertIn: a failing assertIn renders the whole workflow as the
-        # haystack, same reason the path above is pulled out before comparing.
+
+class TestCiInstallsTheDevcontainerPins(unittest.TestCase):
+    """CI's lint gates run the Dockerfile's pinned binaries, read through one composite action.
+
+    A version restated in CI drifts from the container's, so whether a finding exists depends on
+    where you looked; a gate that installs nothing lints under the runner image's own copy, which
+    is the same drift with no restated version to grep for. Both stay green.
+    """
+
+    _ACTION_REF = "./.github/actions/install-pinned-release-binary"
+    # What each lint gate must install. actionlint needs shellcheck too, for its `run:` blocks.
+    _GATES = (("shellcheck", ["shellcheck"]), ("actionlint", ["shellcheck", "actionlint"]))
+    _ARCHES = ("AMD64", "ARM64")
+
+    @classmethod
+    def setUpClass(cls):
+        cls.dockerfile = _DOCKERFILE.read_text(encoding="utf-8")
+        cls.ci_jobs = yaml.safe_load(_CI_WORKFLOW.read_text(encoding="utf-8"))["jobs"]
+        cls.action = _INSTALL_PINNED_ACTION.read_text(encoding="utf-8")
+        cls.script = _INSTALL_PINNED_SCRIPT.read_text(encoding="utf-8")
+        # Every caller in every workflow, so a new one is covered without an edit here.
+        cls.callers = {}
+        for workflow in sorted(_WORKFLOWS_DIR.glob("*.y*ml")):
+            jobs = yaml.safe_load(workflow.read_text(encoding="utf-8")).get("jobs", {})
+            for job, body in jobs.items():
+                steps = [st for st in body.get("steps", []) if st.get("uses") == cls._ACTION_REF]
+                if steps:
+                    cls.callers[(workflow.name, job)] = steps
+
+    def test_each_gate_installs_its_pinned_tools(self):
+        for job, tools in self._GATES:
+            with self.subTest(job=job):
+                steps = self.callers.get(("ci.yml", job), [])
+                self.assertEqual([step["with"]["tool"] for step in steps], tools)
+
+    def test_every_installed_tool_is_pinned_and_known_to_the_script(self):
+        tools = {step["with"]["tool"] for steps in self.callers.values() for step in steps}
+        self.assertTrue(tools, "no job installs anything through the action")
+        for tool in sorted(tools):
+            with self.subTest(tool=tool):
+                self.assertRegex(self.dockerfile, rf"(?m)^ARG {tool.upper()}_VERSION=\S")
+                for arch in self._ARCHES:
+                    self.assertRegex(self.dockerfile, rf"(?m)^ARG {tool.upper()}_SHA512_{arch}=\S")
+                self.assertRegex(
+                    self.script, rf"(?m)^\s*{re.escape(tool)}\)", f"no release layout for {tool}"
+                )
+
+    def test_the_script_reads_the_pin_and_verifies_it(self):
+        for needle in (
+            '"s/^ARG ${prefix}_VERSION=//p"',
+            '"s/^ARG ${prefix}_SHA512_${pin_arch}=//p"',
+            "sha512sum -c -",
+        ):
+            # assertTrue, not assertIn: a failing assertIn renders the whole file.
+            self.assertTrue(needle in self.script, f"the install script no longer has {needle}")
         self.assertTrue(
-            "ARG SHELLCHECK_VERSION=" in self.workflow,
-            "ci.yml no longer derives the shellcheck version from the Dockerfile",
+            '"${GITHUB_ACTION_PATH}/install.sh"' in self.action,
+            "the action no longer runs the tracked script the shellcheck job lints",
         )
-        self.assertTrue(
-            "ARG SHELLCHECK_SHA512_AMD64=" in self.workflow,
-            "ci.yml no longer derives the shellcheck digest from the Dockerfile",
-        )
-        self.assertTrue(
-            "sha512sum -c -" in self.workflow,
-            "ci.yml installs shellcheck without checking it against the Dockerfile's digest",
-        )
-        restated = re.findall(r"shellcheck-v\d+\.\d+", self.workflow)
-        self.assertEqual(
-            restated,
-            [],
-            "ci.yml names a shellcheck version of its own; it must read the Dockerfile's ARG",
-        )
+
+    def test_no_version_is_restated(self):
+        # Any x.y.z literal, not just `tool-vX.Y`: `version="v0.11.0"` restates a pin as surely.
+        # Workflow text is read from parsed steps, so a `uses:` SHA's `# v7.0.1` comment is not.
+        literal = re.compile(r"v?\d+\.\d+\.\d+")
+        sources = [("the action", self.action), ("install.sh", self.script)]
+        for job, _ in self._GATES:
+            for step in self.ci_jobs[job]["steps"]:
+                for value in [step.get("run", ""), *step.get("with", {}).values()]:
+                    sources.append((f"ci.yml:{job}", str(value)))
+        for name, text in sources:
+            with self.subTest(source=name):
+                self.assertEqual(literal.findall(text), [], f"{name} restates a version")
 
 
 def renovate_regex(pattern: str) -> re.Pattern:
@@ -757,6 +817,74 @@ def image_references(instructions: list[tuple[str, str]]) -> list[str]:
         if alias:
             stages.add(alias.lower())
     return images
+
+
+class TestSmokeTestChecksTheUvVersion(unittest.TestCase):
+    """The smoke test fails when the uv it runs is not the version the Dockerfile's tag names.
+
+    The pin test below holds both halves present; this holds them in agreement, which only a
+    built image can show. The block is run as written, against the real Dockerfile and a stub uv,
+    and found by its code rather than its comment, so rewording the comment cannot hide it.
+    """
+
+    _BLOCK_RE = re.compile(
+        r"^( *)want=\"\$\(sed -n 's\|\^COPY --from=ghcr\.io/astral-sh/uv:.*?^\1fi$",
+        re.MULTILINE | re.DOTALL,
+    )
+
+    def run_block(self, reported: str, dockerfile: str) -> subprocess.CompletedProcess:
+        block = self._BLOCK_RE.search(_DEVCONTAINER_WORKFLOW.read_text(encoding="utf-8"))
+        self.assertIsNotNone(block, "devcontainer.yml's smoke test no longer checks uv's version")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / ".devcontainer").mkdir()
+            (root / ".devcontainer/Dockerfile").write_text(dockerfile, encoding="utf-8")
+            uv = root / "bin/uv"
+            uv.parent.mkdir()
+            uv.write_text(f"#!/bin/sh\necho 'uv {reported} (x86_64-unknown-linux-musl)'\n")
+            uv.chmod(uv.stat().st_mode | stat.S_IXUSR)
+            return subprocess.run(
+                ["bash", "-euo", "pipefail", "-c", textwrap.dedent(block.group(0))],
+                cwd=root,
+                capture_output=True,
+                text=True,
+                env={**os.environ, "PATH": f"{uv.parent}{os.pathsep}{os.environ['PATH']}"},
+            )
+
+    def pinned_tag(self) -> str:
+        """The tag as the image-pin test reads it, ARGs resolved, rather than another copy of the
+        smoke test's own parse, so a uv line the sed cannot read fails here instead of agreeing."""
+        dockerfile = _DOCKERFILE.read_text(encoding="utf-8")
+        uv = [
+            image
+            for image in image_references(dockerfile_instructions(dockerfile))
+            if image.startswith("ghcr.io/astral-sh/uv:")
+        ]
+        self.assertEqual(len(uv), 1, f"expected one uv image reference, got {uv}")
+        return uv[0].removeprefix("ghcr.io/astral-sh/uv:").partition("@")[0]
+
+    def test_the_pinned_version_passes(self):
+        done = self.run_block(self.pinned_tag(), _DOCKERFILE.read_text(encoding="utf-8"))
+        self.assertEqual(done.returncode, 0, done.stderr)
+
+    def test_another_version_fails(self):
+        done = self.run_block("0.0.1", _DOCKERFILE.read_text(encoding="utf-8"))
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn(f"pins '{self.pinned_tag()}'", done.stderr)
+
+    def test_a_dockerfile_it_cannot_read_fails(self):
+        """A reworded COPY line must not leave an empty expectation that nothing is held to.
+
+        Against a real version the mismatch branch already fails; a uv reporting no version would
+        equal the empty expectation, and only the empty-expectation guard stops that passing.
+        """
+        tag = self.pinned_tag()
+        unreadable = f"COPY --from=ghcr.io/astral-sh/uv:{tag} /uv /usr/local/bin/\n"
+        for reported in (tag, ""):
+            with self.subTest(reported=reported):
+                done = self.run_block(reported, unreadable)
+                self.assertNotEqual(done.returncode, 0)
+                self.assertIn("pins ''", done.stderr)
 
 
 class TestImageReferencesArePinned(unittest.TestCase):
