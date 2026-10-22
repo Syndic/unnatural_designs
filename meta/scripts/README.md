@@ -140,8 +140,9 @@ stays green, so three platform runners and a coverage run would otherwise spend 
 an answer `MODULE.bazel.lock freshness` had already called stale — which is what Renovate's first
 push produces on every bump it cannot regenerate for itself. It fails a Bazel job in that workflow
 classified neither as gated nor as deliberately beside the gate, and carries the cost reason for
-each. Nothing in it is enforcement: the gate fires by leaving the matrix `skipped`, and the fan-in
-that refuses `skipped` in its place is the manifest test's.
+each. Nothing in it is enforcement: the matrix's `skipped` is refused by the fan-in over it, which
+is the manifest test's, and `Coverage`'s own `skipped` reads as a pass while the merge stays blocked
+by the freshness check that failed.
 
 `test_ci_enforcement_manifest.py` has no script half either, and is the one home for what every
 required check, and every fan-in on a required path, needs across every workflow that runs on
