@@ -158,8 +158,8 @@ check.
 - **A blocking job must require only blocking jobs**, which is the one rule covering both
   directions: a required check unhooked from `needs` to parallelise it, and a non-required job
   pulled *into* a required job's `needs` so its failure now takes a merge gate down. Direction is
-  easy to invert when reading a workflow — `Coverage` sitting *downstream* of a required check is
-  fine, and what the rule forbids is `Coverage` appearing inside one's `needs:`.
+  easy to invert when reading a workflow — `Coverage upload` sitting *downstream* of a required
+  check is fine, and what the rule forbids is `Coverage upload` appearing inside one's `needs:`.
 
 ## A required check cannot be filtered at the trigger
 
@@ -363,14 +363,14 @@ configuration that runs CodeQL with no workflow file in the repo. Load-bearing f
   which is why extraction errors alone cannot answer "was all of it read".
 - **Extraction errors used to warn.** The reasoning was that this repo cannot hasten an upstream
   fix, so a hard gate would hand the merge queue to GitHub's bundle release schedule from the next
-  Go bump onward. That trades the wrong way: a partly-extracted analysis is indistinguishable from
-  a clean one, so it is worse than a clean failure — a security control failing open. What makes
+  Go bump onward. That trades the wrong way: a partly-extracted analysis is indistinguishable from a
+  clean one, so it is worse than a clean failure — a security control failing open. What makes
   failing affordable is removing the cause rather than tolerating it: `renovate.json` groups Go
-  **minor** bumps into their own `go-minor` PR (that rule must stay *after* the `all-minor-patch`
-  catch-all, since later matching rules win), so a Go release that outruns the extractor is
-  blocked in its own PR instead of degrading main. Go *patch* bumps stay in the batch — the
-  language-version gate the extractor trips on moves on minors — though a patch touching stdlib
-  internals could in principle trip it too, which the same failure now catches.
+  **minor** bumps into their own `go-minor` PR (after the `all-minor-patch` catch-all, since later
+  matching rules win; `//meta/scripts:test_renovate_grouping` holds the order), so a Go release that
+  outruns the extractor is blocked in its own PR instead of degrading main. Go *patch* bumps stay in
+  the batch — the language-version gate the extractor trips on moves on minors — though a patch
+  touching stdlib internals could in principle trip it too, which the same failure now catches.
   Measured lag from a Go minor's tag to the CodeQL release supporting it: 5.8 days (1.25.0),
   9.6 days (1.26.0), 6.6 days (1.27.0), plus GitHub's own rollout to runners on top.
 - **Two feature overrides are pinned on the job, and they are load-bearing.**
@@ -648,12 +648,12 @@ Two conventions make that work, and both are load-bearing:
 Note the lock is keyed by the *reference string*, so a version bump restales every entry rather than
 just the one field — which is why the regeneration is a full `devcontainer upgrade` and not a patch.
 
-Python is deliberately **not** a devcontainer feature: that feature compiles CPython from source
-(~2 min per build). The Dockerfile installs a prebuilt uv-managed interpreter instead — `ARG
-PYTHON_VERSION` (Renovate-tracked via the Dockerfile custom manager, `depName=python`, so it stays
-in the "Language toolchain SDKs" group alongside `//:.python-version`, `MODULE.bazel`, and
-`pyproject.toml`'s `requires-python`) — and
-symlinks `python3`/`python` onto PATH. The CI `Devcontainer` job caches the built image in GHCR
+Python is deliberately **not** a devcontainer feature: that feature compiles CPython from source (~2
+min per build). The Dockerfile installs a prebuilt uv-managed interpreter instead — `ARG
+PYTHON_VERSION` (Renovate-tracked via the Dockerfile custom manager, `depName=python`, so it moves
+with `//:.python-version`, `MODULE.bazel`, and `pyproject.toml`'s `requires-python` — minors in the
+"Python language version" group, majors in "Language toolchain SDKs") — and symlinks
+`python3`/`python` onto PATH. The CI `Devcontainer` job caches the built image in GHCR
 (`imageName`/`cacheFrom`, `push: filter` seeds it on pushes to main), so the feature layers are
 reused across runs rather than rebuilt cold; this needs the workflow's `packages: write`.
 

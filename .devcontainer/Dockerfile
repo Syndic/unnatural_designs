@@ -64,10 +64,11 @@ RUN uv tool install --no-cache "check-jsonschema==${CHECK_JSONSCHEMA_VERSION}"
 # `python` on PATH for the smoke test, the ms-python extension, and interactive use.
 # `--no-project` ignores any workspace .venv; `--managed-python` resolves the uv copy.
 # A copy of //:.python-version, not a second source: the build context never COPYs the workspace,
-# so this ARG cannot read that file. Renovate keeps the two level (Language toolchain SDKs) and
-# //meta/scripts:check_python_version fails the build if they ever disagree.
+# so this ARG cannot read that file. Renovate moves them together (Python language version for
+# minors, Language toolchain SDKs for majors) and //meta/scripts:check_python_version fails the
+# build if they ever disagree.
 # renovate: datasource=python-version depName=python
-ARG PYTHON_VERSION=3.15
+ARG PYTHON_VERSION=3.14
 RUN uv python install "${PYTHON_VERSION}" \
     && ln -sfn "$(uv python find --no-project --managed-python "${PYTHON_VERSION}")" /usr/local/bin/python3 \
     && ln -sfn /usr/local/bin/python3 /usr/local/bin/python

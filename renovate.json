@@ -92,6 +92,12 @@
       "groupSlug": "go-minor"
     },
     {
+      "matchDepNames": [ "python" ],
+      "matchUpdateTypes": [ "minor" ],
+      "groupName": "Python language version",
+      "groupSlug": "python-minor"
+    },
+    {
       "matchManagers": [ "devcontainer" ],
       "pinDigests": false
     },
