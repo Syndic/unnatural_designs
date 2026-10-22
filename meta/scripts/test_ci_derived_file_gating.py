@@ -19,11 +19,14 @@ minutes each confirming an answer nobody doubted, on an input a cheap job has al
 stale. The ordering buys runner time and a quieter failure history; it does not change any
 verdict, and it does not make the race against the helper's commit winnable.
 
-Two things keep the gate from reading as a pass once it fires, and both are asserted elsewhere.
-`build-and-test-per-target` is a matrix, so a failed upstream leaves it `skipped` — which branch
-protection counts as success — and `build and test (all targets)` is the strict fan-in that
-refuses `skipped` in its place. That `always()` and that strictness are
-`//meta/scripts:test_ci_enforcement_manifest`'s, along with the check names themselves.
+What the gate reports when it fires is worth being exact about, because a failed upstream leaves
+its dependents `skipped` and branch protection counts `skipped` as a pass — .claude/CLAUDE.md "A
+required check cannot be filtered at the trigger". For the matrix that is answered: `build and
+test (all targets)` is the strict fan-in that refuses `skipped` in its place, and that `always()`
+and that strictness are `//meta/scripts:test_ci_enforcement_manifest`'s. `Coverage` has no fan-in
+and so does go green on a skip; what blocks the merge there is the freshness check's own failure.
+That is the shape every `needs:` edge on a required job has, and this file adds an edge rather
+than the shape.
 
 Who is behind the gate and who is beside it is a cost judgement, which is why both halves are
 recorded with reasons rather than derived from a rule. A Bazel job added without an entry fails
@@ -68,8 +71,8 @@ _GATED = {
     ),
     "coverage": (
         "A fourth full build, and `bazel coverage //...` is slower than the test run it repeats. "
-        "Gated transitively through `build-and-test-all` rather than by an edge of its own, since "
-        "`Coverage` is not required and must not appear in a required job's `needs:`."
+        "Shares the platform builds' anchored `needs:` list rather than carrying an edge of its "
+        "own, so the gate reaches it by alias and the two cannot drift apart."
     ),
 }
 

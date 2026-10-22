@@ -133,13 +133,14 @@ check.
   grew the ruleset instead.
 - **Free of enforcement consequence is not the same as unconstrained**, and one cost edge is
   asserted: an expensive Bazel job must not start against a derived file a cheap check has already
-  called stale. `build-and-test-per-target` therefore `needs` `bazel-lock-check` as well as
-  `modules-check`, and `//meta/scripts:test_ci_derived_file_gating` fails a Bazel job in ci.yml
-  that is neither gated nor recorded as deliberately beside the gate — `gazelle-check` is beside
-  it, since serialising two jobs of the same cost charges every green PR their sum to save a
-  stale-lock PR their maximum. That gate fires by leaving the matrix `skipped`, and `Build and
-  test (all targets)` is the strict fan-in that refuses `skipped` in its place, so nothing there
-  moves what must pass.
+  called stale. `bazel-lock-check` therefore sits in the anchored `needs:` list that
+  `build-and-test-per-target` declares and `coverage` aliases, beside `modules-check`, and
+  `//meta/scripts:test_ci_derived_file_gating` fails a Bazel job in ci.yml that is neither gated
+  nor recorded as deliberately beside the gate — `gazelle-check` is beside it, since serialising
+  two jobs of the same cost charges every green PR their sum to save a stale-lock PR their
+  maximum. Nothing there moves what must pass: the matrix's `skipped` is refused by `Build and
+  test (all targets)`, and `Coverage`'s own `skipped` reads as a pass while the merge stays
+  blocked by the freshness check that failed.
 - **A matrix job is requirable only through a fan-in**, since its own check name carries the row
   that produced it. The fan-in carries `if: always()` for the reason the section below gives: a
   failed matrix would otherwise skip it, and a skipped required check reads as a pass.
