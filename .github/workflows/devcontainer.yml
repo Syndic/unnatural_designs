@@ -226,7 +226,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           # renovate: datasource=node-version depName=node
-          node-version: "24.22.0"
+          node-version: "24.22.1"
 
       - name: Check the feature lock is in sync
         env:
