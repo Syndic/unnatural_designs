@@ -115,7 +115,7 @@ jobs:
       # PEP 758's parenthesis-less `except`. The runner's stock python3 lags it and SyntaxErrors,
       # so read //:.python-version the same way ci.yml / security.yml do. (The ratify step runs
       # under `uv run`, which already uses that interpreter; this covers the bare-python3 steps.)
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version-file: .python-version
 
@@ -139,7 +139,7 @@ jobs:
       # A skipped step's outputs are empty, so `steps.ratify.outputs.conflicts == ''`
       # reads as "no conflicts" on Bazel-only PRs — which is what the gates below want.
 
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         if: steps.changed.outputs.python == 'true'
 
       - name: Ratify Renovate's proposals via uv
@@ -267,7 +267,7 @@ jobs:
         if: steps.changed.outputs.devcontainer == 'true' && steps.ratify.outputs.conflicts == ''
         with:
           # renovate: datasource=node-version depName=node
-          node-version: "24.22.0"
+          node-version: "24.22.1"
 
       # `--ignore-scripts` because nothing here needs them: the package publishes no install
       # script (`hasInstallScript` is absent on the registry entry), so this is free hardening on
