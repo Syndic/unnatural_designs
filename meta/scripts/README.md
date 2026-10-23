@@ -134,15 +134,10 @@ its dependents, and a skipped required check reads as a pass — and that a fork
 action is refused rather than skipped.
 
 `test_ci_derived_file_gating.py` has no script half either, and is the scheduling companion to the
-paragraph below. It holds ci.yml's expensive Bazel jobs behind the checks that read the derived
-files they build over: `--lockfile_mode=update` rewrites a stale `MODULE.bazel.lock` in memory and
-stays green, so three platform runners and a coverage run would otherwise spend minutes confirming
-an answer `MODULE.bazel.lock freshness` had already called stale — which is what Renovate's first
-push produces on every bump it cannot regenerate for itself. It fails a Bazel job in that workflow
-classified neither as gated nor as deliberately beside the gate, and carries the cost reason for
-each. Nothing in it is enforcement: the matrix's `skipped` is refused by the fan-in over it, which
-is the manifest test's, and `Coverage`'s own `skipped` reads as a pass while the merge stays blocked
-by the freshness check that failed.
+paragraph below: it holds ci.yml's expensive Bazel jobs behind the freshness checks for the derived
+files they build over, and fails a Bazel job classified neither as gated nor as beside the gate.
+Why that gate exists, and what it costs, is `.claude/CLAUDE.md`'s under "Enforcement lives in the
+ruleset, not in `needs`".
 
 `test_ci_enforcement_manifest.py` has no script half either, and is the one home for what every
 required check, and every fan-in on a required path, needs across every workflow that runs on

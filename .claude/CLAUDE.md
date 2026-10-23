@@ -131,16 +131,21 @@ check.
   adding an edge to save a runner, is a scheduling change and never an enforcement change. That
   freedom is what the split buys, and it is why #311 left every `needs` edge exactly as it was and
   grew the ruleset instead.
-- **Free of enforcement consequence is not the same as unconstrained**, and one cost edge is
-  asserted: an expensive Bazel job must not start against a derived file a cheap check has already
-  called stale. `bazel-lock-check` therefore sits in the anchored `needs:` list that
-  `build-and-test-per-target` declares and `coverage` aliases, beside `modules-check`, and
-  `//meta/scripts:test_ci_derived_file_gating` fails a Bazel job in ci.yml that is neither gated
-  nor recorded as deliberately beside the gate — `gazelle-check` is beside it, since serialising
-  two jobs of the same cost charges every green PR their sum to save a stale-lock PR their
-  maximum. Nothing there moves what must pass: the matrix's `skipped` is refused by `Build and
-  test (all targets)`, and `Coverage`'s own `skipped` reads as a pass while the merge stays
-  blocked by the freshness check that failed.
+- **The anchored `&expensive-work-gate` list is a cost gate, not a dependency list.**
+  `build-and-test-per-target` declares it and `coverage` aliases it, and it holds both until cheap
+  required checks have passed — because a commit failing one cannot merge, not because the build
+  reads its output: `ruff` and `ty` are members with no input relationship to the build at all.
+  `bazel-lock-check` is a member on that footing. `--lockfile_mode=update` means a stale lock does
+  not change what the build answers, only whether the commit can merge, so the win is runner time
+  on an unmergeable commit and nothing else.
+  `//meta/scripts:test_ci_derived_file_gating` holds the derived-file half: every gated job waits
+  for every freshness check, and every Bazel job in ci.yml is either gated or recorded as beside
+  the gate. `gazelle-check` is beside it because it is the gate's long pole — behind the lock
+  check it would add that check's time to every green PR, while beside it the lock check finishes
+  first and costs nothing. A gate that fires does add a red: `Build and test (all targets)` refuses the
+  skipped matrix, so a lock-only stale commit shows a build failure for a build that never ran,
+  while `Coverage`'s own `skipped` reads as a pass and the freshness check is what blocks the
+  merge.
 - **A matrix job is requirable only through a fan-in**, since its own check name carries the row
   that produced it. The fan-in carries `if: always()` for the reason the section below gives: a
   failed matrix would otherwise skip it, and a skipped required check reads as a pass.
@@ -285,9 +290,9 @@ concurrency:
 
   For the cheap jobs the supersession is a coin flip rather than a win: ci.yml concluded in
   80–106s over that window, which overlaps the helper's distribution almost entirely — 15 of the
-  20 runs were cancelled and 5 concluded first, red against a tree that was stale on purpose.
-  Ordering answers that where the concurrency group cannot; see "Enforcement lives in the ruleset,
-  not in `needs`".
+  20 runs were cancelled and 5 concluded first, red against a tree that was stale on purpose. In
+  all five `Module completeness check` was red too, so the expensive jobs had already been held
+  back by the gate under "Enforcement lives in the ruleset, not in `needs`".
 - **Everything else keys on `run_id`**, which is unique per run, so non-PR runs are always alone in
   their group: nothing cancels them and — the subtler half — nothing *queues* behind them either.
   A shared non-PR group would have made a push to main wait on an in-progress weekly security scan
