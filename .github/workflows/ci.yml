@@ -302,10 +302,13 @@ jobs:
   build-and-test-per-target:
     name: Build and test (${{ matrix.platform }})
     runs-on: ${{ matrix.runner }}
-    # Anchored: the gate every expensive Bazel job waits on, aliased by `coverage` below. Lint via
-    # its fan-in, since a non-matrix job needing the matrix would read as a second fan-in.
+    # The anchored gate every expensive Bazel job waits on, aliased by `coverage` below — a cost
+    # gate, not a dependency list; see .claude/CLAUDE.md "Enforcement lives in the ruleset, not in
+    # `needs`". Lint via its fan-in, since a non-matrix job needing the matrix would read as a
+    # second fan-in.
     needs: &expensive-work-gate [
       gazelle-check,
+      bazel-lock-check,
       modules-check,
       go-work-check,
       python-version-check,
