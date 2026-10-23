@@ -228,8 +228,8 @@ py_test(
     ],
 )
 
-# The one scheduling property in ci.yml worth asserting: an expensive Bazel job waits for the check
-# that reads the derived file it builds over. Enforcement is the manifest's; this one is cost.
+# Holds ci.yml's expensive Bazel jobs behind the derived-file freshness checks; scheduling, not
+# enforcement.
 py_test(
     name = "test_ci_derived_file_gating",
     size = "small",

@@ -1,57 +1,33 @@
 """Holds ci.yml's expensive Bazel jobs behind the checks that say a derived file is stale.
 
-Scheduling, not enforcement. `needs:` decides what *runs* and the ruleset decides what must *pass*
-— .claude/CLAUDE.md "Enforcement lives in the ruleset, not in `needs`" — so nothing here makes a
-check binding, and the closure rule that keeps a required job from depending on a non-required one
-is `//meta/scripts:test_ci_enforcement_manifest`'s. What this file adds is the one scheduling
-property that is worth asserting rather than leaving to whoever edits the graph next.
+Scheduling, not enforcement: why the gate exists, what it costs and what it reports when it fires
+are .claude/CLAUDE.md's, under "Enforcement lives in the ruleset, not in `needs`". This file holds
+the derived-file half of it — every gated job waits, directly or through another job, for every
+freshness check — and accounts for every Bazel job in both directions, so one added later arrives
+classified rather than ungated and an entry for a job that stopped running Bazel is flagged.
 
-The property: **a job that pays for a stale derived file many times over does not start until the
-check that reads that file has reported.** Renovate is what makes the case concrete. Mend-hosted
-Renovate cannot run `uv lock`, `bazel mod deps` or `go mod tidy`, so it pushes bumped manifests
-with the derived files left behind and `renovate-derived-files.yml` commits the regenerated copies
-back a minute or two later. Every workflow fires on the first push, against a tree whose derived
-files are legitimately stale.
-
-What makes that worth ordering is that the builds do not notice. `--lockfile_mode=update` rewrites
-`MODULE.bazel.lock` in memory and stays green, so three platform runners plus coverage spend
-minutes each confirming an answer nobody doubted, on an input a cheap job has already called
-stale. The ordering buys runner time and a quieter failure history; it does not change any
-verdict, and it does not make the race against the helper's commit winnable.
-
-What the gate reports when it fires is worth being exact about, because a failed upstream leaves
-its dependents `skipped` and branch protection counts `skipped` as a pass — .claude/CLAUDE.md "A
-required check cannot be filtered at the trigger". For the matrix that is answered: `build and
-test (all targets)` is the strict fan-in that refuses `skipped` in its place, and that `always()`
-and that strictness are `//meta/scripts:test_ci_enforcement_manifest`'s. `Coverage` has no fan-in
-and so does go green on a skip; what blocks the merge there is the freshness check's own failure.
-That is the shape every `needs:` edge on a required job has, and this file adds an edge rather
-than the shape.
-
-Who is behind the gate and who is beside it is a cost judgement, which is why both halves are
-recorded with reasons rather than derived from a rule. A Bazel job added without an entry fails
-`AccountingTest` — the same default-to-visible posture the enforcement manifest takes, one axis
-over.
+Detection reads the workflow text, so a job that reaches Bazel only through a script it calls is
+invisible here. Over-detection costs an entry in one of the lists below; under-detection costs the
+gate, silently, for exactly the job that was added without thinking about it — so both signals
+are unioned and each is matched broadly.
 """
 
 import re
 import unittest
 from pathlib import Path
 
-import yaml
-from meta.scripts._workflows import job_needs
+from meta.scripts._workflows import job_needs, step_containers
 
-# Not .resolve(): the workflow is a cross-package data dep, so it lives in the runfiles tree beside
-# this file rather than at the source path a resolved symlink would lead back to.
+# Left unresolved because the workflow is a cross-package data dep, so it lives in the runfiles tree
+# beside this file rather than at the source path a resolved symlink would lead back to.
 _WORKFLOW = Path(__file__).parent.parent.parent / ".github/workflows/ci.yml"
-_JOBS = yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8"))["jobs"]
+_CONTAINERS = step_containers(_WORKFLOW)
+_JOBS = {container.label: container.scope for container in _CONTAINERS}
 
-# Two signals, unioned rather than picked between, because each misses a job the other catches: a
-# Bazel invocation that needs no remote cache, and a cache setup whose Bazel call is spelled some
-# other way. Over-detection costs an entry in one of the lists below; under-detection costs the
-# gate, silently, for exactly the job that was added without thinking about it.
-_BAZEL_RE = re.compile(r"\bbazel\b")
-_BAZEL_SETUP = "setup-bazel-remote"
+# A `bazel` or `bazelisk` call in a `run:`, or any setup-bazel action — the repo's own
+# `setup-bazel-remote` and the upstream `bazel-contrib/setup-bazel` both match.
+_BAZEL_RE = re.compile(r"\bbazel(isk)?\b")
+_BAZEL_SETUP = "setup-bazel"
 
 # The jobs that read a derived file and fail when it is not what its generator would produce. Both
 # are required, which is what lets a required job depend on them at all. The value names the file,
@@ -61,13 +37,12 @@ _FRESHNESS_JOBS = {
     "modules-check": "requirements_lock.txt, against uv.lock",
 }
 
-# Must sit behind every freshness job, transitively. The reason is always cost: a build that runs
-# per platform, or a measurement downstream of one.
+# Must sit behind every freshness job, transitively. The reason is always cost: a full Bazel build,
+# paid once per platform or once more for coverage.
 _GATED = {
     "build-and-test-per-target": (
-        "Three platform runners per PR, each a full `bazel test //...`. The multiplier is the "
-        "whole argument — one cheap job already knows the answer is being computed over a stale "
-        "input, and `--lockfile_mode=update` means the build will not say so."
+        "Three platform runners per PR, each a full `bazel test //...`, spent on a commit a cheap "
+        "required check has already ruled unmergeable. The multiplier is the whole argument."
     ),
     "coverage": (
         "A fourth full build, and `bazel coverage //...` is slower than the test run it repeats. "
@@ -79,32 +54,33 @@ _GATED = {
 # Bazel jobs deliberately beside the gate rather than behind it, one reason each.
 _AHEAD_OF_THE_GATE = {
     "gazelle-check": (
-        "One runner, and roughly as cheap as the freshness checks themselves. Serialising it "
-        "behind one of them would delay `build-and-test-per-target` by their sum instead of "
-        "their maximum, since it waits on gazelle too — so the gate would cost the common green "
-        "PR more than the stale-lock PR saves. A stale `use_repo` can move gazelle's answer, and "
-        "when it does both jobs go red together, which is the clearer report anyway."
+        "The gate's long pole: a minute or more, where the lock check takes well under one. "
+        "Behind the lock check it would add that check's time to every green PR; beside it, the "
+        "lock check finishes inside gazelle's run and the gate costs a green PR nothing."
     ),
 }
 
 
-def bazel_jobs() -> dict[str, dict]:
+def invokes_bazel(step: dict) -> bool:
+    """Whether one step runs Bazel or sets it up, by either signal."""
+    return bool(_BAZEL_RE.search(step.get("run") or "")) or _BAZEL_SETUP in (step.get("uses") or "")
+
+
+def bazel_jobs() -> set[str]:
     """Every job in ci.yml that invokes Bazel, and so reads MODULE.bazel.lock."""
-    found = {}
-    for job_id, body in _JOBS.items():
-        steps = body.get("steps") or []
-        if any(_BAZEL_RE.search(step.get("run", "") or "") for step in steps) or any(
-            _BAZEL_SETUP in (step.get("uses", "") or "") for step in steps
-        ):
-            found[job_id] = body
-    return found
+    return {
+        container.label
+        for container in _CONTAINERS
+        if any(isinstance(step, dict) and invokes_bazel(step) for step in container.steps)
+    }
 
 
 def upstream_of(job_id: str) -> set[str]:
     """Every job reachable from `job_id` through `needs:`, however many hops away.
 
-    Transitive rather than direct on purpose: `coverage` is gated through `build-and-test-all`,
-    and an edge added to shorten a chain is a scheduling change this file has no business failing.
+    Transitive rather than direct on purpose: an edge that reaches a job through another job's
+    `needs:` gates it just as well, and lengthening or shortening a chain is a scheduling change
+    this file has no business failing.
     """
     seen: set[str] = set()
     pending = list(job_needs(_JOBS[job_id]))
@@ -175,6 +151,20 @@ class AccountingTest(unittest.TestCase):
                     "exactly one: behind the gate if it pays for a stale derived file more than "
                     "the freshness checks cost, beside it with the reason if not.",
                 )
+
+    def test_every_classified_job_still_invokes_bazel(self):
+        """The other direction: an entry for a job that stopped running Bazel asserts nothing."""
+        detected = bazel_jobs()
+        for label, entries in (("gated", _GATED), ("ahead of the gate", _AHEAD_OF_THE_GATE)):
+            for job_id in sorted(entries):
+                with self.subTest(job=job_id, list=label):
+                    self.assertIn(
+                        job_id,
+                        detected,
+                        f"`{job_id}` is recorded as {label}, but no longer invokes Bazel by either "
+                        "signal. Remove the entry — or, if it reaches Bazel some way this file "
+                        "cannot see, teach `invokes_bazel` rather than keeping a stale entry.",
+                    )
 
     def test_no_freshness_check_is_gated_on_itself(self):
         """A gate behind the gate never reports, and a check that never reports blocks every PR."""
