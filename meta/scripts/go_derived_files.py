@@ -63,3 +63,6 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+# Temporary: a type error only ty sees, to watch the builds run while it fails.
+_TY_PROBE: int = "not an int"
