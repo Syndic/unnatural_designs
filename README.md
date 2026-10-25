@@ -283,10 +283,10 @@ action: one that touches it fails the check, while one that touches nothing ther
 
 A check blocks a merge because the `main` ruleset names it in its required-status-check list.
 Nothing else does: the `needs:` edges above decide what *runs*, never what must *pass*. In `ci.yml`
-they split the jobs into two classes - *metadata* checks, which compare the tree's declarations
-(manifests, lock files, registration, layout) and never parse source, and *content* checks, which
-read code or build it - and every content check waits for every metadata check, so no real work
-starts on a tree whose declarations are already known to be broken. A check
+they hold every content check until every metadata check has passed, so no real work starts on a
+tree whose declarations are already known to be broken - the two classes and the rule are in
+[`.claude/CLAUDE.md`](.claude/CLAUDE.md), under "Enforcement lives in the ruleset, not in `needs`".
+A check
 unhooked from `needs` to parallelise it keeps gating; a check absent from the ruleset gates nothing
 however many jobs wait on it.
 

@@ -36,7 +36,7 @@ jobs:
           buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
       - run: |
           set -euo pipefail
-          # `--config=ci` for consistency with gazelle-check next door. It changes nothing
+          # `--config=ci` for consistency with the other Bazel jobs. It changes nothing
           # here — `mod tidy` executes no actions, so BES and remote execution are moot.
           bazel mod tidy --config=ci
           if ! git diff --exit-code -- MODULE.bazel MODULE.bazel.lock; then
@@ -120,9 +120,9 @@ jobs:
       - run: python3 meta/scripts/check_secrets_dir.py
 
   # ── Content checks: read code, or build and test it ───────────────────────────────────────
-  # Each waits on every metadata check through this anchor, and on no other content check except
-  # a fan-in's own matrix and `coverage-upload`'s artifact. //meta/scripts:test_ci_metadata_gate
-  # holds both halves.
+  # Each waits on every metadata check — through this anchor, or through the job it fans in or
+  # consumes — and on no other content check. A fan-in's `always()` is the only `if:` here.
+  # //meta/scripts:test_ci_metadata_gate holds it.
   gazelle-check:
     name: Gazelle BUILD file check
     runs-on: ubuntu-latest

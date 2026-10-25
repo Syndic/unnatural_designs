@@ -5,8 +5,10 @@ Scheduling, not enforcement: the rule, why it is drawn there and what it costs a
 shape:
 
   - every job is classified metadata or content, in both directions;
-  - every content job waits, directly or through another job, for every metadata job;
-  - no metadata job waits on anything, so one cannot skip and hide another's answer;
+  - every content job waits, directly or through another job, for every metadata job, and carries
+    no `if:` that would let it run past a failed one unless that is recorded here;
+  - no metadata job waits on anything, so one cannot skip and hide another's answer, and none
+    calls Bazel for anything but `bazel mod`;
   - a content job waits on another content job only where that edge is recorded here.
 
 Classification is a recorded decision rather than a derived one. Whether a job parses source is not
@@ -14,10 +16,11 @@ reliably readable from workflow text, so each entry says what the job compares o
 the enforcement manifest's lists carry a reason each.
 """
 
+import re
 import unittest
 from pathlib import Path
 
-from meta.scripts._workflows import job_needs, step_containers
+from meta.scripts._workflows import job_condition, job_needs, step_containers
 
 # Left unresolved because the workflow is a cross-package data dep, so it lives in the runfiles tree
 # beside this file rather than at the source path a resolved symlink would lead back to.
@@ -55,6 +58,21 @@ _CONTENT = {
     "coverage-upload": "the lcov artifact `coverage` produced",
 }
 
+# Content jobs allowed an `if:`. Any condition on a content job can let it run after a metadata
+# check failed — `!cancelled()` and `always()` both do — so each one is named here.
+_CONDITIONED = {
+    "golangci-lint-all": "a fan-in: `always()` is what lets it refuse a skipped matrix",
+    "build-and-test-all": "a fan-in: `always()` is what lets it refuse a skipped matrix",
+}
+
+# A metadata check may call Bazel only to resolve the module graph. Any other subcommand builds,
+# runs or queries targets, which is content work, and a job doing it here would run on a tree the
+# gate exists to refuse while every content check waited on it.
+# Not after a word character, dot, hyphen or slash, so `MODULE.bazel`, `.bazelversion` and
+# `setup-bazel` do not read as a call.
+_BAZEL_CALL = re.compile(r"(?<![\w.\-/])bazel(?:isk)?(?:\s+--\S+)*\s+([a-z][a-z-]*)")
+_METADATA_BAZEL_SUBCOMMANDS = frozenset({"mod"})
+
 # The content-to-content edges allowed, each for a reason that is not ordering for its own sake.
 _CONTENT_EDGES = {
     ("golangci-lint-all", "golangci-lint"): "a fan-in over its own matrix",
@@ -66,8 +84,9 @@ _CONTENT_EDGES = {
 def upstream_of(job_id: str) -> set[str]:
     """Every job reachable from `job_id` through `needs:`, however many hops away.
 
-    Transitive on purpose: a fan-in reaches the gate through the matrix it aggregates, and that
-    gates it just as well as an edge of its own would.
+    Transitive on purpose: a fan-in reaches the gate through the matrix it aggregates, and
+    `coverage-upload` through the job whose artifact it uploads. That orders them after the gate;
+    whether they still run when it fails is their `if:`, which `GateTest` reads separately.
     """
     seen: set[str] = set()
     pending = list(job_needs(_JOBS[job_id]))
@@ -144,6 +163,45 @@ class GateTest(unittest.TestCase):
                         f"{_METADATA[gate]} — so it can do real work on a tree whose declarations "
                         "are already known to be broken. Give it `needs: *metadata-gate`.",
                     )
+
+    def test_no_content_job_runs_past_a_failed_gate_unrecorded(self):
+        """`needs:` orders a job after the gate; an `if:` can still run it when the gate failed."""
+        for job_id in sorted(_CONTENT):
+            condition = job_condition(_JOBS[job_id])
+            if condition is None:
+                continue
+            with self.subTest(job=job_id):
+                self.assertIn(
+                    job_id,
+                    _CONDITIONED,
+                    f"`{job_id}` carries `if: {condition}`, so it can run after a metadata check "
+                    "failed — real work on a tree the gate exists to refuse. Remove the condition, "
+                    "or record why this job needs it.",
+                )
+
+    def test_every_recorded_condition_is_still_there(self):
+        """An exemption for a job that lost its `if:` is a hole waiting for the next one."""
+        for job_id, reason in sorted(_CONDITIONED.items()):
+            with self.subTest(job=job_id):
+                self.assertTrue(reason.strip(), "a recorded condition with no reason is a hole")
+                self.assertIn(job_id, _CONTENT, f"`{job_id}` is not a content job")
+                self.assertIsNotNone(
+                    job_condition(_JOBS[job_id]),
+                    f"`{job_id}` no longer carries an `if:`; remove it from _CONDITIONED",
+                )
+
+    def test_no_metadata_job_calls_bazel_beyond_mod(self):
+        """A misfiled build would run ungated, and hold every content check behind it."""
+        for job_id in sorted(_METADATA):
+            for step in _JOBS[job_id].get("steps") or []:
+                for subcommand in _BAZEL_CALL.findall(step.get("run") or ""):
+                    with self.subTest(job=job_id, subcommand=subcommand):
+                        self.assertIn(
+                            subcommand,
+                            _METADATA_BAZEL_SUBCOMMANDS,
+                            f"`{job_id}` is classified metadata but runs `bazel {subcommand}`, "
+                            "which works on targets rather than the module graph. It is content.",
+                        )
 
     def test_no_metadata_job_waits_on_anything(self):
         """A metadata check behind another would skip when it fails, and hide its own answer."""

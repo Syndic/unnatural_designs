@@ -140,10 +140,13 @@ check.
   correct. `gazelle-check` is content — it parses every import, and its answer moves with the
   module metadata the gate checks.
 
-  Every content job aliases `&metadata-gate`. Metadata jobs carry no `needs:`, so one cannot skip
-  and hide another's answer. Content jobs wait on each other only for a fan-in's own matrix or
-  `coverage-upload`'s artifact. `//meta/scripts:test_ci_metadata_gate` holds all three, and the
-  classification of every job.
+  Every content job waits on `&metadata-gate`, directly or through the job it fans in or consumes,
+  and carries no `if:` — any condition, `!cancelled()` included, can run it past a failed metadata
+  check. The two fan-ins are the exception: their `always()` is what lets them refuse a skipped
+  matrix, so they run anyway and go red. Metadata jobs carry no `needs:`, so one cannot skip and
+  hide another's answer, and call Bazel only for `bazel mod`. Content jobs wait on each other only
+  for a fan-in's own matrix or `coverage-upload`'s artifact. `//meta/scripts:test_ci_metadata_gate`
+  holds all of it, and the classification of every job.
 
   The gate means *this tree cannot be released, so do no real work on it*. Content checks are
   peers: a lint failure does not stop the build, every content failure shows in one push, and
