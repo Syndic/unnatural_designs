@@ -115,7 +115,7 @@ Two questions, deliberately decoupled:
 - **What must pass** is the `main` ruleset's required-status-check list — id 14538709, readable
   with `gh api repos/Syndic/unnatural_designs/rulesets/14538709` and writable nowhere in this tree.
 - **What runs when** is `needs:`. It expresses ordering only, and is chosen for cost and speed —
-  three platform runners are not worth spending on a tree that fails gazelle.
+  no real work starts on a tree whose metadata is already known to be broken.
 
 #311 is where the two were separated: eight checks were binding only as a side effect of sitting in
 `build-and-test-per-target`'s `needs`, and three more — `pip-audit`, `shellcheck`, `ADR number
@@ -131,21 +131,34 @@ check.
   adding an edge to save a runner, is a scheduling change and never an enforcement change. That
   freedom is what the split buys, and it is why #311 left every `needs` edge exactly as it was and
   grew the ruleset instead.
-- **The anchored `&expensive-work-gate` list is a cost gate, not a dependency list.**
-  `build-and-test-per-target` declares it and `coverage` aliases it, and it holds both until cheap
-  required checks have passed — because a commit failing one cannot merge, not because the build
-  reads its output: `ruff` and `ty` are members with no input relationship to the build at all.
-  `bazel-lock-check` is a member on that footing. `--lockfile_mode=update` means a stale lock does
-  not change what the build answers, only whether the commit can merge, so the win is runner time
-  on an unmergeable commit and nothing else.
-  `//meta/scripts:test_ci_derived_file_gating` holds the derived-file half: every gated job waits
-  for every freshness check, and every Bazel job in ci.yml is either gated or recorded as beside
-  the gate. `gazelle-check` is beside it because it is the gate's long pole — behind the lock
-  check it would add that check's time to every green PR, while beside it the lock check finishes
-  first and costs nothing. A gate that fires does add a red: `Build and test (all targets)` refuses the
-  skipped matrix, so a lock-only stale commit shows a build failure for a build that never ran,
-  while `Coverage`'s own `skipped` reads as a pass and the freshness check is what blocks the
-  merge.
+- **`ci.yml` gates content checks on metadata checks, and on nothing else.** A *metadata* check
+  verifies that the tree's declarations — manifests, lock files, workspace registration, layout —
+  agree with each other and with whatever generates them, and never parses source. A *content*
+  check reads code (source, scripts, the programs in workflow files) or builds and tests it. "Does
+  it parse source" is the line, and it splits jobs reading the same file: `modules-check` reads
+  workflow YAML for which modules are listed, `actionlint` reads it for whether its shell is
+  correct. `gazelle-check` is content — it parses every import, and its answer moves with the
+  module metadata the gate checks.
+
+  Every content job waits on `&metadata-gate`, directly or through the job it fans in or consumes,
+  and carries no `if:` — any condition, `!cancelled()` included, can run it past a failed metadata
+  check. The two fan-ins are the exception: their `always()` is what lets them refuse a skipped
+  matrix, so they run anyway and go red. Metadata jobs carry no `needs:`, so one cannot skip and
+  hide another's answer, and call Bazel only for `bazel mod`. Content jobs wait on each other only
+  for a fan-in's own matrix or `coverage-upload`'s artifact. `//meta/scripts:test_ci_metadata_gate`
+  holds all of it, and the classification of every job.
+
+  The gate means *this tree cannot be released, so do no real work on it*. Content checks are
+  peers: a lint failure does not stop the build, every content failure shows in one push, and
+  builds start once the ~30s of metadata checks pass. The costs, accepted: builds run on a push
+  whose lint failed; and a metadata failure leaves the required content checks `skipped`, which
+  reads as a pass while the failing metadata check blocks the merge and the matrix fan-ins go red.
+  A cheap-content tier ahead of the builds is deliberately absent — membership by cost drifts,
+  which is how `shellcheck` came to sit outside a gate `ruff` was in, and a check that fails often
+  in CI wants a pre-commit hook instead. #366 has the measurement.
+
+  The gate is `ci.yml`-local. `needs:` cannot cross workflows, so `security.yml`'s scans and
+  `devcontainer.yml`'s build still run on a tree whose metadata is broken.
 - **A matrix job is requirable only through a fan-in**, since its own check name carries the row
   that produced it. The fan-in carries `if: always()` for the reason the section below gives: a
   failed matrix would otherwise skip it, and a skipped required check reads as a pass.
