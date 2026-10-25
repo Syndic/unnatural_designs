@@ -31,7 +31,7 @@ jobs:
   #   lists available packs, e.g. p/java, p/typescript, p/rust).
   semgrep:
     name: Semgrep
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     container:
       image: semgrep/semgrep:1.182.1@sha256:451b3d875c00dac7ed5db5293e584a07de11449a409c10b3c2d2652f429630b6
     permissions:
@@ -66,7 +66,7 @@ jobs:
   # default setup could not do, and for the repo setting that has to stay off for this to run.
   codeql:
     name: CodeQL Analysis (${{ matrix.language }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     env:
       # Both pin an input the extraction report reads, so that "the report could not check" stops
       # being reachable by a change of GitHub's defaults. See .claude/CLAUDE.md "CodeQL runs as
@@ -152,7 +152,7 @@ jobs:
   # passing. //meta/scripts:test_ci_enforcement_manifest keeps both.
   codeql-all:
     name: CodeQL Analysis (all languages)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: [codeql]
     if: always()
     steps:
@@ -178,7 +178,7 @@ jobs:
   # `modules-check`, not a gate here — see .claude/CLAUDE.md "Which workflow a check belongs in".
   govulncheck:
     name: govulncheck (${{ matrix.go_module }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
     strategy:
@@ -211,7 +211,7 @@ jobs:
 
   govulncheck-all:
     name: govulncheck (all modules)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: [govulncheck]
     if: always()
     steps:
@@ -236,7 +236,7 @@ jobs:
   # all, so no export flag could recover it.
   pip-audit:
     name: pip-audit
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
     steps:
@@ -277,7 +277,7 @@ jobs:
   # as they are added.
   trivy:
     name: Trivy
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       security-events: write
       contents: read
@@ -307,7 +307,7 @@ jobs:
   # next opens one.
   repository-constraints:
     name: Repository constraint enforcement manifest consistency check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       # `Metadata: read`, which every Actions token carries, is what the branch-rules endpoint
       # needs. There is no `permissions:` key that would grant the `Administration: read` the

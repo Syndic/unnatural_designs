@@ -32,7 +32,7 @@ permissions:
 jobs:
   selftest:
     name: Action self-test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     env:
       # run_attempt guards against a leftover branch from a prior attempt whose cleanup failed.
       SCRATCH_BRANCH: action-selftest/${{ github.run_id }}-${{ github.run_attempt }}

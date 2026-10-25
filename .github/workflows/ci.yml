@@ -18,7 +18,7 @@ permissions:
 jobs:
   gazelle-check:
     name: Gazelle BUILD file check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-bazel-remote
@@ -34,7 +34,7 @@ jobs:
   # `bazel mod tidy` also rewrites MODULE.bazel's `use_repo` lines, so both files are diffed.
   bazel-lock-check:
     name: MODULE.bazel.lock freshness
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-bazel-remote
@@ -66,7 +66,7 @@ jobs:
   # last check — setup-uv brings both uv and a 3.14 Python interpreter.
   modules-check:
     name: Module completeness check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
@@ -81,7 +81,7 @@ jobs:
 
   go-work-check:
     name: go.work consistency/completeness check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -91,7 +91,7 @@ jobs:
 
   adr-numbers-check:
     name: ADR number uniqueness check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -104,7 +104,7 @@ jobs:
   # drift — a stale value is still a valid value — so nothing else in CI would notice.
   python-version-check:
     name: Python version consistency check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
@@ -117,7 +117,7 @@ jobs:
 
   secrets-check:
     name: Secrets check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -127,7 +127,7 @@ jobs:
 
   no-cgo-check:
     name: No-cgo policy check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -152,7 +152,7 @@ jobs:
   # job (e.g. ruff for Python) — do not extend this matrix, the linter is Go-specific.
   golangci-lint:
     name: golangci-lint (${{ matrix.go_module }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: [modules-check]
     strategy:
       fail-fast: false
@@ -173,7 +173,7 @@ jobs:
   # passing. //meta/scripts:test_ci_enforcement_manifest keeps both.
   golangci-lint-all:
     name: golangci-lint (all modules)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: [golangci-lint]
     if: always()
     steps:
@@ -195,7 +195,7 @@ jobs:
   # a Python matrix key (matrix.module: is currently Go-only).
   ruff:
     name: ruff
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: astral-sh/ruff-action@278981a28ce3188b1e39527901f38254bf3aac89 # v4.1.0
@@ -217,7 +217,7 @@ jobs:
   # editor separately versioned, with a finding's presence depending on where you looked.
   shellcheck:
     name: shellcheck
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/install-pinned-release-binary
@@ -240,7 +240,7 @@ jobs:
   # shellcheck job above. Composite actions' `run:` steps get that shellcheck pass too, below.
   actionlint:
     name: actionlint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/install-pinned-release-binary
@@ -276,7 +276,7 @@ jobs:
   # extend check_modules.py with the matching matrix-completeness callsite.
   ty:
     name: ty
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
@@ -320,7 +320,7 @@ jobs:
       matrix:
         include:
           - platform: linux_x86_64
-            runner: ubuntu-latest
+            runner: ubuntu-26.04
           - platform: linux_arm64
             runner: ubuntu-24.04-arm
           - platform: darwin_arm64
@@ -341,7 +341,7 @@ jobs:
 
   build-and-test-all:
     name: Build and test (all targets)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: [build-and-test-per-target]
     if: always()
     steps:
@@ -355,7 +355,7 @@ jobs:
 
   coverage:
     name: Coverage
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     # The platform builds' gate (anchored at build-and-test-per-target) rather than their fan-in,
     # so this runs beside them instead of after the slowest, usually darwin behind a runner queue.
     needs: *expensive-work-gate
@@ -410,7 +410,7 @@ jobs:
   # without the token, must not block a merge. Thresholds are Codecov's own statuses, also advisory.
   coverage-upload:
     name: Coverage upload
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: [coverage]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

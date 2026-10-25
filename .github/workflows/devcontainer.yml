@@ -30,7 +30,7 @@ jobs:
   # fan-in over it is what reports in its place.
   changes:
     name: Detect devcontainer changes
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       changed: ${{ steps.classify.outputs.changed }}
       base: ${{ steps.classify.outputs.base }}
@@ -111,7 +111,7 @@ jobs:
       matrix:
         include:
           - platform: linux_x86_64
-            runner: ubuntu-latest
+            runner: ubuntu-26.04
           - platform: linux_arm64
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
@@ -174,7 +174,7 @@ jobs:
       - changes
       - base-image
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Verify every base-image row passed
         run: |
@@ -197,7 +197,7 @@ jobs:
     name: Build devcontainer and smoke test
     needs: changes
     if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       # First, because every `needs.changes.outputs.*` gate below reads empty when the
       # classification failed — which is indistinguishable from it having matched nothing, and
@@ -391,7 +391,7 @@ jobs:
   pin-published:
     name: Base image pin published
     needs: changes
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Check the pinned base image is published
@@ -450,7 +450,7 @@ jobs:
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
       && github.ref == 'refs/heads/main'
       && needs.changes.outputs.base == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
