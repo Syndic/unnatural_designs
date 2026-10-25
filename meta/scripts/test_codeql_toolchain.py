@@ -30,8 +30,8 @@ from pathlib import Path
 
 import yaml
 
-# Not .resolve(): every file read here is a cross-package data dep, so each lives in the runfiles
-# tree beside this one rather than at the source path a resolved symlink would lead back to.
+# Left unresolved because every file read here is a cross-package data dep, so each lives in the
+# runfiles tree beside this one, not at the source path a resolved symlink would lead back to.
 _ROOT = Path(__file__).parent.parent.parent
 _WORKFLOW = _ROOT / ".github" / "workflows" / "security.yml"
 

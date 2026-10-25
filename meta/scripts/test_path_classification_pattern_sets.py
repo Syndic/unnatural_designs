@@ -29,8 +29,8 @@ def fires(path: str) -> set[str]:
 # The self-test set fires alone: nothing else in the repo classifies the action's directory.
 _SELFTEST = {"commit_file_via_app"}
 
-# Not .resolve(): the files checked for existence are cross-package data deps, so they live in the
-# runfiles tree beside this file rather than at the source path a resolved symlink leads back to.
+# Left unresolved because the files checked for existence are cross-package data deps, so they live
+# in the runfiles tree beside this file, not at the source path a resolved symlink leads back to.
 _ROOT = Path(__file__).parent.parent.parent
 
 # Derived, never written twice. A literal here would be a second copy of the path `SETS_MODULE`

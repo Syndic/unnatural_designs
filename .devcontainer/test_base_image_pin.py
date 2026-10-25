@@ -19,8 +19,8 @@ from pathlib import Path
 
 from meta.scripts.sync_base_image_pin import index_digest, pinned_digest
 
-# Not .resolve(): the image is a generated cross-package data dep, so it lives in the runfiles
-# tree beside this file rather than in the source tree a resolved symlink leads back to.
+# Left unresolved because the image is a generated cross-package data dep, so it lives in the
+# runfiles tree beside this file rather than in the source tree a resolved symlink leads back to.
 _HERE = Path(__file__).parent
 _DOCKERFILE = _HERE / "Dockerfile"
 _LAYOUT_INDEX = _HERE.parent / "meta" / "devcontainer-base" / "image" / "index.json"

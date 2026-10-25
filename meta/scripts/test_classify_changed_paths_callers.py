@@ -23,7 +23,7 @@ from typing import NamedTuple
 from meta.scripts._workflows import action_yaml_files, step_containers
 from meta.scripts.classify_changed_paths import emitted_sets, invocations, select
 
-# Not .resolve(): the workflows and actions are cross-package data deps, so they live in the
+# Left unresolved because the workflows and actions are cross-package data deps, so they live in the
 # runfiles tree beside this file rather than at the source path a resolved symlink leads back to.
 _ROOT = Path(__file__).parent.parent.parent
 

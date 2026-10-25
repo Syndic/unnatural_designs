@@ -54,7 +54,7 @@ from meta.scripts.ci_enforcement_manifest import (
 # of the manifest is that there is one demand to check.
 _REQUIRED = required_check_names()
 
-# Not .resolve(): the workflows and README are cross-package data deps, so they live in the
+# Left unresolved because the workflows and README are cross-package data deps, so they live in the
 # runfiles tree beside this file rather than at the source path a resolved symlink leads back to.
 _ROOT = Path(__file__).parent.parent.parent
 _WORKFLOW_DIR = _ROOT / ".github" / "workflows"

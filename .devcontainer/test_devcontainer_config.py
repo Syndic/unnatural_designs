@@ -42,8 +42,8 @@ from pathlib import Path
 import yaml
 from meta.scripts.sync_base_image_pin import pinned_digest
 
-# Not .resolve(): devcontainer.yml is a cross-package data dep and lives in the runfiles tree,
-# which a resolved symlink would lead back out of. The rest read fine either way.
+# Left unresolved because devcontainer.yml is a cross-package data dep and lives in the runfiles
+# tree, which a resolved symlink would lead back out of. The rest read fine either way.
 _HERE = Path(__file__).parent
 _DEVCONTAINER_JSON = _HERE / "devcontainer.json"
 _SETTINGS_JSON = _HERE.parent / ".vscode" / "settings.json"

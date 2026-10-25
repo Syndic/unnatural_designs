@@ -31,7 +31,7 @@ import unittest
 from pathlib import Path
 from typing import ClassVar
 
-# Not .resolve(): the file is a data dep and lives in the runfiles tree beside this one.
+# Left unresolved because the file is a data dep and lives in the runfiles tree beside this one.
 _ROOT = Path(__file__).parent.parent.parent
 _RENOVATE = _ROOT / "renovate.json"
 

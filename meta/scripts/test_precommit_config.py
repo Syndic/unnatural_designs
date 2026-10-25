@@ -20,8 +20,8 @@ from pathlib import Path
 
 import yaml
 
-# Not .resolve(): both files are cross-package data deps and live in the runfiles tree beside
-# this one, which a resolved symlink would lead back out of.
+# Left unresolved because both files are cross-package data deps and live in the runfiles tree
+# beside this one, which a resolved symlink would lead back out of.
 _ROOT = Path(__file__).parent.parent.parent
 _CONFIG = _ROOT / ".pre-commit-config.yaml"
 _README = _ROOT / "README.md"

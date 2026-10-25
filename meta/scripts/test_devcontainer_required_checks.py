@@ -37,8 +37,8 @@ import yaml
 from meta.scripts._workflows import job_condition, job_needs
 from meta.scripts.classify_changed_paths import emitted_sets, invocations
 
-# Not .resolve(): the workflow is a cross-package data dep, so it lives in the runfiles tree beside
-# this file rather than at the source path a resolved symlink would lead back to.
+# Left unresolved because the workflow is a cross-package data dep, so it lives in the runfiles tree
+# beside this file rather than at the source path a resolved symlink would lead back to.
 _WORKFLOW = Path(__file__).parent.parent.parent / ".github/workflows/devcontainer.yml"
 _JOBS = yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8"))["jobs"]
 

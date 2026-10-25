@@ -22,7 +22,7 @@ import re
 import unittest
 from pathlib import Path
 
-# Not .resolve(): the workflow is a cross-package data dep, so it lives in the runfiles tree
+# Left unresolved because the workflow is a cross-package data dep, so it lives in the runfiles tree
 # beside this file rather than at the source path a resolved symlink would lead back to.
 _WORKFLOW = Path(__file__).parent.parent.parent / ".github" / "workflows" / "security.yml"
 
