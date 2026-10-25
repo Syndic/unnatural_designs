@@ -14,7 +14,6 @@ import io
 import re
 import sys
 import unittest
-from pathlib import Path
 from unittest import mock
 
 import yaml
@@ -29,12 +28,9 @@ from meta.scripts.renovate_manual_job import (
     manual_job_state,
     tick_manual_job,
 )
+from meta.scripts.runfiles_root import RUNFILES_ROOT
 
-# Left unresolved because the workflow is a cross-package data dep, so it lives in the runfiles tree
-# beside this file rather than at the source path a resolved symlink would lead back to.
-_WORKFLOW = (
-    Path(__file__).parent.parent.parent / ".github/workflows/renovate-run-after-automerge.yml"
-)
+_WORKFLOW = RUNFILES_ROOT / ".github/workflows/renovate-run-after-automerge.yml"
 # Both poll loops branch on `--check`'s output, so both are held to the same arms. The wait step
 # exists so an already-ticked box is waited out rather than failed; the verify step is what proves
 # Mend acted. Different purposes, identical vocabulary.

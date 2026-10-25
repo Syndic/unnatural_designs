@@ -28,12 +28,11 @@ image is assembled over, which Renovate is *supposed* to bump.
 
 import json
 import unittest
-from pathlib import Path
 from typing import ClassVar
 
-# Left unresolved because the file is a data dep and lives in the runfiles tree beside this one.
-_ROOT = Path(__file__).parent.parent.parent
-_RENOVATE = _ROOT / "renovate.json"
+from meta.scripts.runfiles_root import RUNFILES_ROOT
+
+_RENOVATE = RUNFILES_ROOT / "renovate.json"
 
 _CATCH_ALL_GROUP = "all non-major dependencies"
 

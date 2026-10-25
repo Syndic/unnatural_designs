@@ -11,10 +11,10 @@ longer part of it.
 
 import re
 import unittest
-from pathlib import Path
 
 import meta.scripts.path_classification_pattern_sets as pattern_sets
 from meta.scripts.path_classification_pattern_sets import BASE, BAZEL, CHANGED, SETS, SETS_MODULE
+from meta.scripts.runfiles_root import RUNFILES_ROOT
 
 
 def fires(path: str) -> set[str]:
@@ -29,9 +29,6 @@ def fires(path: str) -> set[str]:
 # The self-test set fires alone: nothing else in the repo classifies the action's directory.
 _SELFTEST = {"commit_file_via_app"}
 
-# Left unresolved because the files checked for existence are cross-package data deps, so they live
-# in the runfiles tree beside this file, not at the source path a resolved symlink leads back to.
-_ROOT = Path(__file__).parent.parent.parent
 
 # Derived, never written twice. A literal here would be a second copy of the path `SETS_MODULE`
 # already encodes, so every assertion comparing them would compare two hand-written strings and
@@ -220,7 +217,7 @@ class TestCommitFileViaAppSet(unittest.TestCase):
         # pattern could go stale together and stay green, matching a path nothing has any more.
         for path in (self._ACTION, self._WORKFLOW):
             with self.subTest(path=path):
-                self.assertTrue((_ROOT / path).is_file(), f"{path} does not exist")
+                self.assertTrue((RUNFILES_ROOT / path).is_file(), f"{path} does not exist")
 
     def test_the_action_and_everything_beside_it(self):
         self.assertEqual(fires(self._ACTION), _SELFTEST)

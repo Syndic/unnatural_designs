@@ -17,15 +17,11 @@ self-test's gate reading the one set it needs in `:test_commit_file_via_app_self
 import json
 import re
 import unittest
-from pathlib import Path
 from typing import NamedTuple
 
 from meta.scripts._workflows import action_yaml_files, step_containers
 from meta.scripts.classify_changed_paths import emitted_sets, invocations, select
-
-# Left unresolved because the workflows and actions are cross-package data deps, so they live in the
-# runfiles tree beside this file rather than at the source path a resolved symlink leads back to.
-_ROOT = Path(__file__).parent.parent.parent
+from meta.scripts.runfiles_root import RUNFILES_ROOT
 
 
 class Caller(NamedTuple):
@@ -38,7 +34,7 @@ class Caller(NamedTuple):
 
 def callers() -> list[Caller]:
     found = []
-    for path in action_yaml_files(_ROOT):
+    for path in action_yaml_files(RUNFILES_ROOT):
         for container in step_containers(path):
             for step in container.steps:
                 argvs = invocations(step.get("run") or "")
@@ -51,7 +47,8 @@ def callers() -> list[Caller]:
                     # `run:` in it, and from its `outputs:`.
                     pattern = re.escape(f"steps.{step_id}.outputs.") + r"([\w-]+)"
                     reads = set(re.findall(pattern, json.dumps(container.scope)))
-                where = f"{path.relative_to(_ROOT)}:{container.label}:{step_id or step.get('name')}"
+                relative = path.relative_to(RUNFILES_ROOT)
+                where = f"{relative}:{container.label}:{step_id or step.get('name')}"
                 found.append(Caller(where, argvs, reads))
     return found
 

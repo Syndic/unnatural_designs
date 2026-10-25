@@ -23,15 +23,12 @@ still holds.
 """
 
 import unittest
-from pathlib import Path
 
 import yaml
+from meta.scripts.runfiles_root import RUNFILES_ROOT
 
-# Left unresolved because both files are cross-package data deps, so each lives in the runfiles tree
-# beside this one rather than at the source path a resolved symlink would lead back to.
-_ROOT = Path(__file__).parent.parent.parent
-_WORKFLOW = _ROOT / ".github" / "workflows" / "security.yml"
-_LOCK = _ROOT / "MODULE.bazel.lock"
+_WORKFLOW = RUNFILES_ROOT / ".github" / "workflows" / "security.yml"
+_LOCK = RUNFILES_ROOT / "MODULE.bazel.lock"
 
 # The rule needs 5.980s on the runner (#294, run 33916057420). Raising this is a real decision, not
 # a formality: the budget is global, so a roomier value lets a future pathological rule burn that

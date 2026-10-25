@@ -28,10 +28,9 @@ from pathlib import Path
 
 import yaml
 from meta.scripts._workflows import job_condition
+from meta.scripts.runfiles_root import RUNFILES_ROOT
 
-# Left unresolved because the workflow is a cross-package data dep, so it lives in the runfiles tree
-# beside this file rather than at the source path a resolved symlink would lead back to.
-_WORKFLOW = Path(__file__).parent.parent.parent / ".github/workflows/devcontainer.yml"
+_WORKFLOW = RUNFILES_ROOT / ".github/workflows/devcontainer.yml"
 _JOBS = yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8"))["jobs"]
 
 _REPO = "ghcr.io/syndic/unnatural_designs-devcontainer-base"
@@ -102,7 +101,7 @@ class Run:
             scripts = root / "meta/scripts"
             scripts.mkdir(parents=True)
             for name in _HELPERS:
-                shutil.copy(Path(__file__).parent / name, scripts / name)
+                shutil.copy(RUNFILES_ROOT / "meta" / "scripts" / name, scripts / name)
             (root / ".devcontainer").mkdir()
             pin_line = f"FROM {_REPO}:latest@{pin} AS pinned-base" if pin else "FROM debian"
             (root / ".devcontainer/Dockerfile").write_text(

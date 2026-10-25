@@ -18,13 +18,11 @@ the enforcement manifest's lists carry a reason each.
 
 import re
 import unittest
-from pathlib import Path
 
 from meta.scripts._workflows import job_condition, job_needs, step_containers
+from meta.scripts.runfiles_root import RUNFILES_ROOT
 
-# Left unresolved because the workflow is a cross-package data dep, so it lives in the runfiles tree
-# beside this file rather than at the source path a resolved symlink would lead back to.
-_WORKFLOW = Path(__file__).parent.parent.parent / ".github/workflows/ci.yml"
+_WORKFLOW = RUNFILES_ROOT / ".github/workflows/ci.yml"
 _JOBS = {container.label: container.scope for container in step_containers(_WORKFLOW)}
 
 # The tree's declarations — manifests, locks, registration, layout — checked against each other and

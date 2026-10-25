@@ -15,15 +15,13 @@ the difference only shows up as plumbing that mysteriously predates your change.
 
 import sys
 import unittest
-from pathlib import Path
 
+from meta.scripts.runfiles_root import RUNFILES_ROOT
 from meta.scripts.sync_base_image_pin import index_digest, pinned_digest
 
-# Left unresolved because the image is a generated cross-package data dep, so it lives in the
-# runfiles tree beside this file rather than in the source tree a resolved symlink leads back to.
-_HERE = Path(__file__).parent
+_HERE = RUNFILES_ROOT / ".devcontainer"
 _DOCKERFILE = _HERE / "Dockerfile"
-_LAYOUT_INDEX = _HERE.parent / "meta" / "devcontainer-base" / "image" / "index.json"
+_LAYOUT_INDEX = RUNFILES_ROOT / "meta" / "devcontainer-base" / "image" / "index.json"
 
 
 class TestBaseImagePinIsFresh(unittest.TestCase):

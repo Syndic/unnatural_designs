@@ -78,6 +78,11 @@ module here with a third-party dependency — `check_modules.py` and `check_pyth
 its two consumers, which is why both run under `uv run --frozen` in CI while the others use a
 bare `python3`.
 
+`runfiles_root.py` is the repository root as a test sees it, and every test that reads a file by
+path builds it from `RUNFILES_ROOT`. It has no leading underscore because `.devcontainer/` and
+`meta/devcontainer-base/` import it too. Why it is the runfiles tree and never `.resolve()`d is its
+docstring; tests reading generated data deps fail if that ever changes.
+
 `path_classification_pattern_sets.py` is the single definition of every named pattern set this
 repo classifies paths against. Unlike the two helpers above it has no leading underscore and no
 logic at all — the sets are module-level constants composed by set union (`BASE = (..., *BAZEL)`),

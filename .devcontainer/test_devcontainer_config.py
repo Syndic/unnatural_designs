@@ -40,24 +40,23 @@ import unittest
 from pathlib import Path
 
 import yaml
+from meta.scripts.runfiles_root import RUNFILES_ROOT
 from meta.scripts.sync_base_image_pin import pinned_digest
 
-# Left unresolved because devcontainer.yml is a cross-package data dep and lives in the runfiles
-# tree, which a resolved symlink would lead back out of. The rest read fine either way.
-_HERE = Path(__file__).parent
+_HERE = RUNFILES_ROOT / ".devcontainer"
 _DEVCONTAINER_JSON = _HERE / "devcontainer.json"
-_SETTINGS_JSON = _HERE.parent / ".vscode" / "settings.json"
-_EXTENSIONS_JSON = _HERE.parent / ".vscode" / "extensions.json"
-_CI_WORKFLOW = _HERE.parent / ".github" / "workflows" / "ci.yml"
-_WORKFLOWS_DIR = _HERE.parent / ".github" / "workflows"
+_SETTINGS_JSON = RUNFILES_ROOT / ".vscode" / "settings.json"
+_EXTENSIONS_JSON = RUNFILES_ROOT / ".vscode" / "extensions.json"
+_CI_WORKFLOW = RUNFILES_ROOT / ".github" / "workflows" / "ci.yml"
+_WORKFLOWS_DIR = RUNFILES_ROOT / ".github" / "workflows"
 _INSTALL_PINNED_ACTION = (
-    _HERE.parent / ".github" / "actions" / "install-pinned-release-binary" / "action.yml"
+    RUNFILES_ROOT / ".github" / "actions" / "install-pinned-release-binary" / "action.yml"
 )
 _INSTALL_PINNED_SCRIPT = _INSTALL_PINNED_ACTION.parent / "install.sh"
 _DOCKERFILE = _HERE / "Dockerfile"
-_RENOVATE_JSON = _HERE.parent / "renovate.json"
+_RENOVATE_JSON = RUNFILES_ROOT / "renovate.json"
 _HOOKS = (_HERE / "post-create.sh", _HERE / "post-start.sh")
-_DEVCONTAINER_WORKFLOW = _HERE.parent / ".github" / "workflows" / "devcontainer.yml"
+_DEVCONTAINER_WORKFLOW = RUNFILES_ROOT / ".github" / "workflows" / "devcontainer.yml"
 
 # The host-side name CI sets and devcontainer.json reads. Namespaced on purpose — see
 # test_the_host_variable_is_the_namespaced_one.

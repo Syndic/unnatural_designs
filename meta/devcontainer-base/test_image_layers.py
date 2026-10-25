@@ -17,10 +17,9 @@ import tarfile
 import unittest
 from pathlib import Path
 
-# Deliberately not .resolve(): these are *generated* data deps, so they live in the runfiles
-# tree next to this file. Resolving would follow the runfiles symlink back into the source tree,
-# where only the checked-in sources exist.
-_HERE = Path(__file__).parent
+from meta.scripts.runfiles_root import RUNFILES_ROOT
+
+_HERE = RUNFILES_ROOT / "meta" / "devcontainer-base"
 _DISPATCHER_TAR = _HERE / "dispatcher_layer.tar"
 _SCRIPTS_TAR = _HERE / "scripts_layer.tar"
 
