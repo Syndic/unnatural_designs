@@ -228,6 +228,20 @@ py_test(
     ],
 )
 
+# Holds ci.yml's expensive Bazel jobs behind the derived-file freshness checks; scheduling, not
+# enforcement.
+py_test(
+    name = "test_ci_derived_file_gating",
+    size = "small",
+    srcs = ["test_ci_derived_file_gating.py"],
+    data = ["//:.github/workflows/ci.yml"],
+    main = "test_ci_derived_file_gating.py",
+    deps = [
+        ":_workflows_lib",
+        requirement("pyyaml"),
+    ],
+)
+
 # What devcontainer.yml's required checks depend on that the manifest test cannot see: which job is
 # the gate, and why `build-and-smoke-test` carries `!cancelled()` rather than `always()`.
 py_test(

@@ -133,6 +133,12 @@ step of the reporting job rather than a `changes` job the rest `needs:` — a fa
 its dependents, and a skipped required check reads as a pass — and that a fork PR touching the
 action is refused rather than skipped.
 
+`test_ci_derived_file_gating.py` has no script half either, and is the scheduling companion to the
+paragraph below: it holds ci.yml's expensive Bazel jobs behind the freshness checks for the derived
+files they build over, and fails a Bazel job classified neither as gated nor as beside the gate.
+Why that gate exists, and what it costs, is `.claude/CLAUDE.md`'s under "Enforcement lives in the
+ruleset, not in `needs`".
+
 `test_ci_enforcement_manifest.py` has no script half either, and is the one home for what every
 required check, and every fan-in on a required path, needs across every workflow that runs on
 `pull_request`. Its data sits beside it in `ci_enforcement_manifest.py` — every rule the repository
