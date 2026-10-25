@@ -228,14 +228,14 @@ py_test(
     ],
 )
 
-# Holds ci.yml's expensive Bazel jobs behind the derived-file freshness checks; scheduling, not
-# enforcement.
+# Holds ci.yml's content checks behind its metadata checks, and behind nothing else; scheduling,
+# not enforcement.
 py_test(
-    name = "test_ci_derived_file_gating",
+    name = "test_ci_metadata_gate",
     size = "small",
-    srcs = ["test_ci_derived_file_gating.py"],
+    srcs = ["test_ci_metadata_gate.py"],
     data = ["//:.github/workflows/ci.yml"],
-    main = "test_ci_derived_file_gating.py",
+    main = "test_ci_metadata_gate.py",
     deps = [
         ":_workflows_lib",
         requirement("pyyaml"),

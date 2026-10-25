@@ -282,8 +282,11 @@ action: one that touches it fails the check, while one that touches nothing ther
 ### What makes a check binding
 
 A check blocks a merge because the `main` ruleset names it in its required-status-check list.
-Nothing else does: the `needs:` edges above are a cost optimisation - do not burn three platform
-runners on a tree that fails gazelle - and they decide what *runs*, never what must *pass*. A check
+Nothing else does: the `needs:` edges above decide what *runs*, never what must *pass*. In `ci.yml`
+they split the jobs into two classes - *metadata* checks, which compare the tree's declarations
+(manifests, lock files, registration, layout) and never parse source, and *content* checks, which
+read code or build it - and every content check waits for every metadata check, so no real work
+starts on a tree whose declarations are already known to be broken. A check
 unhooked from `needs` to parallelise it keeps gating; a check absent from the ruleset gates nothing
 however many jobs wait on it.
 
