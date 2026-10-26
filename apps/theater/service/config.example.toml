@@ -1,0 +1,85 @@
+# Static network and device wiring. Mounted into the container at
+# /root/.config/theater/config.toml. Edit for your room.
+
+[devices.tv_left]
+host  = "10.0.10.21"
+mac   = "ac:f1:08:00:00:01"          # for Wake-on-LAN
+kind  = "lg_webos"
+model = "LG OLED55G4"
+
+[devices.tv_center]
+host  = "10.0.10.22"
+mac   = "f8:da:0c:00:00:02"
+kind  = "sony_bravia"
+model = "Sony XBR-65A1E"
+
+[devices.tv_right]
+host  = "10.0.10.23"
+mac   = "ac:f1:08:00:00:03"
+kind  = "lg_webos"
+model = "LG OLED55G4"
+
+[devices.rcvr_left]
+host  = "10.0.10.31"
+kind  = "sony_escapi"
+model = "STR-AZ1000ES"
+
+[devices.rcvr_center]
+host  = "10.0.10.32"
+kind  = "sony_escapi_az5000"
+model = "STR-AZ5000ES"
+
+[devices.rcvr_right]
+host  = "10.0.10.33"
+kind  = "sony_escapi"
+model = "STR-AZ1000ES"
+
+[devices.lutron]
+host = "10.0.10.40"
+kind = "lutron_leap"
+model = "RA3 Processor"
+
+# ── HDMI matrix ──────────────────────────────────────────────────────────────
+# Which receiver HDMI port carries each source label, per receiver. Read by the
+# ESCAPI client to translate UI source names to receiver port numbers.
+
+[sources.left]   # STR-AZ1000ES on the Left receiver
+Switch  = 1
+PS5     = 2
+Xbox    = 3
+PC      = 4
+Visitor = 5
+
+[sources.center] # STR-AZ5000ES
+Switch        = 1
+PS5           = 2
+Xbox          = 3
+PC            = 4
+"Handheld PC" = 5
+Visitor       = 6
+
+[sources.right]
+Switch  = 1
+PS5     = 2
+Xbox    = 3
+PC      = 4
+Visitor = 5
+ViewPort = 6
+
+# ── Lutron mapping ───────────────────────────────────────────────────────────
+# Pair the processor first; pairing tool prints the IDs to paste here.
+
+[lutron.scenes]
+allon        = "scene/12"
+intermission = "scene/13"
+movie        = "scene/14"
+off          = "scene/15"
+
+[lutron.dimmer]
+id = "device/27"            # The single "theater room" dimmer load
+
+# ── Tuning ───────────────────────────────────────────────────────────────────
+
+[tuning]
+probe_interval_s    = 15
+receiver_debounce_ms = 150
