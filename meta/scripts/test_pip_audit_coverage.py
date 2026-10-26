@@ -20,11 +20,10 @@ file consumed with `--require-hashes`.
 
 import re
 import unittest
-from pathlib import Path
 
-# Not .resolve(): the workflow is a cross-package data dep, so it lives in the runfiles tree
-# beside this file rather than at the source path a resolved symlink would lead back to.
-_WORKFLOW = Path(__file__).parent.parent.parent / ".github" / "workflows" / "security.yml"
+from meta.scripts.runfiles_root import RUNFILES_ROOT
+
+_WORKFLOW = RUNFILES_ROOT / ".github" / "workflows" / "security.yml"
 
 _REQUIRED_FLAGS = ("--all-packages", "--no-emit-workspace")
 

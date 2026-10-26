@@ -7,8 +7,7 @@ from unittest import mock
 import yaml
 from meta.scripts import check_composite_action_scripts as cca
 from meta.scripts._workflows import composite_action_files
-
-_ROOT = Path(__file__).parent.parent.parent
+from meta.scripts.runfiles_root import RUNFILES_ROOT
 
 
 def action(steps: str) -> str:
@@ -213,7 +212,7 @@ class TestAgainstThisRepo(unittest.TestCase):
     """
 
     def test_every_composite_action_run_step_is_lintable(self):
-        actions = composite_action_files(_ROOT)
+        actions = composite_action_files(RUNFILES_ROOT)
         # Without the //:composite_actions data dep the directory is absent from the runfiles tree.
         self.assertTrue(actions, "no composite actions in the runfiles tree; this test is vacuous")
         found = 0
@@ -225,7 +224,9 @@ class TestAgainstThisRepo(unittest.TestCase):
         self.assertGreater(found, 0, "no shell run: steps found; the gate would check nothing")
 
     def test_the_actionlint_job_runs_this_check_after_the_pinned_tools(self):
-        workflow = yaml.safe_load((_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
+        workflow = yaml.safe_load(
+            (RUNFILES_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        )
         steps = workflow["jobs"]["actionlint"]["steps"]
         name = Path(cca.__file__).name
         (run,) = [i for i, s in enumerate(steps) if name in s.get("run", "")]
@@ -237,7 +238,9 @@ class TestAgainstThisRepo(unittest.TestCase):
         self.assertEqual(sorted(installed), ["actionlint", "shellcheck"])
 
     def test_the_check_and_its_setup_still_run_when_actionlint_fails(self):
-        workflow = yaml.safe_load((_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
+        workflow = yaml.safe_load(
+            (RUNFILES_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        )
         steps = workflow["jobs"]["actionlint"]["steps"]
         bare = next(i for i, s in enumerate(steps) if s.get("run", "").startswith("actionlint"))
         for step in steps[bare + 1 :]:

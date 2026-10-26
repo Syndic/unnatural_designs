@@ -6,6 +6,7 @@ from pathlib import Path
 
 from meta.scripts import check_python_version as cpv
 from meta.scripts._workflows import action_yaml_files
+from meta.scripts.runfiles_root import RUNFILES_ROOT
 
 
 def write(root: Path, rel: str, content: str) -> Path:
@@ -394,7 +395,7 @@ class TestAgainstThisRepo(unittest.TestCase):
     sandbox with no git repo, so shelling out to `git rev-parse` fails outright.
     """
 
-    root = Path(__file__).parent.parent.parent
+    root = RUNFILES_ROOT
 
     def test_both_trees_are_discovered(self):
         files = action_yaml_files(self.root)

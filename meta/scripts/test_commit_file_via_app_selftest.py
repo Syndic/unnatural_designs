@@ -31,13 +31,11 @@ import unittest
 from pathlib import Path
 
 import yaml
+from meta.scripts.runfiles_root import RUNFILES_ROOT
 
-# Not .resolve(): every file read here is a cross-package data dep, so each lives in the runfiles
-# tree beside this one rather than at the source path a resolved symlink would lead back to.
-_ROOT = Path(__file__).parent.parent.parent
-_WORKFLOW = _ROOT / ".github/workflows/commit-file-via-app-selftest.yml"
+_WORKFLOW = RUNFILES_ROOT / ".github/workflows/commit-file-via-app-selftest.yml"
 # README's copy of the check name is the manifest test's; CLAUDE.md's is only held here.
-_CLAUDE_MD = _ROOT / ".claude" / "CLAUDE.md"
+_CLAUDE_MD = RUNFILES_ROOT / ".claude" / "CLAUDE.md"
 
 # The ref the checkout must use. `github.head_ref` is a bare branch name and checkout's
 # `repository:` defaults to this repo, so on a fork PR it resolves the fork's branch name here.

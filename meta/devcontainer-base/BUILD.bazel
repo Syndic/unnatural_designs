@@ -121,4 +121,5 @@ py_test(
         ":scripts_layer",
     ],
     main = "test_image_layers.py",
+    deps = ["//meta/scripts:runfiles_root_lib"],
 )

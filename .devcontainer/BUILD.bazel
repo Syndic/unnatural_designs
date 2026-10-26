@@ -34,6 +34,7 @@ py_test(
     ],
     main = "test_devcontainer_config.py",
     deps = [
+        "//meta/scripts:runfiles_root_lib",
         "//meta/scripts:sync_base_image_pin_lib",
         requirement("pyyaml"),
     ],
@@ -53,5 +54,8 @@ py_test(
         "//meta/devcontainer-base:image",
     ],
     main = "test_base_image_pin.py",
-    deps = ["//meta/scripts:sync_base_image_pin_lib"],
+    deps = [
+        "//meta/scripts:runfiles_root_lib",
+        "//meta/scripts:sync_base_image_pin_lib",
+    ],
 )

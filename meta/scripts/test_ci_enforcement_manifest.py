@@ -36,7 +36,6 @@ from __future__ import annotations
 import re
 import subprocess
 import unittest
-from pathlib import Path
 from typing import NamedTuple
 
 import yaml
@@ -48,17 +47,15 @@ from meta.scripts.ci_enforcement_manifest import (
     FanInExemption,
     required_check_names,
 )
+from meta.scripts.runfiles_root import RUNFILES_ROOT
 
 # Projected out of the manifest's RULES rather than kept as a list of its own. A second copy of
 # these names could disagree with the one the repository is actually held to, and the whole point
 # of the manifest is that there is one demand to check.
 _REQUIRED = required_check_names()
 
-# Not .resolve(): the workflows and README are cross-package data deps, so they live in the
-# runfiles tree beside this file rather than at the source path a resolved symlink leads back to.
-_ROOT = Path(__file__).parent.parent.parent
-_WORKFLOW_DIR = _ROOT / ".github" / "workflows"
-_README = _ROOT / "README.md"
+_WORKFLOW_DIR = RUNFILES_ROOT / ".github" / "workflows"
+_README = RUNFILES_ROOT / "README.md"
 
 _PULL_REQUEST = "pull_request"
 

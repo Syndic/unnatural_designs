@@ -31,15 +31,13 @@ behaves identically, and pass one that does not.
 import re
 import subprocess
 import unittest
-from pathlib import Path
 
 import yaml
 from meta.scripts._workflows import job_condition, job_needs
 from meta.scripts.classify_changed_paths import emitted_sets, invocations
+from meta.scripts.runfiles_root import RUNFILES_ROOT
 
-# Not .resolve(): the workflow is a cross-package data dep, so it lives in the runfiles tree beside
-# this file rather than at the source path a resolved symlink would lead back to.
-_WORKFLOW = Path(__file__).parent.parent.parent / ".github/workflows/devcontainer.yml"
+_WORKFLOW = RUNFILES_ROOT / ".github/workflows/devcontainer.yml"
 _JOBS = yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8"))["jobs"]
 
 # The guard step, by name. Its position is what makes it a guard: it runs before the job pays for

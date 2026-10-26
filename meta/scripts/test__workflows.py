@@ -29,6 +29,7 @@ from meta.scripts._workflows import (
     unrecognised_matrix_keys,
     workflow_matrix_lists,
 )
+from meta.scripts.runfiles_root import RUNFILES_ROOT
 
 # ── TestWorkflowModuleLists ────────────────────────────────────────────────────
 # Carried over from test_check_go_modules.py with only the import path changed.
@@ -556,7 +557,7 @@ class TestMatrixShapes(unittest.TestCase):
         The same computation `modules-check` runs, kept anyway: that job asks whether the tree is
         right, this asks whether the parser is, and only this one fails on the parser's own PR.
         """
-        workflows = Path(__file__).parent.parent.parent / ".github" / "workflows"
+        workflows = RUNFILES_ROOT / ".github" / "workflows"
         found = sorted(workflows.glob("*.yml"))
         # Without the //:workflows data dep this directory is absent from the runfiles tree and
         # the loop below runs zero times — passing while checking nothing.

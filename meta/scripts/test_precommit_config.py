@@ -16,15 +16,12 @@ The interpreter half is unrelated to the prose; its reasoning is at HookLanguage
 
 import re
 import unittest
-from pathlib import Path
 
 import yaml
+from meta.scripts.runfiles_root import RUNFILES_ROOT
 
-# Not .resolve(): both files are cross-package data deps and live in the runfiles tree beside
-# this one, which a resolved symlink would lead back out of.
-_ROOT = Path(__file__).parent.parent.parent
-_CONFIG = _ROOT / ".pre-commit-config.yaml"
-_README = _ROOT / "README.md"
+_CONFIG = RUNFILES_ROOT / ".pre-commit-config.yaml"
+_README = RUNFILES_ROOT / "README.md"
 
 _TABLE_ROW_RE = re.compile(r"^\| `([^`]+)`\s*\|", re.M)
 
