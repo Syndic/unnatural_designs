@@ -24,9 +24,9 @@ PLUMBING_WORKSPACE="$(cd "$_dc_here/.." && pwd)" \
 # test_devcontainer_config.py asserts. If chown fails loudly here (it needs sudo), recover with
 # `docker volume rm ud-cache ud-go-pkg-cache`; the output base's volume goes with its container.
 #
-# Guarded rather than unconditional: warm, these hold tens of GB, and recursing them on every
-# rebuild spends minutes re-asserting ownership that is already correct. The guard reads the
-# mount root only, so what it heals is a volume that arrives wholly root-owned — a fresh one,
+# Guarded rather than unconditional: warm, the named volumes hold tens of GB, and recursing them
+# on every rebuild spends minutes re-asserting ownership that is already correct. The guard reads
+# the mount root only, so what it heals is a volume that arrives wholly root-owned — a fresh one,
 # or one outliving a remoteUser change. It does NOT heal a root-owned entry left *inside* an
 # otherwise-correct tree (a tool run under sudo in here, or an interrupted chown -R, which
 # visits pre-order and so fixes the root first); recover from that by hand with
