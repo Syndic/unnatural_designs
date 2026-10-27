@@ -103,6 +103,11 @@ RUN ARCH="$(dpkg --print-architecture)" \
     && rm /tmp/bazelisk \
     && ln -s /usr/local/bin/bazel /usr/local/bin/bazelisk
 
+# A system rc, so it binds Bazel in this container only — neither the host's nor a CI runner's
+# Bazel reads it. The path is an anonymous volume; see ".claude/CLAUDE.md", "Devcontainer cache
+# volumes".
+RUN echo 'startup --output_base=/bazel-output-base' > /etc/bazel.bazelrc
+
 # renovate: datasource=github-releases depName=bazelbuild/buildtools
 ARG BUILDIFIER_VERSION=v10.1.0
 # renovate: datasource=github-release-attachments depName=bazelbuild/buildtools digestVersion=v10.1.0

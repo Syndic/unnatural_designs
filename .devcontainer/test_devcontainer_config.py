@@ -12,10 +12,12 @@ Six couplings live across those files and none of them fails loudly:
     in Syndic/.dotfiles, which has no such copy.
   - An extension this repo configures is installed by devcontainer.json. Settings for an
     absent extension bind to nothing, so the feature is missing with no error anywhere.
-  - Each cache volume is mounted at a cache *root*, and post-create.sh chowns exactly the set
-    of volume targets. Too narrow a target leaves the siblings ephemeral, too wide a one
-    shadows image content with a stale volume copy, and a target with no chown entry comes up
-    root-owned.
+  - Each cache volume is mounted at a cache *root*, the one anonymous volume is where the
+    image's system bazelrc puts the output base (and the workspace rc does not override it),
+    and post-create.sh chowns exactly the set of
+    volume targets. Too narrow a target leaves the siblings ephemeral, too wide a one shadows
+    image content with a stale volume copy, an output base off its volume lands in the
+    container's own filesystem, and a target with no chown entry comes up root-owned.
   - Every `curl`/`wget` a Dockerfile RUN runs is a GitHub release download, verified against a
     per-arch sha512 pin that renovate.json can read. A pin Renovate cannot see goes stale, and
     nothing notices until the next version bump fails the image build.
@@ -73,6 +75,18 @@ _BASE_REPOSITORY = "ghcr.io/syndic/unnatural_designs-devcontainer-base"
 # tools in `bin/` that a volume would shadow; `/go/pkg/mod` omits the sibling `sumdb` cache.
 _GOPATH_PKG = "/go/pkg"
 _XDG_CACHE_HOME = "~/.cache"
+
+# Bazel's system rc on Linux, which only Bazel inside the container reads.
+_SYSTEM_BAZELRC = "/etc/bazel.bazelrc"
+_OUTPUT_BASE_RE = re.compile(r"\bstartup --output_base=(?P<path>/[^\s'\"]+)")
+# A redirect or `tee` into the system rc; a RUN that only reads it is not a write.
+_RC_WRITE_RE = re.compile(rf"(?:>>?|\btee(?:\s+-a)?)\s*{re.escape(_SYSTEM_BAZELRC)}(?![\w./-])")
+# The workspace rc is read after the system rc, so its startup option would win.
+_WORKSPACE_BAZELRC = RUNFILES_ROOT / ".bazelrc"
+_RC_OUTPUT_BASE_LINE_RE = re.compile(r"^\s*startup\b.*--output_base\b", re.MULTILINE)
+
+# Docker's `--mount` spellings for the same key.
+_MOUNT_KEY_ALIASES = {"src": "source", "dst": "target", "destination": "target"}
 
 _LOCAL_ENV_RE = re.compile(
     r"\A\$\{localEnv:(?P<var>[A-Za-z_][A-Za-z0-9_]*)(?::(?P<default>.*))?\}\Z"
@@ -167,12 +181,14 @@ def parse_local_env(value: str) -> tuple[str, str | None]:
 def parse_mount(spec: str) -> dict[str, str]:
     """Split one `source=…,target=…,type=…` mount string into its fields.
 
-    Valueless flags (`readonly`) are real mount syntax and come back mapped to `""`.
+    Valueless flags (`readonly`) are real mount syntax and come back mapped to `""`. Docker's
+    aliases (`src`, `dst`, `destination`) come back under the key they alias.
     """
     fields = {}
     for part in spec.split(","):
         key, _, value = part.partition("=")
-        fields[key.strip()] = value.strip()
+        key = key.strip()
+        fields[_MOUNT_KEY_ALIASES.get(key, key)] = value.strip()
     return fields
 
 
@@ -230,6 +246,21 @@ def dockerfile_instructions(text: str) -> list[tuple[str, str]]:
     if current is not None:
         raise ValueError("the Dockerfile ends inside a `\\` continuation")
     return instructions
+
+
+def system_rc_output_base(dockerfile_text: str) -> str:
+    """The output base the image's system bazelrc sets, read off the one RUN that writes it."""
+    writes = [
+        arguments
+        for keyword, arguments in dockerfile_instructions(dockerfile_text)
+        if keyword == "RUN" and _RC_WRITE_RE.search(arguments)
+    ]
+    if len(writes) != 1:
+        raise ValueError(f"expected one RUN writing {_SYSTEM_BAZELRC}, found {len(writes)}")
+    match = _OUTPUT_BASE_RE.search(writes[0])
+    if not match:
+        raise ValueError(f"the RUN writing {_SYSTEM_BAZELRC} sets no startup --output_base")
+    return match.group("path")
 
 
 def split_flags(arguments: str) -> tuple[list[str], str]:
@@ -954,6 +985,14 @@ class TestMountParsing(unittest.TestCase):
             {"source": "ud-cache", "target": "/home/vscode/.cache", "type": "volume"},
         )
 
+    def test_aliases_are_normalized(self):
+        # Otherwise a named volume spelled `src=` reads as anonymous.
+        self.assertEqual(
+            parse_mount("src=ud-cache,dst=/c,type=volume"),
+            {"source": "ud-cache", "target": "/c", "type": "volume"},
+        )
+        self.assertEqual(parse_mount("destination=/c")["target"], "/c")
+
     def test_valueless_flag_is_kept(self):
         # `readonly` is how the allowed_signers bind spells itself; rejecting it would make
         # the volume filter below throw on a perfectly valid mount list.
@@ -1021,25 +1060,75 @@ class TestMountParsing(unittest.TestCase):
         self.assertEqual(expand_home("~foo/.cache", "/home/vscode"), "~foo/.cache")
 
 
+def _rc_write(line: str) -> str:
+    return f"FROM x\nRUN echo '{line}' > {_SYSTEM_BAZELRC}\n"
+
+
+class TestSystemRcOutputBase(unittest.TestCase):
+    def test_the_path_is_read_off_the_write(self):
+        dockerfile = _rc_write("startup --output_base=/bazel-output-base")
+        self.assertEqual(system_rc_output_base(dockerfile), "/bazel-output-base")
+
+    def test_no_write_is_an_error(self):
+        with self.assertRaises(ValueError):
+            system_rc_output_base("FROM x\nRUN true\n")
+
+    def test_two_writes_are_an_error(self):
+        # The second write would win at build time, so reading either one could be wrong.
+        dockerfile = _rc_write("startup --output_base=/a") + _rc_write("startup --output_base=/b")
+        with self.assertRaises(ValueError):
+            system_rc_output_base(dockerfile)
+
+    def test_a_write_without_the_option_is_an_error(self):
+        with self.assertRaises(ValueError):
+            system_rc_output_base(_rc_write("build --jobs=4"))
+
+    def test_a_read_is_not_a_write(self):
+        dockerfile = _rc_write("startup --output_base=/a") + f"RUN cat {_SYSTEM_BAZELRC}\n"
+        self.assertEqual(system_rc_output_base(dockerfile), "/a")
+
+    def test_an_append_or_tee_is_a_second_write(self):
+        for second in (
+            f"RUN echo 'build --jobs=4' >> {_SYSTEM_BAZELRC}\n",
+            f"RUN echo 'build --jobs=4' | tee -a {_SYSTEM_BAZELRC}\n",
+        ):
+            with self.subTest(second=second), self.assertRaises(ValueError):
+                system_rc_output_base(_rc_write("startup --output_base=/a") + second)
+
+
 class TestCacheVolumes(unittest.TestCase):
-    """The volumes that carry derived state across a container rebuild."""
+    """The volumes that carry derived state across a container rebuild, and the output base."""
 
     @classmethod
     def setUpClass(cls):
         cls.config = json.loads(strip_jsonc(_DEVCONTAINER_JSON.read_text(encoding="utf-8")))
         cls.home = f"/home/{cls.config['remoteUser']}"
-        cls.targets = [
-            parse_mount(spec)["target"]
-            for spec in cls.config["mounts"]
-            if parse_mount(spec).get("type") == "volume"
-        ]
+        mounts = [parse_mount(spec) for spec in cls.config["mounts"]]
+        volumes = [mount for mount in mounts if mount.get("type") == "volume"]
+        cls.targets = [volume["target"] for volume in volumes]
+        cls.named_targets = [volume["target"] for volume in volumes if volume.get("source")]
+        cls.anonymous_targets = [volume["target"] for volume in volumes if not volume.get("source")]
 
-    def test_the_volume_targets_are_the_two_cache_roots(self):
+    def test_the_named_volume_targets_are_the_two_cache_roots(self):
         # Exactly the roots, and the failure is silent in both directions. Too narrow —
-        # `~/.cache/bazel`, which this replaces — persists one tool and leaves every sibling
-        # (go-build, bazelisk, uv, pre-commit) ephemeral. Too wide — `/go` rather than the
-        # `pkg/` inside it — shadows image content with a stale volume copy.
-        self.assertCountEqual(self.targets, [expand_home(_XDG_CACHE_HOME, self.home), _GOPATH_PKG])
+        # `~/.cache/bazel` — persists one tool and leaves every sibling (go-build, bazelisk, uv,
+        # pre-commit) ephemeral. Too wide — `/go` rather than the `pkg/` inside it — shadows
+        # image content with a stale volume copy.
+        self.assertCountEqual(
+            self.named_targets, [expand_home(_XDG_CACHE_HOME, self.home), _GOPATH_PKG]
+        )
+
+    def test_the_output_base_is_the_one_anonymous_volume(self):
+        # Off the volume, the output base would grow the container's own filesystem; on a named
+        # one, it would outlive the container it belongs to.
+        dockerfile = _DOCKERFILE.read_text(encoding="utf-8")
+        self.assertEqual(self.anonymous_targets, [system_rc_output_base(dockerfile)])
+
+    def test_the_workspace_rc_does_not_move_the_output_base(self):
+        # It is read after the system rc, so its value would win and the test above would stay
+        # green. `.bazelrc.user` can do the same, but it is untracked and nothing here can read it.
+        rc = _WORKSPACE_BAZELRC.read_text(encoding="utf-8")
+        self.assertEqual(_RC_OUTPUT_BASE_LINE_RE.findall(rc), [])
 
     def test_post_create_chowns_exactly_the_volume_targets(self):
         # A volume whose target the image has no directory for arrives root-owned, so a mount
