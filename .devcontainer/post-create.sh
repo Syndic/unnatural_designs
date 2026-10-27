@@ -17,12 +17,12 @@ PLUMBING_WORKSPACE="$(cd "$_dc_here/.." && pwd)" \
   PLUMBING_DIR="$_dc_here/.git-plumbing" \
   /usr/local/bin/devcontainer-plumbing post-create
 
-# Make the named-volume mounts writable by the non-root user: Docker attaches a volume
-# root-owned unless the image has a directory at the target for it to seed ownership from, and
-# it has one at neither of these, so both arrive root-owned on a fresh volume. Every volume
-# target in devcontainer.json needs an entry here — one without comes up unwritable — which
+# Make the volume mounts writable by the non-root user: Docker attaches a volume root-owned
+# unless the image has a directory at the target for it to seed ownership from, and it has one
+# at none of these, so each arrives root-owned on a fresh volume. Every volume target in
+# devcontainer.json needs an entry here — one without comes up unwritable — which
 # test_devcontainer_config.py asserts. If chown fails loudly here (it needs sudo), recover with
-# `docker volume rm ud-cache ud-go-pkg-cache`.
+# `docker volume rm ud-cache ud-go-pkg-cache`; the output base's volume goes with its container.
 #
 # Guarded rather than unconditional: warm, these hold tens of GB, and recursing them on every
 # rebuild spends minutes re-asserting ownership that is already correct. The guard reads the
@@ -31,7 +31,7 @@ PLUMBING_WORKSPACE="$(cd "$_dc_here/.." && pwd)" \
 # otherwise-correct tree (a tool run under sudo in here, or an interrupted chown -R, which
 # visits pre-order and so fixes the root first); recover from that by hand with
 # `sudo chown -R "$(id -u):$(id -g)" <path>`.
-for volume_target in "$HOME/.cache" /go/pkg; do
+for volume_target in "$HOME/.cache" /go/pkg /bazel-output-base; do
   if [ "$(stat -c '%u:%g' "$volume_target")" != "$(id -u):$(id -g)" ]; then
     sudo chown -R "$(id -u):$(id -g)" "$volume_target"
   fi
