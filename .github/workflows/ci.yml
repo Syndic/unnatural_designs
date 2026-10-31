@@ -63,7 +63,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version-file: .python-version
@@ -101,7 +101,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version-file: .python-version
@@ -219,7 +219,7 @@ jobs:
       - uses: astral-sh/ruff-action@278981a28ce3188b1e39527901f38254bf3aac89 # v4.1.0
         with:
           # renovate: datasource=pypi depName=ruff
-          version: "0.17.2"
+          version: "0.17.3"
           args: format --check
       - run: ruff check
 
@@ -277,7 +277,7 @@ jobs:
       # shellcheck pass from this script. `uv run` for PyYAML, as modules-check does.
       # `!cancelled()` so these still run when the actionlint step above fails: both sets of
       # findings show up together, rather than this one only after that one is fixed.
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         if: ${{ !cancelled() }}
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         if: ${{ !cancelled() }}
@@ -300,7 +300,7 @@ jobs:
     needs: *metadata-gate
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       # `uv sync` materializes `.venv` from uv.lock so ty can resolve
       # third-party imports (e.g. the smoke target's `requests`). Without it,
       # ty's only search paths are first-party + stdlib and any non-stdlib
@@ -309,7 +309,7 @@ jobs:
       - name: ty check
         env:
           # renovate: datasource=pypi depName=ty
-          TY_VERSION: "0.0.92"
+          TY_VERSION: "0.0.95"
         run: uvx "ty@${TY_VERSION}" check
 
   # Build and test runs once per supported target platform, on a runner whose host matches

@@ -139,7 +139,7 @@ jobs:
       # A skipped step's outputs are empty, so `steps.ratify.outputs.conflicts == ''`
       # reads as "no conflicts" on Bazel-only PRs — which is what the gates below want.
 
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         if: steps.changed.outputs.python == 'true'
 
       - name: Ratify Renovate's proposals via uv
@@ -267,7 +267,7 @@ jobs:
         if: steps.changed.outputs.devcontainer == 'true' && steps.ratify.outputs.conflicts == ''
         with:
           # renovate: datasource=node-version depName=node
-          node-version: "24.22.1"
+          node-version: "24.22.2"
 
       # `--ignore-scripts` because nothing here needs them: the package publishes no install
       # script (`hasInstallScript` is absent on the registry entry), so this is free hardening on
@@ -276,7 +276,7 @@ jobs:
         if: steps.changed.outputs.devcontainer == 'true' && steps.ratify.outputs.conflicts == ''
         env:
           # renovate: datasource=npm depName=@devcontainers/cli
-          DEVCONTAINER_CLI_VERSION: "0.89.0"
+          DEVCONTAINER_CLI_VERSION: "0.90.0"
         run: npm install -g --ignore-scripts "@devcontainers/cli@${DEVCONTAINER_CLI_VERSION}"
 
       - name: Re-resolve the devcontainer feature lock
