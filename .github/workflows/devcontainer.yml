@@ -226,12 +226,12 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           # renovate: datasource=node-version depName=node
-          node-version: "24.22.1"
+          node-version: "24.22.2"
 
       - name: Check the feature lock is in sync
         env:
           # renovate: datasource=npm depName=@devcontainers/cli
-          DEVCONTAINER_CLI_VERSION: "0.89.0"
+          DEVCONTAINER_CLI_VERSION: "0.90.0"
         run: |
           set -euo pipefail
           npm install -g --ignore-scripts "@devcontainers/cli@${DEVCONTAINER_CLI_VERSION}"
