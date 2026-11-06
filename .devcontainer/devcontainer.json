@@ -21,7 +21,7 @@
       "configureZshAsDefaultShell": false,
       "upgradePackages": false
     },
-    "ghcr.io/devcontainers/features/go:1.4.0": {
+    "ghcr.io/devcontainers/features/go:1.4.1": {
       "version": "1.27.3"
     },
     // Python is NOT a devcontainer feature: that feature compiles CPython from source
