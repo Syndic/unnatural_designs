@@ -12,7 +12,7 @@ FROM ${BASE_IMAGE}
 # the `uv tool install` layers below can build on it.
 # Pinned by tag and index digest, both moved by Renovate's docker manager; see README's
 # "Image references".
-COPY --from=ghcr.io/astral-sh/uv:0.13.5@sha256:32a7bb39b496babbd997b0a39a4d66c126bdaf5661b302bf6f06abda8deca6ff /uv /uvx /usr/local/bin/
+COPY --from=ghcr.io/astral-sh/uv:0.13.7@sha256:96f40d3904aad8d0bd010539001d36c8e2188b981e1334471a90c4a1d93bb490 /uv /uvx /usr/local/bin/
 
 # ruff: format + lint. Installed via `uv tool install` so the binary lives in
 # /usr/local/bin and `ruff` is on PATH for the pre-commit hooks and the VS Code
@@ -21,12 +21,12 @@ COPY --from=ghcr.io/astral-sh/uv:0.13.5@sha256:32a7bb39b496babbd997b0a39a4d66c12
 # /root (mode 700) and the vscode user could not follow the bin/ symlink.
 # Renovate's regex manager tracks RUFF_VERSION via the comment above the ARG.
 # renovate: datasource=pypi depName=ruff
-ARG RUFF_VERSION=0.17.2
+ARG RUFF_VERSION=0.17.4
 # ty: static type checker. Same `uv tool install` pattern as ruff so the
 # binary lands on PATH for CI, pre-commit, and the `astral-sh.ty` editor
 # extension. UV_TOOL_{BIN_DIR,DIR} are shared across all uv tool installs.
 # renovate: datasource=pypi depName=ty
-ARG TY_VERSION=0.0.92
+ARG TY_VERSION=0.0.99
 # pre-commit: the hook runner. Installed via `uv tool install` (not pip) so
 # we have a single Python package manager in the devcontainer; the binary
 # lands at /usr/local/bin/pre-commit, so post-create.sh and any contributor
@@ -55,7 +55,7 @@ RUN uv tool install --no-cache "ruff==${RUFF_VERSION}" \
 ARG COSMIC_RAY_VERSION=8.7.0
 RUN uv tool install --no-cache "cosmic-ray==${COSMIC_RAY_VERSION}"
 # renovate: datasource=pypi depName=check-jsonschema
-ARG CHECK_JSONSCHEMA_VERSION=0.38.2
+ARG CHECK_JSONSCHEMA_VERSION=0.39.0
 RUN uv tool install --no-cache "check-jsonschema==${CHECK_JSONSCHEMA_VERSION}"
 
 # Interactive Python for the devcontainer: a prebuilt uv-managed CPython, not the
@@ -104,11 +104,11 @@ RUN ARCH="$(dpkg --print-architecture)" \
     && ln -s /usr/local/bin/bazel /usr/local/bin/bazelisk
 
 # renovate: datasource=github-releases depName=bazelbuild/buildtools
-ARG BUILDIFIER_VERSION=v10.1.0
-# renovate: datasource=github-release-attachments depName=bazelbuild/buildtools digestVersion=v10.1.0
-ARG BUILDIFIER_SHA512_AMD64=b1d520ff6f2850a8b5f83dc72edc4d0fde55dff6f3844a569e53304fcacd25b6b89e1aa81bf47a48cc74484bf16fb377266f14032adb72c92bad20c5aceebdde
-# renovate: datasource=github-release-attachments depName=bazelbuild/buildtools digestVersion=v10.1.0
-ARG BUILDIFIER_SHA512_ARM64=c783ac9518a2fd5b7d52d677a005fe862b8a89f74915330e91dfd77b5ff621d489235688b17cdb2191708af91b63ab92e1fd4042b6e7bc4b6d9965b7b83bed26
+ARG BUILDIFIER_VERSION=v10.2.0
+# renovate: datasource=github-release-attachments depName=bazelbuild/buildtools digestVersion=v10.2.0
+ARG BUILDIFIER_SHA512_AMD64=964814b62342dae4bb8fc3dfeac3e4d8bbd9052bd466096b6125ac4f3da89fb08a32ebcb2066e1a938515fbae012ef60f97c60e5822c381fb50f04ae34781469
+# renovate: datasource=github-release-attachments depName=bazelbuild/buildtools digestVersion=v10.2.0
+ARG BUILDIFIER_SHA512_ARM64=a12ffe22538c3e2874326dd38fd6037c1901dbd5eccaf1ba965ec50bb68024c9ea54762f4c6734cf12780584ebee9409bbfe898bc51bfffe5b46ca22fb16cd31
 RUN ARCH="$(dpkg --print-architecture)" \
     && case "${ARCH}" in \
         amd64) SHA512="${BUILDIFIER_SHA512_AMD64}" ;; \
@@ -170,11 +170,11 @@ RUN ARCH="$(dpkg --print-architecture)" \
 
 # mikefarah/yq, the Go one — not the Debian `yq` package, which is a jq wrapper with other syntax.
 # renovate: datasource=github-releases depName=mikefarah/yq
-ARG YQ_VERSION=v4.54.1
-# renovate: datasource=github-release-attachments depName=mikefarah/yq digestVersion=v4.54.1
-ARG YQ_SHA512_AMD64=57a5e74afd5aafb63c373be84c37fb778957051af3f2d1f563ae77df27b16f0e221cd64a6b7d7729f087fccbfe7d5b4aa1b42e9004d6c2df478f160b17392ead
-# renovate: datasource=github-release-attachments depName=mikefarah/yq digestVersion=v4.54.1
-ARG YQ_SHA512_ARM64=c11cc3247d6027d62f8d3c46e0b3b9ba3ffddf9e0201cec7edf69c6a4c81c70932f9be32c1978680121dea0057d032e63049d65d6565aa472e60b4cd24a44369
+ARG YQ_VERSION=v4.54.2
+# renovate: datasource=github-release-attachments depName=mikefarah/yq digestVersion=v4.54.2
+ARG YQ_SHA512_AMD64=17a72c9ecb903e7121ee9b9f5b9b4a93b14a9c25f060d392d51ed538a30f6212ced18af3ae335293e93cc27f76782cae2be0be67c685e60b4b0a34f2ea019fc6
+# renovate: datasource=github-release-attachments depName=mikefarah/yq digestVersion=v4.54.2
+ARG YQ_SHA512_ARM64=331987de61422f042e3cfd8be241d7a64d78b1bbee90e81662505c35dea03a2cbc309bfa93316b14d42fe2955ee6539af8975df3312e0d314fc32024fd528937
 RUN ARCH="$(dpkg --print-architecture)" \
     && case "${ARCH}" in \
         amd64) SHA512="${YQ_SHA512_AMD64}" ;; \
