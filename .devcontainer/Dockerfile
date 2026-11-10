@@ -3,7 +3,7 @@
 # canonical home for the mechanism, this three-line override shape, and why the alias is
 # load-bearing — do not collapse it without reading "Consuming the image" there.
 ARG BASE_IMAGE=pinned-base
-FROM ghcr.io/syndic/unnatural_designs-devcontainer-base:latest@sha256:01741312f0f6f139d15e5a3dee8344a6a31ab68441c1e82c809e6b0f688f3dce AS pinned-base
+FROM ghcr.io/syndic/unnatural_designs-devcontainer-base:latest@sha256:7cf40d6f851c6c8e0eb29e1de8f7a8a52ba9b6d5160c8e363621907f4e52417f AS pinned-base
 FROM ${BASE_IMAGE}
 
 # uv: the workspace's Python package manager. Single source of truth for the

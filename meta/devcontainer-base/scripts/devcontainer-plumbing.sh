@@ -61,7 +61,7 @@ plumbing_dir="${PLUMBING_DIR:-$workspace/.devcontainer/.git-plumbing}"
 plumbing_apply_all "$plumbing_dir" "$workspace" "$phase"
 
 # Stamp what ran: every other postStart side effect is environment-dependent, so this is what
-# a consumer's smoke test can assert against. /run is tmpfs, so the stamp says "ran since this
-# container was created", not "ran on this boot".
+# a consumer's smoke test can assert against. /run is the container's writable layer, not tmpfs,
+# so a stamp survives a restart: it says "ran in this container", and its mtime says when last.
 plumbing_sudo install -d -m 0755 /run/devcontainer-plumbing
 plumbing_sudo touch "/run/devcontainer-plumbing/$phase.stamp"

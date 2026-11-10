@@ -230,8 +230,8 @@ plumbing_apply_agent_socket() {
 }
 
 # Apply everything the host stub presented. Idempotent, so calling it at both postCreate and
-# postStart is free — which is required, because postCreate does not re-run when a container
-# is reused but `devcontainer up` does re-run initializeCommand.
+# postStart is free — which is required, because postCreate runs only on a container's first
+# start, and postStart is what picks up host facts initializeCommand rewrote since.
 plumbing_apply_all() {
   local plumbing_dir="$1" workspace="$2" phase="${3:?plumbing_apply_all: phase is required}"
 

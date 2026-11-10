@@ -119,9 +119,11 @@ stays *shared code*: .dotfiles treats a non-git workspace as a bootstrap failure
 keeps a graceful else-branch. An env flag, not two divergent copies.
 
 Two ordering facts the callers must honour. The dispatcher runs at the **top** of `post-create.sh`,
-because everything below it runs git against the worktree. And it re-runs at `postStart`:
-`devcontainer up` re-runs `initializeCommand` and can rewrite the path file even for an existing
-container, but `postCreate` does not re-run. Every step is idempotent, so the double application is
+because everything below it runs git against the worktree. And it re-runs at `postStart`, which
+fires on every container start, while `postCreate` fires only on the first. Re-application happens
+on container start, not on every `up`: `devcontainer up` re-runs `initializeCommand` each time, but
+against an already-running container it runs no container hook, so host facts that `up` rewrites
+reach the container at its next start. Every step is idempotent, so the double application is
 free — including the `/etc/environment` `TZ=` line, which is rewritten rather than appended.
 
 The verb selects steps, not just the stamp name: the host facts above are applied at both phases,
