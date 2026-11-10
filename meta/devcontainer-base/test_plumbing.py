@@ -4,7 +4,7 @@ The plumbing stays shell because the base image it ships in
 (`mcr.microsoft.com/devcontainers/base:debian`) has no Python interpreter, and adding one
 would cost the RUN-free property that keeps multi-arch builds free. Its decision logic is
 therefore factored into side-effect-free functions so it can be exercised from here: each
-test sources `lib.sh` and calls one function, so nothing privileged ever runs.
+test sources `host-state-bridge.sh` and calls one function, so nothing privileged ever runs.
 
 Host-stub functions (`initialize_*`) are tested separately, in .devcontainer/, next to the
 script that owns them.
@@ -19,11 +19,11 @@ from contextlib import contextmanager
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
-_LIB_SH = _HERE / "scripts" / "lib.sh"
+_BRIDGE_SH = _HERE / "scripts" / "host-state-bridge.sh"
 _DISPATCHER = _HERE / "scripts" / "devcontainer-plumbing.sh"
 
 # Source the library, drop it from the argv, then invoke the remaining args as a command.
-# lib.sh is a pure library — sourcing it runs nothing.
+# host-state-bridge.sh is a pure library — sourcing it runs nothing.
 _SOURCE_AND_CALL = 'set -euo pipefail; source "$1"; shift; "$@"'
 _SOURCE_ONLY = 'set -euo pipefail; source "$1"'
 
@@ -64,7 +64,7 @@ class TestSourcingIsInert(unittest.TestCase):
 
     def test_sourcing_produces_no_output_and_no_error(self):
         result = subprocess.run(
-            ["bash", "-c", _SOURCE_ONLY, "_", str(_LIB_SH)],
+            ["bash", "-c", _SOURCE_ONLY, "_", str(_BRIDGE_SH)],
             capture_output=True,
             text=True,
             check=False,
@@ -78,7 +78,7 @@ class TestGitCommonAction(unittest.TestCase):
     """The guard that stops the runtime symlink clobbering a real .git directory."""
 
     def _action(self, path: str, workspace: str) -> str:
-        return _sh(_LIB_SH, "plumbing_git_common_action", path, workspace)
+        return _sh(_BRIDGE_SH, "plumbing_git_common_action", path, workspace)
 
     def test_path_inside_workspace_is_skipped(self):
         # Full-clone case: the bind mount already provides .git, so bridging is a no-op.
@@ -122,7 +122,7 @@ class TestTzEnvironment(unittest.TestCase):
         with _tmpdir() as d:
             envfile = Path(d) / "environment"
             envfile.write_text(current)
-            return _sh(_LIB_SH, "plumbing_tz_environment", tz, str(envfile)).splitlines()
+            return _sh(_BRIDGE_SH, "plumbing_tz_environment", tz, str(envfile)).splitlines()
 
     def test_appends_when_absent(self):
         self.assertEqual(self._render("UTC", "PATH=/usr/bin\n"), ["PATH=/usr/bin", "TZ=UTC"])
@@ -145,7 +145,7 @@ class TestTzEnvironment(unittest.TestCase):
 
     def test_missing_file_is_not_an_error(self):
         with _tmpdir() as d:
-            out = _sh(_LIB_SH, "plumbing_tz_environment", "UTC", f"{d}/nonexistent")
+            out = _sh(_BRIDGE_SH, "plumbing_tz_environment", "UTC", f"{d}/nonexistent")
         self.assertEqual(out.splitlines(), ["TZ=UTC"])
 
     def test_unreadable_file_fails_instead_of_truncating(self):
@@ -153,7 +153,7 @@ class TestTzEnvironment(unittest.TestCase):
         # not look like "the file only needed a TZ line" — that would wipe it. A directory
         # makes grep exit 2 regardless of uid, unlike chmod 000 which root ignores.
         with _tmpdir() as d:
-            result = _run(_LIB_SH, "plumbing_tz_environment", "UTC", d)
+            result = _run(_BRIDGE_SH, "plumbing_tz_environment", "UTC", d)
         self.assertNotEqual(result.returncode, 0)
         self.assertNotIn("TZ=UTC", result.stdout)
 
@@ -165,20 +165,20 @@ class TestInputValidation(unittest.TestCase):
     def test_safe_zone_accepted(self):
         for good in ("UTC", "America/Los_Angeles", "Etc/GMT+5"):
             with self.subTest(value=good):
-                self.assertEqual(_rc(_LIB_SH, "plumbing_zone_is_safe", good), 0)
+                self.assertEqual(_rc(_BRIDGE_SH, "plumbing_zone_is_safe", good), 0)
 
     def test_unsafe_zone_rejected(self):
         for bad in ("", "/etc/shadow", "../../etc/shadow", "America/../.."):
             with self.subTest(value=bad):
-                self.assertNotEqual(_rc(_LIB_SH, "plumbing_zone_is_safe", bad), 0)
+                self.assertNotEqual(_rc(_BRIDGE_SH, "plumbing_zone_is_safe", bad), 0)
 
     def test_absolute_git_path_accepted(self):
-        self.assertEqual(_rc(_LIB_SH, "plumbing_git_path_is_safe", "/Users/x/repo/.git"), 0)
+        self.assertEqual(_rc(_BRIDGE_SH, "plumbing_git_path_is_safe", "/Users/x/repo/.git"), 0)
 
     def test_relative_or_traversing_git_path_rejected(self):
         for bad in ("", "repo/.git", "/Users/../etc", "/a/../../b"):
             with self.subTest(value=bad):
-                self.assertNotEqual(_rc(_LIB_SH, "plumbing_git_path_is_safe", bad), 0)
+                self.assertNotEqual(_rc(_BRIDGE_SH, "plumbing_git_path_is_safe", bad), 0)
 
 
 class TestSharedIndexConfig(unittest.TestCase):
@@ -207,7 +207,7 @@ class TestSharedIndexConfig(unittest.TestCase):
                     'set -euo pipefail; source "$1"; '
                     'plumbing_apply_shared_index_config "$2" && echo UNEXPECTED_SUCCESS',
                     "_",
-                    str(_LIB_SH),
+                    str(_BRIDGE_SH),
                     d,
                 ],
                 capture_output=True,
@@ -233,7 +233,7 @@ class TestApplyAll(unittest.TestCase):
                 "-c",
                 _SOURCE_AND_CALL,
                 "_",
-                str(_LIB_SH),
+                str(_BRIDGE_SH),
                 "plumbing_apply_all",
                 plumbing_dir,
                 workspace,
@@ -336,7 +336,7 @@ class TestDispatcher(unittest.TestCase):
         # smoke test covers that one, since it needs the file installed under /usr/local.
         with _tmpdir() as d:
             result = self._run_dispatcher("post-create", plumbing_dir=d)
-        self.assertNotIn("cannot locate lib.sh", result.stderr)
+        self.assertNotIn("cannot locate host-state-bridge.sh", result.stderr)
 
 
 if __name__ == "__main__":

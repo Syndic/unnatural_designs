@@ -38,18 +38,18 @@ esac
 # candidates rather than a symlink so the image needs no RUN layer — see the Dockerfile.
 lib=""
 for candidate in \
-  "$(cd "$(dirname "$0")" && pwd)/lib.sh" \
-  "/usr/local/share/devcontainer-plumbing/lib.sh"; do
+  "$(cd "$(dirname "$0")" && pwd)/host-state-bridge.sh" \
+  "/usr/local/share/devcontainer-plumbing/host-state-bridge.sh"; do
   if [ -r "$candidate" ]; then
     lib="$candidate"
     break
   fi
 done
 if [ -z "$lib" ]; then
-  echo "devcontainer-plumbing: cannot locate lib.sh" >&2
+  echo "devcontainer-plumbing: cannot locate host-state-bridge.sh" >&2
   exit 1
 fi
-# shellcheck source=meta/devcontainer-base/scripts/lib.sh
+# shellcheck source=meta/devcontainer-base/scripts/host-state-bridge.sh
 . "$lib"
 
 workspace="${PLUMBING_WORKSPACE:-$PWD}"

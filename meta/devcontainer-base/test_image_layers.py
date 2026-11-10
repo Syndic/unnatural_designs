@@ -25,7 +25,7 @@ _SCRIPTS_TAR = _HERE / "scripts_layer.tar"
 
 # Where the dispatcher looks for its library, and where consumers call the command from.
 _DISPATCHER_PATH = "/usr/local/bin/devcontainer-plumbing"
-_LIB_PATH = "/usr/local/share/devcontainer-plumbing/lib.sh"
+_LIB_PATH = "/usr/local/share/devcontainer-plumbing/host-state-bridge.sh"
 
 
 def _sha256(path: Path) -> str:

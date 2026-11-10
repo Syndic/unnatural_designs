@@ -142,7 +142,7 @@ jobs:
             test -x "$(command -v devcontainer-plumbing)"
             # The dispatcher is installed on PATH but its library is not beside it, so this
             # also proves the absolute fallback path resolves in the image layout.
-            test -r /usr/local/share/devcontainer-plumbing/lib.sh
+            test -r /usr/local/share/devcontainer-plumbing/host-state-bridge.sh
 
             # A bad verb must be a usage error, not a silent no-op or a partial apply.
             rc=0
@@ -340,7 +340,7 @@ jobs:
             # Nothing in this repo installs either file, so these fail if the FROM regressed
             # to a plain Debian base.
             test -x /usr/local/bin/devcontainer-plumbing
-            test -r /usr/local/share/devcontainer-plumbing/lib.sh
+            test -r /usr/local/share/devcontainer-plumbing/host-state-bridge.sh
 
             # Only initialize.sh writes these, and only on the host, so they pin the fact
             # that devcontainers/ci runs initializeCommand (plain `devcontainer build`

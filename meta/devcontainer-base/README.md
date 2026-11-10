@@ -79,9 +79,10 @@ to keep in mind:
 devcontainer-plumbing <post-create|post-start>
 ```
 
-Installed at `/usr/local/bin/devcontainer-plumbing`, with `lib.sh` at
-`/usr/local/share/devcontainer-plumbing/lib.sh`. Consuming repos call the dispatcher from the
-top of their `postCreateCommand` and `postStartCommand` hooks, then do their own work.
+Installed at `/usr/local/bin/devcontainer-plumbing`, with `host-state-bridge.sh` at
+`/usr/local/share/devcontainer-plumbing/host-state-bridge.sh`. Consuming repos call the
+dispatcher from the top of their `postCreateCommand` and `postStartCommand` hooks, then do their
+own work.
 
 The dispatcher — rather than a library each consumer composes itself — is what retires
 hand-porting: a *new* shared step ships in the image and reaches every consumer on its next
@@ -295,14 +296,15 @@ file it names — and honours an allowed_signers a user provisioned some other w
   `.devcontainer/test_initialize.py` for this repo's host stub, each next to the code it covers.
   `shellcheck` covers the rest, wired as a CI job in `unnatural_designs` and surfaced inline in
   the editor there.
-- **`lib.sh` sets no shell options.** It is sourced into callers that own their own; the
-  dispatcher sets `-euo pipefail`.
+- **`host-state-bridge.sh` sets no shell options.** It is sourced into callers that own their
+  own; the dispatcher sets `-euo pipefail`.
 - **Failure policy is per step.** The git-common bridge fails loud — the consumer's postCreate
   runs git immediately after. Timezone and the other conveniences warn and continue, so a
   cosmetic problem never aborts container creation.
 - **Decisions are pure functions.** Effects live at the call site. That is what lets
-  `test_plumbing.py` source `lib.sh` and exercise the logic without privileged writes. When adding
-  logic here, put the decision in a pure function and leave only the effect at the call site.
+  `test_plumbing.py` source `host-state-bridge.sh` and exercise the logic without privileged
+  writes. When adding logic here, put the decision in a pure function and leave only the effect
+  at the call site.
 
 ## Build and publish
 

@@ -14,7 +14,7 @@ load("@rules_python//python:defs.bzl", "py_test")
 # non-executable dispatcher fails only at container start — which is how it was first shipped.
 pkg_tar(
     name = "scripts_layer",
-    srcs = ["scripts/lib.sh"],
+    srcs = ["scripts/host-state-bridge.sh"],
     # Reproducibility: pkg_tar defaults to a fixed mtime, so rebuilding produces byte-identical
     # output and therefore a stable image digest. A `docker build` bakes fresh timestamps into
     # the image config, which is why the old CI job had to avoid rebuilding the base needlessly.
@@ -103,7 +103,7 @@ py_test(
     srcs = ["test_plumbing.py"],
     data = [
         "scripts/devcontainer-plumbing.sh",
-        "scripts/lib.sh",
+        "scripts/host-state-bridge.sh",
     ],
     main = "test_plumbing.py",
 )
