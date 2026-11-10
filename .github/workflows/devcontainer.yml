@@ -359,6 +359,7 @@ jobs:
             # check (runner uid != container uid).
             test "$(git config --file .git/config --get core.checkstat)" = "minimal"
             test "$(git config --file .git/config --get core.trustctime)" = "false"
+            test "$(git config --file .git/config --get gc.worktreePruneExpire)" = "never"
 
             # Timezone came from the host snapshot, and applied idempotently: postCreate
             # and postStart both ran, so an appending /etc/environment write reads as 2.

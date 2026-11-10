@@ -149,6 +149,13 @@ plumbing_apply_shared_index_config() {
     git -C "$1" config core.trustctime false
 }
 
+# The shared common dir shares .git/worktrees/ too, but this container mounts only its own
+# worktree, so every sibling looks missing from in here — and an in-container `git gc --auto`
+# would prune them. Repo-local, like the index pair, so one write covers host and container.
+plumbing_apply_worktree_prune_guard() {
+  git -C "$1" config gc.worktreePruneExpire never
+}
+
 # Point the container at the host's IANA zone so timestamps don't drift against the host.
 plumbing_apply_timezone() {
   local tz="$1" tmp
@@ -234,6 +241,7 @@ plumbing_apply_all() {
   if [ -s "$plumbing_dir/host-git-common-path" ]; then
     plumbing_apply_git_common "$plumbing_dir" "$workspace"
     plumbing_apply_shared_index_config "$workspace"
+    plumbing_apply_worktree_prune_guard "$workspace"
   elif [ "${PLUMBING_REQUIRE_GIT_CHECKOUT:-0}" = 1 ]; then
     # Opt-in policy fork: Syndic/.dotfiles treats a non-git workspace as a bootstrap
     # failure, while this repo keeps a graceful else-branch. An env flag rather than

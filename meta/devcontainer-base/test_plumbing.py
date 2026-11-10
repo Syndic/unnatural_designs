@@ -340,6 +340,45 @@ class TestSharedIndexConfig(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
 
 
+class TestWorktreePruneGuard(unittest.TestCase):
+    """The setting that stops an in-container `git gc --auto` unregistering every sibling
+    worktree, all of which look missing from a container that mounts only its own."""
+
+    def _guard(self, git_script: str | None = None):
+        with _tmpdir() as d:
+            fake_bin = _stub_bin(d, "git")
+            if git_script is not None:
+                (fake_bin / "git").write_text(git_script)
+            env = dict(os.environ, PATH=f"{fake_bin}:{os.environ['PATH']}")
+            result = subprocess.run(
+                [
+                    "bash",
+                    "-c",
+                    _SOURCE_AND_CALL,
+                    "_",
+                    str(_BRIDGE_SH),
+                    "plumbing_apply_worktree_prune_guard",
+                    d,
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                env=env,
+            )
+            return result, d, _cmd_log(d)
+
+    def test_writes_never_to_the_repo_local_config(self):
+        # Repo-local is what lands it in the common dir, covering the host and every worktree;
+        # --global would reach only this container's HOME.
+        result, d, log = self._guard()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(log, f"git -C {d} config gc.worktreePruneExpire never\n")
+
+    def test_a_failed_write_fails_the_step(self):
+        result, _, _ = self._guard("#!/bin/sh\nexit 1\n")
+        self.assertNotEqual(result.returncode, 0)
+
+
 class TestApplyAll(unittest.TestCase):
     """The step sequencer, including the policy fork that only Syndic/.dotfiles turns on —
     a branch nothing in this repo exercises by running the container."""
@@ -394,8 +433,32 @@ class TestApplyAll(unittest.TestCase):
             with self.subTest(require=require), _tmpdir() as d:
                 self.assertEqual(self._apply(d, d, require=require).returncode, 0)
 
+    def test_recorded_common_dir_writes_the_prune_guard(self):
+        # A full clone records <workspace>/.git, which the git-common step skips without a
+        # privileged call, so this reaches the config writes with only `git` stubbed.
+        with _tmpdir() as d:
+            workspace = Path(d) / "ws"
+            (workspace / ".git").mkdir(parents=True)
+            (Path(d) / "host-git-common-path").write_text(f"{workspace}/.git\n")
+            fake_bin = _stub_bin(d, "git")
+            env = dict(os.environ, PATH=f"{fake_bin}:{os.environ['PATH']}")
+            result = self._apply(d, str(workspace), env=env)
+            log = _cmd_log(d)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(f"git -C {workspace} config gc.worktreePruneExpire never", log)
+
+    def test_no_common_dir_writes_no_git_config(self):
+        # No shared common dir, no shared .git/worktrees/ to protect.
+        with _tmpdir() as d:
+            fake_bin = _stub_bin(d, "git")
+            env = dict(os.environ, PATH=f"{fake_bin}:{os.environ['PATH']}")
+            result = self._apply(d, d, env=env)
+            log = _cmd_log(d)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(log, "")
+
     def test_omitting_the_phase_fails_loudly(self):
-        # The phase now selects steps, so defaulting it would silently run the signing bridge
+        # The phase selects steps, so defaulting it would silently run the signing bridge
         # — sudo and all — for a caller that never asked for a phase at all.
         with _tmpdir() as d:
             result = self._apply(d, d, phase=None)

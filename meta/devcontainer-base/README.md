@@ -31,11 +31,11 @@ them per-consumer:
   `workspaceFolder`/`workspaceMount` to `${localWorkspaceFolder}` so the workspace lives at its
   real host path in the container.
 - **This image** — recreates the host-absolute git path as a symlink to `/host-git-common`, points
-  `/etc/localtime` at the host zone, and writes the shared-index config below. At `postStart` it
-  also runs the signing bridge (see "Signed commits under the devcontainer CLI").
+  `/etc/localtime` at the host zone, and writes the shared-common-dir config below. At `postStart`
+  it also runs the signing bridge (see "Signed commits under the devcontainer CLI").
 
 Each apply step guards on `[ -s ... ]`, so a missing or empty file is a clean no-op: no git
-checkout means no symlink and no shared-index config, no zone means the container keeps its
+checkout means no symlink and no shared-common-dir config, no zone means the container keeps its
 default.
 
 **The host timezone.** Without it the container defaults to `Etc/UTC` and every timestamp drifts
@@ -57,6 +57,19 @@ the common dir, so one write covers both sides and every worktree, which is also
 written from the container side at all. Known trade-off: a same-size edit landing in the same
 second as the last index refresh can evade stat detection; git's racy-index protection covers the
 realistic window.
+
+**Sibling worktrees and in-container gc.** Sharing the common dir also shares `.git/worktrees/`,
+but a container mounts only its own worktree, so from inside it every sibling's directory is
+missing. An in-container `git commit` can trigger `git gc --auto`, which runs `git worktree prune
+--expire <gc.worktreePruneExpire>` (default three months) and silently unregisters every sibling
+idle longer than that. Their files survive, but the main repo loses track of them. The library
+sets `gc.worktreePruneExpire = never` in the repo-local config, written from the container like the
+index pair and for the same reason: it lands in the common dir, so one write covers the host and
+every worktree. It runs only when a common dir was recorded, and fails loud.
+
+The cost: `never` stops the automatic prune on the host too, so stale entries persist until
+someone removes them one at a time. Don't reach for `git worktree prune` to do it: inside a
+container every sibling looks stale, and it drops them all. #299 tracks the missing tooling.
 
 ## Why the application is at runtime, not baked
 
