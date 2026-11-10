@@ -31,11 +31,14 @@ them per-consumer:
   `workspaceFolder`/`workspaceMount` to `${localWorkspaceFolder}` so the workspace lives at its
   real host path in the container.
 - **This image** — recreates the host-absolute git path as a symlink to `/host-git-common`, points
-  `/etc/localtime` at the host zone, and writes the shared-index config below.
+  `/etc/localtime` at the host zone, and writes the shared-common-dir config below. At `postStart`
+  it also runs the signing bridge (see "Signed commits under the devcontainer CLI").
 
-Each apply step guards on `[ -s ... ]`, so a missing or empty file is a clean no-op: no git
-checkout means no symlink and no shared-index config, no zone means the container keeps its
-default.
+Each host-fact step guards on `[ -s ... ]`, so a missing or empty file is a clean no-op: no git
+checkout means no symlink and no shared-common-dir config, no zone means the container keeps its
+default. The signing bridge is the exception: at `postStart` its `~/.ssh` repair runs
+unconditionally, a privileged `install -d` on every start, and the socket step keys on the socket
+itself rather than on a `.git-plumbing` file.
 
 **The host timezone.** Without it the container defaults to `Etc/UTC` and every timestamp drifts
 hours off the host.
@@ -56,6 +59,19 @@ the common dir, so one write covers both sides and every worktree, which is also
 written from the container side at all. Known trade-off: a same-size edit landing in the same
 second as the last index refresh can evade stat detection; git's racy-index protection covers the
 realistic window.
+
+**Sibling worktrees and in-container gc.** Sharing the common dir also shares `.git/worktrees/`,
+but a container mounts only its own worktree, so from inside it every sibling's directory is
+missing. An in-container `git commit` can trigger `git gc --auto`, which runs `git worktree prune
+--expire <gc.worktreePruneExpire>` (default three months) and silently unregisters every sibling
+idle longer than that. Their files survive, but the main repo loses track of them. The library
+sets `gc.worktreePruneExpire = never` in the repo-local config, written from the container like the
+index pair and for the same reason: it lands in the common dir, so one write covers the host and
+every worktree. It runs only when a common dir was recorded, and fails loud.
+
+The cost: `never` stops the automatic prune on the host too, so stale entries persist until
+someone removes them one at a time. Don't reach for `git worktree prune` to do it: inside a
+container every sibling looks stale, and it drops them all. #299 tracks the missing tooling.
 
 ## Why the application is at runtime, not baked
 
@@ -79,9 +95,10 @@ to keep in mind:
 devcontainer-plumbing <post-create|post-start>
 ```
 
-Installed at `/usr/local/bin/devcontainer-plumbing`, with `lib.sh` at
-`/usr/local/share/devcontainer-plumbing/lib.sh`. Consuming repos call the dispatcher from the
-top of their `postCreateCommand` and `postStartCommand` hooks, then do their own work.
+Installed at `/usr/local/bin/devcontainer-plumbing`, with `host-state-bridge.sh` at
+`/usr/local/share/devcontainer-plumbing/host-state-bridge.sh`. Consuming repos call the
+dispatcher from the top of their `postCreateCommand` and `postStartCommand` hooks, then do their
+own work.
 
 The dispatcher — rather than a library each consumer composes itself — is what retires
 hand-porting: a *new* shared step ships in the image and reaches every consumer on its next
@@ -104,10 +121,17 @@ stays *shared code*: .dotfiles treats a non-git workspace as a bootstrap failure
 keeps a graceful else-branch. An env flag, not two divergent copies.
 
 Two ordering facts the callers must honour. The dispatcher runs at the **top** of `post-create.sh`,
-because everything below it runs git against the worktree. And it re-runs at `postStart`:
-`devcontainer up` re-runs `initializeCommand` and can rewrite the path file even for an existing
-container, but `postCreate` does not re-run. Every step is idempotent, so the double application is
+because everything below it runs git against the worktree. And it re-runs at `postStart`, which
+fires on every container start, while `postCreate` fires only on the first. Re-application happens
+on container start, not on every `up`: `devcontainer up` re-runs `initializeCommand` each time, but
+against an already-running container it runs no container hook, so host facts that `up` rewrites
+reach the container at its next start. Every step is idempotent, so the double application is
 free — including the `/etc/environment` `TZ=` line, which is rewritten rather than appended.
+
+The verb selects steps, not just the stamp name: the host facts above are applied at both phases,
+the signing bridge below at `postStart` only. `plumbing_apply_all` therefore takes the phase as a
+required argument rather than defaulting it — a default would silently run privileged steps for a
+caller that never named a phase.
 
 ### What the host side still owns
 
@@ -196,9 +220,9 @@ candidate is CI's job, and `bazel run :load` needs a Docker daemon the devcontai
 
 ### Signed commits under the devcontainer CLI
 
-Not in the image yet — these pieces live in each consumer's `devcontainer.json` and
-`post-start.sh`. The rationale is here because both repos need it and both would otherwise carry a
-drifting copy; the code moves into the library when the second consumer needs it.
+The scripted half of this is in the library, applied at `postStart`. What stays per-consumer is
+the `devcontainer.json` half — the bind mounts and `SSH_AUTH_SOCK` — which is configuration the
+image cannot carry, plus the `initialize.sh` reads that feed it.
 
 The host signs with **SSH** (`gpg.format = ssh`, `commit.gpgsign = true`, no explicit
 `user.signingkey` — `gpg.ssh.defaultKeyCommand` shells out to `ssh-add -L`). That makes two things
@@ -226,13 +250,13 @@ two bind mounts and three scripted steps:
   absent it `sudo touch`es a placeholder at the magic path so the bind succeeds (agent forwarding
   won't be functional there, which is fine — CI's smoke job just needs the container to start).
 - **SSH agent socket ownership** — Docker Desktop bind-mounts the magic socket root-owned mode
-  660. The remoteUser is `vscode` (uid 1000), so it can't connect to a root-owned socket.
-  `post-start.sh` `chown`s it to the current user (vscode has passwordless sudo in the
+  660. The remoteUser is `vscode` (uid 1000), so it can't connect to a root-owned socket. The
+  library `chown`s it to the current user (vscode has passwordless sudo in the
   `devcontainers/base:debian` image). Has to happen on every container start, because the
   bind-mounted socket is re-created root-owned each time. Harmless under VS Code, which uses its
   own tunneled socket and ignores the magic one entirely.
 - **`~/.gitconfig`** — `initialize.sh` writes a snapshot to `.git-plumbing/host-gitconfig`.
-  `post-start.sh` copies it to `$HOME/.gitconfig` *only if that file is missing or empty*.
+  The library copies it to `$HOME/.gitconfig` *only if that file is missing or empty*.
   `postStartCommand` runs after the Dev Containers extension's own gitconfig copy, so the
   empty-check naturally lets VS Code win when it's involved. It stays a snapshot rather than
   becoming a bind mount like the two below, because the container *rewrites* it (see the
@@ -268,15 +292,31 @@ files anywhere. Known limitation: a single-file bind means whole-file *replaceme
 bind mount pins the inode and would show stale content until restart.
 
 One consequence of these being mounts: Docker creates the mount parent root-owned 0755 before any
-hook runs, and SSH ignores a `~/.ssh` it considers unsafe, so `post-start.sh` `install -d`s the
+hook runs, and SSH ignores a `~/.ssh` it considers unsafe, so the library `install -d`s the
 directory back to the user at mode 700 — without touching the binds inside it.
 
 The repoint the mounts don't remove: the copied gitconfig still points
 `gpg.ssh.allowedSignersFile` at the *host-absolute* path (`/Users/...`), which doesn't exist in the
-container, so `post-start.sh` rewrites it (`git config --global`) to the mounted path whenever that
+container, so the library rewrites it (`git config --global`) to the mounted path whenever that
 file is non-empty. Keying the rewrite on the *destination* rather than on "did we just copy" makes
 it fire under VS Code too — the extension bridges the gitconfig, stale path and all, but not the
 file it names — and honours an allowed_signers a user provisioned some other way.
+
+Three notes on how these four steps sit in the library:
+
+- **`postStart` only**, and the gitconfig install is the reason: at `postCreate` the extension has
+  not made its copy yet, so the empty-check would always read "install" and this side would win a
+  race it is meant to lose. The other three keep it company: the allowed-signers repoint has to
+  follow the install, since it rewrites the file the install wrote, and the `~/.ssh` repair and the
+  socket chown are needed on every start anyway.
+- **The magic socket path is a constant, not a `PLUMBING_*` input.** It is Docker Desktop's, not a
+  per-consumer choice: the same literal appears in every consumer's `devcontainer.json` mount and
+  `SSH_AUTH_SOCK`, so an env input would only let the library disagree with the mount that puts
+  the socket there. The functions take it as an argument so the tests can point elsewhere.
+- **Double application is safe**, which matters while a consumer's hook still carries its own copy
+  of these steps: it finds the gitconfig already installed, the socket already owned, and the
+  directory already at mode 700. That is what lets the image ship ahead of the consumer edit
+  rather than in lockstep with it.
 
 ## Conventions
 
@@ -295,14 +335,16 @@ file it names — and honours an allowed_signers a user provisioned some other w
   `.devcontainer/test_initialize.py` for this repo's host stub, each next to the code it covers.
   `shellcheck` covers the rest, wired as a CI job in `unnatural_designs` and surfaced inline in
   the editor there.
-- **`lib.sh` sets no shell options.** It is sourced into callers that own their own; the
-  dispatcher sets `-euo pipefail`.
+- **`host-state-bridge.sh` sets no shell options.** It is sourced into callers that own their
+  own; the dispatcher sets `-euo pipefail`.
 - **Failure policy is per step.** The git-common bridge fails loud — the consumer's postCreate
-  runs git immediately after. Timezone and the other conveniences warn and continue, so a
+  runs git immediately after — and so does the signing bridge, since the alternative is
+  discovering it at `git commit`. Timezone and the other conveniences warn and continue, so a
   cosmetic problem never aborts container creation.
 - **Decisions are pure functions.** Effects live at the call site. That is what lets
-  `test_plumbing.py` source `lib.sh` and exercise the logic without privileged writes. When adding
-  logic here, put the decision in a pure function and leave only the effect at the call site.
+  `test_plumbing.py` source `host-state-bridge.sh` and exercise the logic without privileged
+  writes. When adding logic here, put the decision in a pure function and leave only the effect
+  at the call site.
 
 ## Build and publish
 

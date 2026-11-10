@@ -7,6 +7,9 @@ set -euo pipefail
 #
 # Usage: devcontainer-plumbing <post-create|post-start>
 #
+# The phase selects steps as well as naming the stamp: the signing bridge runs at post-start
+# only, for the ordering reason in host-state-bridge.sh.
+#
 # Inputs (env, both optional):
 #   PLUMBING_DIR                  where the host stub dropped its files.
 #                                 Default: $PWD/.devcontainer/.git-plumbing
@@ -38,27 +41,27 @@ esac
 # candidates rather than a symlink so the image needs no RUN layer — see the Dockerfile.
 lib=""
 for candidate in \
-  "$(cd "$(dirname "$0")" && pwd)/lib.sh" \
-  "/usr/local/share/devcontainer-plumbing/lib.sh"; do
+  "$(cd "$(dirname "$0")" && pwd)/host-state-bridge.sh" \
+  "/usr/local/share/devcontainer-plumbing/host-state-bridge.sh"; do
   if [ -r "$candidate" ]; then
     lib="$candidate"
     break
   fi
 done
 if [ -z "$lib" ]; then
-  echo "devcontainer-plumbing: cannot locate lib.sh" >&2
+  echo "devcontainer-plumbing: cannot locate host-state-bridge.sh" >&2
   exit 1
 fi
-# shellcheck source=meta/devcontainer-base/scripts/lib.sh
+# shellcheck source=meta/devcontainer-base/scripts/host-state-bridge.sh
 . "$lib"
 
 workspace="${PLUMBING_WORKSPACE:-$PWD}"
 plumbing_dir="${PLUMBING_DIR:-$workspace/.devcontainer/.git-plumbing}"
 
-plumbing_apply_all "$plumbing_dir" "$workspace"
+plumbing_apply_all "$plumbing_dir" "$workspace" "$phase"
 
 # Stamp what ran: every other postStart side effect is environment-dependent, so this is what
-# a consumer's smoke test can assert against. /run is tmpfs, so the stamp says "ran since this
-# container was created", not "ran on this boot".
+# a consumer's smoke test can assert against. /run is the container's writable layer, not tmpfs,
+# so a stamp survives a restart: it says "ran in this container", and its mtime says when last.
 plumbing_sudo install -d -m 0755 /run/devcontainer-plumbing
 plumbing_sudo touch "/run/devcontainer-plumbing/$phase.stamp"

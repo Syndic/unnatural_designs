@@ -155,7 +155,9 @@ class TestBazelAndBaseImageSets(unittest.TestCase):
         self.assertEqual(fires("infra/MODULE.bazel.tmpl"), set())
 
     def test_base_image_sources(self):
-        self.assertEqual(fires("meta/devcontainer-base/scripts/lib.sh"), {"base", "changed"})
+        self.assertEqual(
+            fires("meta/devcontainer-base/scripts/host-state-bridge.sh"), {"base", "changed"}
+        )
 
     def test_base_image_readme_also_counts(self):
         # A plain prefix, so the rationale doc rebuilds the image. Cheap, and an allowlist would
@@ -193,7 +195,7 @@ class TestDevcontainerSets(unittest.TestCase):
         # the same commit. Without the module in `base`, the publish gate and the base-image smoke
         # test both stand down on the one commit that most needs them.
         doctored = tuple(p for p in BASE if "devcontainer-base" not in p)
-        changed = ["meta/devcontainer-base/scripts/lib.sh", _SETS_MODULE]
+        changed = ["meta/devcontainer-base/scripts/host-state-bridge.sh", _SETS_MODULE]
         self.assertTrue(
             any(re.search(p, f) for p in doctored for f in changed),
             "a commit that removes the base-image pattern must still classify as a base change, "
@@ -278,7 +280,7 @@ _SAMPLE_PATHS = (
     ".bazelversion",
     "vendor/MODULE.bazel",
     "MODULE.bazel.lock",
-    "meta/devcontainer-base/scripts/lib.sh",
+    "meta/devcontainer-base/scripts/host-state-bridge.sh",
     "meta/devcontainer-base/README.md",
     "meta/scripts/check_modules.py",
     _SETS_MODULE,

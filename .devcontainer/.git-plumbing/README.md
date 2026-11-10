@@ -15,10 +15,10 @@ the directory in git.
 - `host-timezone` — IANA zone name (e.g. `America/Los_Angeles`) of the host's
   timezone. The shared plumbing points `/etc/localtime` at it so container
   timestamps match the host. Empty is fine — the container keeps its default.
-- `host-gitconfig` — snapshot of the host's `~/.gitconfig`. `post-start.sh`
-  installs it into the container only when `~/.gitconfig` is empty (i.e. the
-  `devcontainer` CLI path; VS Code's Dev Containers extension copies it for
-  itself). See "Signed commits under the devcontainer CLI" in
+- `host-gitconfig` — snapshot of the host's `~/.gitconfig`. The shared plumbing
+  installs it into the container at `postStart`, and only when `~/.gitconfig` is
+  empty (i.e. the `devcontainer` CLI path; VS Code's Dev Containers extension
+  copies it for itself). See "Signed commits under the devcontainer CLI" in
   `meta/devcontainer-base/README.md`.
 
 The host's known_hosts and allowed_signers are *not* snapshotted here.
