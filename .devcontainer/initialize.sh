@@ -108,8 +108,8 @@ if [ -z "$tz" ] && [ -r /etc/timezone ]; then
 fi
 printf '%s\n' "$(initialize_sanitize_tz "$tz")" >"$tzfile"
 
-# Snapshot host ~/.gitconfig for post-start.sh to install when the Dev
-# Containers extension hasn't already done so. Empty file if absent.
+# Snapshot host ~/.gitconfig for the shared plumbing to install at postStart when
+# the Dev Containers extension hasn't already done so. Empty file if absent.
 if [ -r "$HOME/.gitconfig" ]; then
   cp "$HOME/.gitconfig" "$gitconfigfile"
 else

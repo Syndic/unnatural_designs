@@ -644,8 +644,8 @@ What is local to this repo:
   carry, since it runs on the host before any container exists. It writes `.git-plumbing/` and the
   `.host-*` symlinks `devcontainer.json` binds.
 - **The hooks call `/usr/local/bin/devcontainer-plumbing` first, then do repo work.**
-  `post-start.sh` additionally installs the host gitconfig, repoints `gpg.ssh.allowedSignersFile`
-  and chowns the agent socket; those steps stay here until a second consumer needs them.
+  `post-start.sh` is only that call: the signing bridge (host gitconfig, `allowedSignersFile`,
+  agent socket, `~/.ssh` mode) is the image's, applied at the `post-start` verb.
 - **`.git-plumbing/` is tracked via its README**; the files inside are gitignored and rewritten on
   every `up`.
 

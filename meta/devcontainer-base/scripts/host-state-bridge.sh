@@ -52,6 +52,32 @@ plumbing_git_path_is_safe() {
   esac
 }
 
+# Whether to install the host gitconfig snapshot.
+# Echoes: install | skip
+#
+# A non-empty destination is what lets VS Code win: its extension copies the host gitconfig in
+# between postCreate and postStart, so by the time this runs the file is already there.
+plumbing_gitconfig_action() {
+  if [ -s "$1" ] && [ ! -s "$2" ]; then
+    echo install
+  else
+    echo skip
+  fi
+}
+
+# Whether the forwarded ssh-agent socket needs re-owning.
+# Echoes: chown | skip
+#
+# `-O` (owned by the effective uid) rather than reading the owner out of `stat`: no `stat`
+# flag spelling is common to the Debian container and the macOS host these tests also run on.
+plumbing_agent_socket_action() {
+  if [ -S "$1" ] && [ ! -O "$1" ]; then
+    echo chown
+  else
+    echo skip
+  fi
+}
+
 # New /etc/environment content: every line except TZ=, then exactly one TZ=. Rewriting
 # rather than appending is what keeps this idempotent across repeated container starts.
 plumbing_tz_environment() {
@@ -157,11 +183,50 @@ plumbing_apply_timezone() {
   rm -f "$tmp"
 }
 
+# Docker creates the mount parent root-owned 0755 before any hook runs, and SSH ignores a
+# ~/.ssh it considers unsafe. `install -d` fixes the directory without touching the binds
+# inside it.
+plumbing_apply_ssh_dir() {
+  plumbing_sudo install -d -m 700 -o "$(id -u)" -g "$(id -g)" "$HOME/.ssh"
+}
+
+# Bridge the host's ~/.gitconfig, which the devcontainer CLI — unlike the Dev Containers
+# extension — does not do. It stays a snapshot rather than a mount because the container
+# rewrites it; see plumbing_apply_allowed_signers.
+plumbing_apply_host_gitconfig() {
+  local src="$1/host-gitconfig"
+  case "$(plumbing_gitconfig_action "$src" "$HOME/.gitconfig")" in
+    install) cp "$src" "$HOME/.gitconfig" ;;
+    skip) ;;
+  esac
+}
+
+# The bridged gitconfig still names a host-absolute allowed-signers path, so git reads our own
+# signed commits back as untrusted. Keyed on the destination rather than on "did we just
+# install it", so it also fires under VS Code, which bridges the gitconfig but not the file
+# it names.
+plumbing_apply_allowed_signers() {
+  local signers="$HOME/.ssh/allowed_signers"
+  if [ -s "$signers" ]; then
+    git config --global gpg.ssh.allowedSignersFile "$signers"
+  fi
+}
+
+# Docker Desktop bind-mounts its magic ssh-agent socket root-owned mode 660 — re-created that
+# way on every container start — so a non-root remoteUser can't connect until we re-own it.
+plumbing_apply_agent_socket() {
+  local sock="$1"
+  case "$(plumbing_agent_socket_action "$sock")" in
+    chown) plumbing_sudo chown "$(id -u):$(id -g)" "$sock" ;;
+    skip) ;;
+  esac
+}
+
 # Apply everything the host stub presented. Idempotent, so calling it at both postCreate and
 # postStart is free — which is required, because postCreate does not re-run when a container
 # is reused but `devcontainer up` does re-run initializeCommand.
 plumbing_apply_all() {
-  local plumbing_dir="$1" workspace="$2"
+  local plumbing_dir="$1" workspace="$2" phase="${3:?plumbing_apply_all: phase is required}"
 
   # Called bare, NOT as `step || return 1`: bash suspends errexit for the entire body of a
   # function invoked as the left operand of `||`, so a wrapper would let a step fail partway,
@@ -181,5 +246,18 @@ plumbing_apply_all() {
   # failure. No wrapper here either, for the same errexit reason.
   if [ -s "$plumbing_dir/host-timezone" ]; then
     plumbing_apply_timezone "$(cat "$plumbing_dir/host-timezone")"
+  fi
+
+  # The signing bridge is postStart-only, and the gitconfig install is why: the Dev Containers
+  # extension copies its own between postCreate and postStart, so at postCreate the empty-check
+  # would always read "install" and this side would win a race it is meant to lose. The other
+  # three keep it company. See "Signed commits under the devcontainer CLI" in the README.
+  if [ "$phase" = post-start ]; then
+    plumbing_apply_ssh_dir
+    plumbing_apply_host_gitconfig "$plumbing_dir"
+    plumbing_apply_allowed_signers
+    # Docker Desktop's own path, which every consumer's devcontainer.json binds; an argument
+    # rather than a constant inside the function so the tests can point it somewhere else.
+    plumbing_apply_agent_socket /run/host-services/ssh-auth.sock
   fi
 }

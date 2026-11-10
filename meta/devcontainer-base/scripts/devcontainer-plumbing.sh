@@ -7,6 +7,9 @@ set -euo pipefail
 #
 # Usage: devcontainer-plumbing <post-create|post-start>
 #
+# The phase selects steps as well as naming the stamp: the signing bridge runs at post-start
+# only, for the ordering reason in host-state-bridge.sh.
+#
 # Inputs (env, both optional):
 #   PLUMBING_DIR                  where the host stub dropped its files.
 #                                 Default: $PWD/.devcontainer/.git-plumbing
@@ -55,7 +58,7 @@ fi
 workspace="${PLUMBING_WORKSPACE:-$PWD}"
 plumbing_dir="${PLUMBING_DIR:-$workspace/.devcontainer/.git-plumbing}"
 
-plumbing_apply_all "$plumbing_dir" "$workspace"
+plumbing_apply_all "$plumbing_dir" "$workspace" "$phase"
 
 # Stamp what ran: every other postStart side effect is environment-dependent, so this is what
 # a consumer's smoke test can assert against. /run is tmpfs, so the stamp says "ran since this

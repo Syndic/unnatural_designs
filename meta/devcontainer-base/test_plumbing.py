@@ -11,6 +11,7 @@ script that owns them.
 """
 
 import os
+import socket
 import subprocess
 import sys
 import tempfile
@@ -57,6 +58,44 @@ def _sh(script: Path, func: str, *args: str) -> str:
 def _rc(script: Path, func: str, *args: str) -> int:
     """Return just the exit status, for the predicates that signal via rc."""
     return _run(script, func, *args).returncode
+
+
+# Log the command name as well as its arguments: plumbing_sudo drops the `sudo` entirely when
+# already root — which is what happens under Bazel's remote executor, while a developer's
+# container and the macOS runner are non-root. One assertion then covers both.
+_STUB = '#!/bin/sh\necho "$(basename "$0") $*" >>"$(dirname "$0")/../cmd.log"\n'
+
+
+def _stub_bin(root: str, *names: str) -> Path:
+    """Log-and-succeed stubs for the commands a privileged step would otherwise run for real."""
+    fake_bin = Path(root) / "bin"
+    fake_bin.mkdir(exist_ok=True)
+    for name in names:
+        stub = fake_bin / name
+        stub.write_text(_STUB)
+        stub.chmod(0o755)
+    return fake_bin
+
+
+def _sandbox_env(root: str, **extra: str) -> dict:
+    """Env that confines a post-start run to `root`.
+
+    HOME is redirected because the signing bridge writes there for real (`cp`, and a
+    `git config --global` this stubs out) — an unredirected run would rewrite the developer's
+    own ~/.gitconfig.
+    """
+    home = Path(root) / "home"
+    (home / ".ssh").mkdir(parents=True, exist_ok=True)
+    fake_bin = _stub_bin(root, "sudo", "install", "touch", "git", "chown")
+    env = dict(os.environ, HOME=str(home))
+    env["PATH"] = f"{fake_bin}:{env['PATH']}"
+    env.update(extra)
+    return env
+
+
+def _cmd_log(root: str) -> str:
+    log = Path(root) / "cmd.log"
+    return log.read_text() if log.exists() else ""
 
 
 class TestSourcingIsInert(unittest.TestCase):
@@ -158,6 +197,88 @@ class TestTzEnvironment(unittest.TestCase):
         self.assertNotIn("TZ=UTC", result.stdout)
 
 
+class TestGitconfigAction(unittest.TestCase):
+    """Who wins the container's ~/.gitconfig: the host snapshot, or whoever got there first."""
+
+    def _action(self, src: str | None, dst: str | None) -> str:
+        with _tmpdir() as d:
+            paths = []
+            for name, content in (("src", src), ("dst", dst)):
+                path = Path(d) / name
+                if content is not None:
+                    path.write_text(content)
+                paths.append(str(path))
+            return _sh(_BRIDGE_SH, "plumbing_gitconfig_action", *paths)
+
+    def test_snapshot_is_installed_when_the_destination_is_absent(self):
+        # The devcontainer CLI path this exists for: nothing bridges the gitconfig.
+        self.assertEqual(self._action("[user]\n", None), "install")
+
+    def test_snapshot_is_installed_when_the_destination_is_empty(self):
+        self.assertEqual(self._action("[user]\n", ""), "install")
+
+    def test_a_populated_destination_wins(self):
+        # VS Code's extension copies its own between postCreate and postStart, so by the time
+        # this runs the file is already there and must not be clobbered.
+        self.assertEqual(
+            self._action("[user]\n  name = host\n", "[user]\n  name = vscode\n"), "skip"
+        )
+
+    def test_missing_or_empty_snapshot_is_a_no_op(self):
+        # initialize.sh writes an empty file when the host has no ~/.gitconfig; copying it
+        # would create an empty ~/.gitconfig that then blocks every later start.
+        for src in (None, ""):
+            with self.subTest(src=src):
+                self.assertEqual(self._action(src, None), "skip")
+
+
+class TestAgentSocketAction(unittest.TestCase):
+    """The guard that keeps the chown to the case Docker Desktop actually creates."""
+
+    def _action(self, path: str) -> str:
+        return _sh(_BRIDGE_SH, "plumbing_agent_socket_action", path)
+
+    @contextmanager
+    def _socket(self):
+        with _tmpdir() as d:
+            path = Path(d) / "sock"
+            # Bound, not just touched: -S is the first half of the decision.
+            sock = socket.socket(socket.AF_UNIX)
+            sock.bind(str(path))
+            try:
+                yield path
+            finally:
+                sock.close()
+
+    def test_missing_path_is_skipped(self):
+        with _tmpdir() as d:
+            self.assertEqual(self._action(f"{d}/absent"), "skip")
+
+    def test_regular_file_is_skipped(self):
+        # initialize.sh touches a placeholder there on engines that aren't Docker Desktop, so
+        # the bind resolves. It is a plain file, and chowning it would be pointless.
+        with _tmpdir() as d:
+            placeholder = Path(d) / "placeholder"
+            placeholder.write_text("")
+            self.assertEqual(self._action(str(placeholder)), "skip")
+
+    def test_directory_is_skipped(self):
+        with _tmpdir() as d:
+            self.assertEqual(self._action(d), "skip")
+
+    def test_socket_we_already_own_is_skipped(self):
+        # The second postStart of a container: re-owning is a no-op, so don't pay a sudo.
+        with self._socket() as path:
+            self.assertEqual(self._action(str(path)), "skip")
+
+    @unittest.skipUnless(os.geteuid() == 0, "only root can hand a socket to another user")
+    def test_socket_owned_by_someone_else_is_chowned(self):
+        # The case in the container: Docker Desktop mounts it root-owned, remoteUser is not.
+        with self._socket() as path:
+            os.chown(path, 65534, 65534)
+            self.assertEqual(self._action(str(path)), "chown")
+
+
 class TestInputValidation(unittest.TestCase):
     """The library re-validates what the host stub wrote. The stub lives in the consuming
     repo, not here, and both values feed privileged commands."""
@@ -223,21 +344,22 @@ class TestApplyAll(unittest.TestCase):
     """The step sequencer, including the policy fork that only Syndic/.dotfiles turns on —
     a branch nothing in this repo exercises by running the container."""
 
-    def _apply(self, plumbing_dir: str, workspace: str, require: str | None = None):
-        env = dict(os.environ)
+    def _apply(
+        self,
+        plumbing_dir: str,
+        workspace: str,
+        require: str | None = None,
+        phase: str | None = "post-create",
+        env: dict | None = None,
+    ):
+        # post-create by default: it is the phase that runs nothing privileged, so a test that
+        # doesn't say otherwise stays safe to run against the real environment.
+        env = dict(env or os.environ)
         if require is not None:
             env["PLUMBING_REQUIRE_GIT_CHECKOUT"] = require
+        args = [plumbing_dir, workspace] + ([] if phase is None else [phase])
         return subprocess.run(
-            [
-                "bash",
-                "-c",
-                _SOURCE_AND_CALL,
-                "_",
-                str(_BRIDGE_SH),
-                "plumbing_apply_all",
-                plumbing_dir,
-                workspace,
-            ],
+            ["bash", "-c", _SOURCE_AND_CALL, "_", str(_BRIDGE_SH), "plumbing_apply_all", *args],
             capture_output=True,
             text=True,
             check=False,
@@ -272,6 +394,87 @@ class TestApplyAll(unittest.TestCase):
             with self.subTest(require=require), _tmpdir() as d:
                 self.assertEqual(self._apply(d, d, require=require).returncode, 0)
 
+    def test_omitting_the_phase_fails_loudly(self):
+        # The phase now selects steps, so defaulting it would silently run the signing bridge
+        # — sudo and all — for a caller that never asked for a phase at all.
+        with _tmpdir() as d:
+            result = self._apply(d, d, phase=None)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("phase is required", result.stderr)
+
+
+class TestSigningBridge(unittest.TestCase):
+    """The four steps of the signing bridge: ~/.ssh mode, gitconfig, signers, agent socket.
+
+    Exercised through plumbing_apply_all so the phase fork is covered too: these run at
+    postStart only, because the gitconfig install has to lose to the Dev Containers extension's
+    own copy, which lands between the two hooks.
+    """
+
+    @contextmanager
+    def _bridge(
+        self, phase: str, gitconfig: str | None = "[user]\n", signers: str = "ssh-ed25519 AAA\n"
+    ):
+        with _tmpdir() as d:
+            env = _sandbox_env(d)
+            home = Path(env["HOME"])
+            if gitconfig is not None:
+                (Path(d) / "host-gitconfig").write_text(gitconfig)
+            (home / ".ssh" / "allowed_signers").write_text(signers)
+            result = self._apply_in(d, env, phase)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            yield home, _cmd_log(d)
+
+    def _apply_in(self, plumbing_dir: str, env: dict, phase: str):
+        return subprocess.run(
+            [
+                "bash",
+                "-c",
+                _SOURCE_AND_CALL,
+                "_",
+                str(_BRIDGE_SH),
+                "plumbing_apply_all",
+                plumbing_dir,
+                plumbing_dir,
+                phase,
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+        )
+
+    def test_post_start_repairs_the_ssh_directory(self):
+        # Docker creates the mount parent root-owned 0755; ssh then ignores the whole directory.
+        with self._bridge("post-start") as (_, log):
+            self.assertIn("install -d -m 700", log)
+            self.assertIn(".ssh", log)
+
+    def test_post_start_installs_the_host_gitconfig(self):
+        with self._bridge("post-start") as (home, _):
+            self.assertEqual((home / ".gitconfig").read_text(), "[user]\n")
+
+    def test_post_start_repoints_the_allowed_signers_file(self):
+        with self._bridge("post-start") as (home, log):
+            self.assertIn(
+                f"git config --global gpg.ssh.allowedSignersFile {home}/.ssh/allowed_signers",
+                log,
+            )
+
+    def test_an_empty_allowed_signers_file_is_left_alone(self):
+        # CI's case: the bind resolves to initialize.sh's empty fallback. Pointing git at it
+        # would replace a host-absolute path that at least says what was meant with one that
+        # can never verify anything.
+        with self._bridge("post-start", signers="") as (_, log):
+            self.assertNotIn("allowedSignersFile", log)
+
+    def test_post_create_runs_none_of_it(self):
+        # The ordering fact this whole fork exists for.
+        with self._bridge("post-create") as (home, log):
+            self.assertFalse((home / ".gitconfig").exists())
+            self.assertNotIn("install -d", log)
+            self.assertNotIn("allowedSignersFile", log)
+
 
 class TestDispatcher(unittest.TestCase):
     """Argument handling and library resolution — the surface every consumer calls."""
@@ -280,23 +483,10 @@ class TestDispatcher(unittest.TestCase):
         env = dict(os.environ)
         if plumbing_dir is not None:
             # Point the run at a sandbox so it can't read this repo's real .git-plumbing, and
-            # stub the commands the stamping step would otherwise run for real against /run.
-            #
-            # Stub `install` and `touch` as well as `sudo`, because plumbing_sudo drops the
-            # `sudo` entirely when already root — which is exactly what happens under Bazel's
-            # remote executor, while a developer's container and the macOS runner are non-root.
-            # Logging the command name makes one assertion cover both.
-            env["PLUMBING_DIR"] = plumbing_dir
+            # so the stamping step and the post-start signing bridge land on stubs and a
+            # throwaway HOME rather than on /run and the developer's own ~/.gitconfig.
+            env = _sandbox_env(plumbing_dir, PLUMBING_DIR=plumbing_dir)
             env["PLUMBING_WORKSPACE"] = plumbing_dir
-            fake_bin = Path(plumbing_dir) / "bin"
-            fake_bin.mkdir(exist_ok=True)
-            for name in ("sudo", "install", "touch"):
-                stub = fake_bin / name
-                stub.write_text(
-                    '#!/bin/sh\necho "$(basename "$0") $*" >>"$(dirname "$0")/../cmd.log"\n'
-                )
-                stub.chmod(0o755)
-            env["PATH"] = f"{fake_bin}:{env['PATH']}"
         return subprocess.run(
             ["bash", str(_DISPATCHER), *args],
             capture_output=True,
@@ -327,9 +517,22 @@ class TestDispatcher(unittest.TestCase):
                 # The stamp is what a consumer's smoke test asserts on, so pin that the verb
                 # reaches it and names the file after itself. The log holds either
                 # "sudo install …" or "install …" depending on whether the test runs as root.
-                log = (Path(d) / "cmd.log").read_text()
+                log = _cmd_log(d)
                 self.assertIn("install -d -m 0755 /run/devcontainer-plumbing", log)
                 self.assertIn(f"touch /run/devcontainer-plumbing/{verb}.stamp", log)
+
+    def test_the_verb_selects_the_signing_bridge_not_just_the_stamp_name(self):
+        # The dispatcher hands the phase to the library, which is what makes post-start do
+        # more than post-create. Passing only the stamp name would leave every consumer's
+        # container without its host gitconfig and no error to show for it.
+        seen = {}
+        for verb in ("post-create", "post-start"):
+            with _tmpdir() as d:
+                (Path(d) / "host-gitconfig").write_text("[user]\n")
+                result = self._run_dispatcher(verb, plumbing_dir=d)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                seen[verb] = (Path(d) / "home" / ".gitconfig").exists()
+        self.assertEqual(seen, {"post-create": False, "post-start": True})
 
     def test_library_is_found_beside_the_script(self):
         # The in-repo layout. The image layout uses the absolute fallback path; CI's base-image
