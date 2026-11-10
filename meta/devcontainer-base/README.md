@@ -34,9 +34,11 @@ them per-consumer:
   `/etc/localtime` at the host zone, and writes the shared-common-dir config below. At `postStart`
   it also runs the signing bridge (see "Signed commits under the devcontainer CLI").
 
-Each apply step guards on `[ -s ... ]`, so a missing or empty file is a clean no-op: no git
+Each host-fact step guards on `[ -s ... ]`, so a missing or empty file is a clean no-op: no git
 checkout means no symlink and no shared-common-dir config, no zone means the container keeps its
-default.
+default. The signing bridge is the exception: at `postStart` its `~/.ssh` repair runs
+unconditionally, a privileged `install -d` on every start, and the socket step keys on the socket
+itself rather than on a `.git-plumbing` file.
 
 **The host timezone.** Without it the container defaults to `Etc/UTC` and every timestamp drifts
 hours off the host.
@@ -304,8 +306,9 @@ Three notes on how these four steps sit in the library:
 
 - **`postStart` only**, and the gitconfig install is the reason: at `postCreate` the extension has
   not made its copy yet, so the empty-check would always read "install" and this side would win a
-  race it is meant to lose. The other three keep it company — two of them feed it, and the socket
-  is re-created root-owned on every start regardless.
+  race it is meant to lose. The other three keep it company: the allowed-signers repoint has to
+  follow the install, since it rewrites the file the install wrote, and the `~/.ssh` repair and the
+  socket chown are needed on every start anyway.
 - **The magic socket path is a constant, not a `PLUMBING_*` input.** It is Docker Desktop's, not a
   per-consumer choice: the same literal appears in every consumer's `devcontainer.json` mount and
   `SSH_AUTH_SOCK`, so an env input would only let the library disagree with the mount that puts

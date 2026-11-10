@@ -98,6 +98,40 @@ def _cmd_log(root: str) -> str:
     return log.read_text() if log.exists() else ""
 
 
+def _call(func: str, *args: str, env: dict | None = None, prelude: str = ""):
+    """Source the library, eval `prelude` (to stand in for a function), then call `func`."""
+    return subprocess.run(
+        [
+            "bash",
+            "-c",
+            'set -euo pipefail; source "$1"; eval "$2"; shift 2; "$@"',
+            "_",
+            str(_BRIDGE_SH),
+            prelude,
+            func,
+            *args,
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+
+
+def _apply_all(
+    plumbing_dir: str, workspace: str, phase: str | None, env: dict | None = None, prelude=""
+):
+    """Call plumbing_apply_all; `phase=None` omits the argument altogether."""
+    args = [plumbing_dir, workspace] + ([] if phase is None else [phase])
+    return _call("plumbing_apply_all", *args, env=env, prelude=prelude)
+
+
+# Replaces the socket step with a logger, so a post-start run never reaches the real
+# /run/host-services path and the tests can see which path it was handed.
+def _socket_logger(root: str) -> str:
+    return f'plumbing_apply_agent_socket() {{ echo "agent-socket $*" >>"{root}/cmd.log"; }}'
+
+
 class TestSourcingIsInert(unittest.TestCase):
     """The guard that makes every other test in this file safe."""
 
@@ -396,14 +430,7 @@ class TestApplyAll(unittest.TestCase):
         env = dict(env or os.environ)
         if require is not None:
             env["PLUMBING_REQUIRE_GIT_CHECKOUT"] = require
-        args = [plumbing_dir, workspace] + ([] if phase is None else [phase])
-        return subprocess.run(
-            ["bash", "-c", _SOURCE_AND_CALL, "_", str(_BRIDGE_SH), "plumbing_apply_all", *args],
-            capture_output=True,
-            text=True,
-            check=False,
-            env=env,
-        )
+        return _apply_all(plumbing_dir, workspace, phase, env=env)
 
     def test_absent_files_are_a_clean_no_op(self):
         # Nothing recorded: no git bridge, no config write, no timezone — and crucially no
@@ -469,9 +496,8 @@ class TestApplyAll(unittest.TestCase):
 class TestSigningBridge(unittest.TestCase):
     """The four steps of the signing bridge: ~/.ssh mode, gitconfig, signers, agent socket.
 
-    Exercised through plumbing_apply_all so the phase fork is covered too: these run at
-    postStart only, because the gitconfig install has to lose to the Dev Containers extension's
-    own copy, which lands between the two hooks.
+    Exercised through plumbing_apply_all so the postStart-only fork is covered too; the README's
+    "Signed commits under the devcontainer CLI" has why it is postStart-only.
     """
 
     @contextmanager
@@ -484,28 +510,9 @@ class TestSigningBridge(unittest.TestCase):
             if gitconfig is not None:
                 (Path(d) / "host-gitconfig").write_text(gitconfig)
             (home / ".ssh" / "allowed_signers").write_text(signers)
-            result = self._apply_in(d, env, phase)
+            result = _apply_all(d, d, phase, env=env, prelude=_socket_logger(d))
             self.assertEqual(result.returncode, 0, result.stderr)
             yield home, _cmd_log(d)
-
-    def _apply_in(self, plumbing_dir: str, env: dict, phase: str):
-        return subprocess.run(
-            [
-                "bash",
-                "-c",
-                _SOURCE_AND_CALL,
-                "_",
-                str(_BRIDGE_SH),
-                "plumbing_apply_all",
-                plumbing_dir,
-                plumbing_dir,
-                phase,
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-            env=env,
-        )
 
     def test_post_start_repairs_the_ssh_directory(self):
         # Docker creates the mount parent root-owned 0755; ssh then ignores the whole directory.
@@ -524,6 +531,12 @@ class TestSigningBridge(unittest.TestCase):
                 log,
             )
 
+    def test_post_start_hands_the_socket_step_docker_desktops_path(self):
+        # Every consumer's devcontainer.json binds this literal; a typo here would pass the CI
+        # smoke job, where the socket is a placeholder file and the step skips either way.
+        with self._bridge("post-start") as (_, log):
+            self.assertIn("agent-socket /run/host-services/ssh-auth.sock\n", log)
+
     def test_an_empty_allowed_signers_file_is_left_alone(self):
         # CI's case: the bind resolves to initialize.sh's empty fallback. Pointing git at it
         # would replace a host-absolute path that at least says what was meant with one that
@@ -537,6 +550,52 @@ class TestSigningBridge(unittest.TestCase):
             self.assertFalse((home / ".gitconfig").exists())
             self.assertNotIn("install -d", log)
             self.assertNotIn("allowedSignersFile", log)
+            self.assertNotIn("agent-socket", log)
+
+
+class TestApplyAgentSocket(unittest.TestCase):
+    """The effect half of the socket step. The decision is TestAgentSocketAction's; here it is
+    stood in for, since only root can make a socket some other user owns."""
+
+    def _apply(self, d: str, sock: str, action: str | None = None):
+        prelude = f"plumbing_agent_socket_action() {{ echo {action}; }}" if action else ""
+        return _call("plumbing_apply_agent_socket", sock, env=_sandbox_env(d), prelude=prelude)
+
+    def test_chown_hands_the_socket_to_the_current_user(self):
+        # Logged as "sudo chown …" or bare "chown …" depending on whether the test runs as root.
+        with _tmpdir() as d:
+            result = self._apply(d, f"{d}/sock", action="chown")
+            log = _cmd_log(d)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(f"chown {os.getuid()}:{os.getgid()} {d}/sock\n", log)
+
+    def test_a_socket_we_already_own_is_not_touched(self):
+        # The real decision, against a bound socket: the second start of a container.
+        with _tmpdir() as d:
+            path = Path(d) / "sock"
+            sock = socket.socket(socket.AF_UNIX)
+            sock.bind(str(path))
+            try:
+                result = self._apply(d, str(path))
+            finally:
+                sock.close()
+            log = _cmd_log(d)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("chown", log)
+
+    def test_a_failed_chown_fails_the_step(self):
+        # Fail loud: the alternative is finding out at `git commit`.
+        with _tmpdir() as d:
+            env = _sandbox_env(d)
+            for name in ("sudo", "chown"):
+                (Path(d) / "bin" / name).write_text("#!/bin/sh\nexit 1\n")
+            result = _call(
+                "plumbing_apply_agent_socket",
+                f"{d}/sock",
+                env=env,
+                prelude="plumbing_agent_socket_action() { echo chown; }",
+            )
+        self.assertNotEqual(result.returncode, 0)
 
 
 class TestDispatcher(unittest.TestCase):

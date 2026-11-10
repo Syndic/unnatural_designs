@@ -256,16 +256,13 @@ plumbing_apply_all() {
     plumbing_apply_timezone "$(cat "$plumbing_dir/host-timezone")"
   fi
 
-  # The signing bridge is postStart-only, and the gitconfig install is why: the Dev Containers
-  # extension copies its own between postCreate and postStart, so at postCreate the empty-check
-  # would always read "install" and this side would win a race it is meant to lose. The other
-  # three keep it company. See "Signed commits under the devcontainer CLI" in the README.
+  # postStart only; see "Signed commits under the devcontainer CLI" in the README.
   if [ "$phase" = post-start ]; then
     plumbing_apply_ssh_dir
     plumbing_apply_host_gitconfig "$plumbing_dir"
     plumbing_apply_allowed_signers
-    # Docker Desktop's own path, which every consumer's devcontainer.json binds; an argument
-    # rather than a constant inside the function so the tests can point it somewhere else.
+    # Docker Desktop's own path, which every consumer's devcontainer.json binds. An argument so
+    # the tests can drive the effect against a stand-in socket.
     plumbing_apply_agent_socket /run/host-services/ssh-auth.sock
   fi
 }
