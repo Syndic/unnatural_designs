@@ -226,12 +226,12 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           # renovate: datasource=node-version depName=node
-          node-version: "24.22.1"
+          node-version: "24.22.2"
 
       - name: Check the feature lock is in sync
         env:
           # renovate: datasource=npm depName=@devcontainers/cli
-          DEVCONTAINER_CLI_VERSION: "0.89.0"
+          DEVCONTAINER_CLI_VERSION: "0.90.0"
         run: |
           set -euo pipefail
           npm install -g --ignore-scripts "@devcontainers/cli@${DEVCONTAINER_CLI_VERSION}"
@@ -259,7 +259,7 @@ jobs:
       - if: >-
           (needs.changes.outputs.changed == 'true' || needs.changes.outputs.pin == 'unpublished')
           && github.event.pull_request.head.repo.fork != true
-        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -467,7 +467,7 @@ jobs:
           buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
 
       # oci_push's registry client reads the docker config this writes.
-      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}

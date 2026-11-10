@@ -21,8 +21,8 @@
       "configureZshAsDefaultShell": false,
       "upgradePackages": false
     },
-    "ghcr.io/devcontainers/features/go:1.4.0": {
-      "version": "1.27.3"
+    "ghcr.io/devcontainers/features/go:1.4.1": {
+      "version": "1.27.4"
     },
     // Python is NOT a devcontainer feature: that feature compiles CPython from source
     // (~2 min/build). The Dockerfile installs a prebuilt uv-managed interpreter instead
