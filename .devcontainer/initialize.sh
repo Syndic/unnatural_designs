@@ -142,11 +142,6 @@ else
   ln -sfn "$signersfallback" "$signerslink"
 fi
 
-# TEND(migration): drop with the .gitignore entries once every checkout has run an `up` on
-# or after the bind-mount switch. Stops a stale checkout keeping a copy of the user's
-# known_hosts lying around untracked.
-rm -f "$here/.git-plumbing/host-known-hosts" "$here/.git-plumbing/host-allowed-signers"
-
 # Pre-create the magic ssh-agent socket placeholder on hosts where Docker
 # Desktop isn't intercepting it (CI runners, plain Docker on Linux). Docker
 # Desktop auto-forwards the host ssh-agent at /run/host-services/ssh-auth.sock
