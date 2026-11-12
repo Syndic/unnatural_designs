@@ -721,24 +721,42 @@ is the artifact half, and only `pkg/` is mounted. `post-create.sh` reinstalls it
 tools on every create (all but gremlins over the image's own copies), which is why persisting
 `/go/bin` would buy nothing even without the shadowing.
 
-Nothing under either mount should stay ephemeral: every entry is content-addressed or
+Nothing under either named volume should stay ephemeral: every entry is content-addressed or
 key-validated by its own tool, and CI builds cold, so a stale local cache can't reach `main`.
 
-Two couplings, both asserted by `.devcontainer/test_devcontainer_config.py`:
+**Bazel's output base is per-container, so it is not in `ud-cache`.** Bazel keys an output base
+by workspace path, so in a volume every checkout shares, each deleted worktree leaves a few GB
+behind that nothing reaps — and since the volume is in use, `docker system df` never counts it as
+reclaimable. Instead the Dockerfile writes a system rc (`/etc/bazel.bazelrc`, which neither the
+host's nor a CI runner's Bazel reads) fixing the output base at `/bazel-output-base`, and
+devcontainer.json mounts an **anonymous** volume there. Its lifetime is the container's: once the
+container is removed nothing references the volume, and `docker volume prune` reclaims it. That
+includes every rebuild, which removes the old container without its volumes, so each one leaves a
+dangling output base behind for `/agent-tools:dev-cleanup` (Syndic/.dotfiles) or a prune to take.
+A rebuild therefore starts a fresh output base. The repository cache and install base live under
+`output_user_root`, so they stay in `ud-cache` and external repos unpack from it without a
+download; action outputs come back from BuildBuddy only with a key in `.bazelrc.user`, and are
+rebuilt without one.
+
+Three couplings, all asserted by `.devcontainer/test_devcontainer_config.py`:
 
 - **post-create.sh must chown every volume target.** Docker attaches a volume root-owned unless
-  the image has a directory at the target to seed ownership from, and it has one at neither of
-  these — so a mount added without a chown entry is unwritable by `remoteUser`. The
+  the image has a directory at the target to seed ownership from, and it has one at none of
+  them — so a mount added without a chown entry is unwritable by `remoteUser`. The
   chown is guarded on current ownership: warm, `~/.cache` is tens of GB, and recursing it on
   every rebuild is minutes of re-asserting what is already right.
 - **`$GOPATH/pkg` is not derivable from anything in this repo** — `GOPATH` is the go feature's
   own value, baked into the image ENV — so the test pins it as a constant.
+- **The system rc's output base is the one anonymous volume's target.** A mismatch fails
+  nowhere: Bazel writes the output base into the container's own filesystem instead. The same
+  happens if a later rc sets `startup --output_base`, since the last one read wins; the test
+  holds the workspace `.bazelrc` to that, and `.bazelrc.user` is untracked and unchecked.
 
-The volumes are per-host, not per-worktree, and shared by every checkout of this repo. That is
-fine for both: Bazel namespaces its output base by workspace path, and the module cache is
-content-addressed. It does mean a mount-target change is visible from other worktrees' running
-containers, which still mount the old volume at the old path — a volume's content is shared, its
-mount point is per-container.
+The named volumes are per-host, not per-worktree, and shared by every checkout of this repo. That
+is fine for both: what Bazel keeps in `ud-cache` — the repository cache and install base — is
+content-addressed or keyed by Bazel release, and so is the module cache. It does mean a
+mount-target change is visible from other worktrees' running containers, which still mount the
+old volume at the old path — a volume's content is shared, its mount point is per-container.
 
 ## Agent skills
 
