@@ -66,12 +66,6 @@ target/
 /.devcontainer/.git-plumbing/host-timezone
 /.devcontainer/.git-plumbing/host-gitconfig
 /.devcontainer/.git-plumbing/empty-allowed-signers
-# TEND(migration): drop these two once every checkout has run an `up` on or after the
-# bind-mount switch. No longer written (known_hosts and allowed_signers are bind-mounted);
-# kept so a stale checkout can't stage its leftover copy of the user's known_hosts.
-# initialize.sh deletes them on the next `up`.
-/.devcontainer/.git-plumbing/host-known-hosts
-/.devcontainer/.git-plumbing/host-allowed-signers
 
 # ── Claude Code ───────────────────────────────────────────────────────────────────────────────────
 # settings.local.json holds per-developer overrides — never shared
