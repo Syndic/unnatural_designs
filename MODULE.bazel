@@ -71,7 +71,7 @@ python.toolchain(
     # Wires the bundled `coverage` library into py_test runfiles when
     # `bazel coverage` runs, so Python tests emit lcov data alongside Go.
     configure_coverage_tool = True,
-    python_version = "3.14",
+    python_version = "3.15",
 )
 
 # Materialise the third-party Python deps locked by uv. The chain is:
@@ -89,7 +89,7 @@ pip.parse(
     # Non-reserved hub name: rules_python reserves the bare "pypi" hub and warns it
     # will auto-rename to "<module>_pypi" in a future release, so we adopt that name now.
     hub_name = "unnatural_designs_pypi",
-    python_version = "3.14",
+    python_version = "3.15",
     requirements_lock = "//:requirements_lock.txt",
 )
 use_repo(pip, "unnatural_designs_pypi")
