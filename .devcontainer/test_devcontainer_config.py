@@ -819,6 +819,30 @@ def image_references(instructions: list[tuple[str, str]]) -> list[str]:
     return images
 
 
+def run_smoke_block(
+    pattern: re.Pattern, what: str, *, env: dict[str, str], cwd: Path | None = None
+) -> subprocess.CompletedProcess:
+    """Run the devcontainer.yml smoke-test block `pattern` matches, as written, under strict bash.
+
+    `what` names the check for the failure raised when no block matches, so a deleted or reworded
+    check fails its tests rather than passing with nothing run. bash is resolved up front, so
+    `env` may carry a PATH that does not contain it.
+    """
+    block = pattern.search(_DEVCONTAINER_WORKFLOW.read_text(encoding="utf-8"))
+    if block is None:
+        raise AssertionError(f"devcontainer.yml's smoke test no longer {what}")
+    bash = shutil.which("bash")
+    if bash is None:
+        raise AssertionError("bash is needed to run a smoke-test block")
+    return subprocess.run(
+        [bash, "-euo", "pipefail", "-c", textwrap.dedent(block.group(0))],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+
 class TestSmokeTestChecksTheUvVersion(unittest.TestCase):
     """The smoke test fails when the uv it runs is not the version the Dockerfile's tag names.
 
@@ -833,8 +857,6 @@ class TestSmokeTestChecksTheUvVersion(unittest.TestCase):
     )
 
     def run_block(self, reported: str, dockerfile: str) -> subprocess.CompletedProcess:
-        block = self._BLOCK_RE.search(_DEVCONTAINER_WORKFLOW.read_text(encoding="utf-8"))
-        self.assertIsNotNone(block, "devcontainer.yml's smoke test no longer checks uv's version")
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / ".devcontainer").mkdir()
@@ -843,11 +865,10 @@ class TestSmokeTestChecksTheUvVersion(unittest.TestCase):
             uv.parent.mkdir()
             uv.write_text(f"#!/bin/sh\necho 'uv {reported} (x86_64-unknown-linux-musl)'\n")
             uv.chmod(uv.stat().st_mode | stat.S_IXUSR)
-            return subprocess.run(
-                ["bash", "-euo", "pipefail", "-c", textwrap.dedent(block.group(0))],
+            return run_smoke_block(
+                self._BLOCK_RE,
+                "checks uv's version",
                 cwd=root,
-                capture_output=True,
-                text=True,
                 env={**os.environ, "PATH": f"{uv.parent}{os.pathsep}{os.environ['PATH']}"},
             )
 
@@ -900,22 +921,13 @@ class TestSmokeTestRefusesGh(unittest.TestCase):
     )
 
     def run_block(self, with_gh: bool) -> subprocess.CompletedProcess:
-        block = self._BLOCK_RE.search(_DEVCONTAINER_WORKFLOW.read_text(encoding="utf-8"))
-        self.assertIsNotNone(block, "devcontainer.yml's smoke test no longer refuses gh")
-        bash = shutil.which("bash")
-        self.assertIsNotNone(bash, "bash is needed to run the smoke-test block")
         with tempfile.TemporaryDirectory() as tmp:
             bin_dir = Path(tmp)
             if with_gh:
                 gh = bin_dir / "gh"
                 gh.write_text("#!/bin/sh\n")
                 gh.chmod(gh.stat().st_mode | stat.S_IXUSR)
-            return subprocess.run(
-                [bash, "-euo", "pipefail", "-c", textwrap.dedent(block.group(0))],
-                capture_output=True,
-                text=True,
-                env={"PATH": str(bin_dir)},
-            )
+            return run_smoke_block(self._BLOCK_RE, "refuses gh", env={"PATH": str(bin_dir)})
 
     def test_an_image_without_gh_passes(self):
         done = self.run_block(with_gh=False)
