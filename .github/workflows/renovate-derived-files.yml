@@ -227,7 +227,7 @@ jobs:
       # inconsistent bump fails the job — the right signal that the PR isn't mergeable as-is.
       # Gated on no ratify conflicts so Go's derived files ride the single commit below (a
       # separate commit would race the `expectedHeadOid` the atomic mutation relies on).
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: steps.changed.outputs.go == 'true' && steps.ratify.outputs.conflicts == ''
         with:
           go-version-file: go.work
