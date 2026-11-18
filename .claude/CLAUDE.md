@@ -21,6 +21,14 @@ satisfy the `language: unsupported` pre-commit hooks anyway). Commits especially
 tools from PATH and signing needs the bridged SSH agent; see the ".devcontainer signed commits"
 section.
 
+**`gh` is a host command, and the image deliberately does not carry it.** None of those reasons
+reach it: it talks to the GitHub API and never reads, builds or tests the tree, no pre-commit hook
+calls it, and it signs nothing, so its version cannot move a build or check result. Running it in
+the container would instead mean forwarding a GitHub credential there (`GH_TOKEN` or a
+`~/.config/gh` mount), which gives the token a new home and buys no reproducibility. Leaving it out
+makes an in-container call fail as "not found" rather than run logged out, and `devcontainer.yml`'s
+smoke test fails if `gh` reaches the image's PATH.
+
 ## Documentation and test hygiene
 
 Documentation and tests are part of every task, not a separate follow-up step.

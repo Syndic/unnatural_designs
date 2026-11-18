@@ -336,6 +336,13 @@ jobs:
             gremlins --version
             jq --version
 
+            # gh runs on the host, so the image must not carry it: .claude/CLAUDE.md "Run all
+            # tooling in the devcontainer". `! command -v` would not trip `set -e`.
+            if command -v gh >/dev/null; then
+              echo "gh is on PATH in the image; it belongs on the host" >&2
+              exit 1
+            fi
+
             # The plumbing arrived via the base image, at the paths the hooks call it by.
             # Nothing in this repo installs either file, so these fail if the FROM regressed
             # to a plain Debian base.

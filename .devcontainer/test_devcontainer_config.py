@@ -31,6 +31,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import stat
 import subprocess
 import sys
@@ -884,6 +885,46 @@ class TestSmokeTestChecksTheUvVersion(unittest.TestCase):
                 done = self.run_block(reported, unreadable)
                 self.assertNotEqual(done.returncode, 0)
                 self.assertIn("pins ''", done.stderr)
+
+
+class TestSmokeTestRefusesGh(unittest.TestCase):
+    """The smoke test fails when `gh` is on the image's PATH, since `gh` runs on the host.
+
+    Run as written against a PATH this test controls, so the runner's own `gh` decides nothing,
+    and found by its code rather than its comment. Rationale: .claude/CLAUDE.md, "Run all tooling
+    in the devcontainer".
+    """
+
+    _BLOCK_RE = re.compile(
+        r"^( *)if command -v gh >/dev/null; then$.*?^\1fi$", re.MULTILINE | re.DOTALL
+    )
+
+    def run_block(self, with_gh: bool) -> subprocess.CompletedProcess:
+        block = self._BLOCK_RE.search(_DEVCONTAINER_WORKFLOW.read_text(encoding="utf-8"))
+        self.assertIsNotNone(block, "devcontainer.yml's smoke test no longer refuses gh")
+        bash = shutil.which("bash")
+        self.assertIsNotNone(bash, "bash is needed to run the smoke-test block")
+        with tempfile.TemporaryDirectory() as tmp:
+            bin_dir = Path(tmp)
+            if with_gh:
+                gh = bin_dir / "gh"
+                gh.write_text("#!/bin/sh\n")
+                gh.chmod(gh.stat().st_mode | stat.S_IXUSR)
+            return subprocess.run(
+                [bash, "-euo", "pipefail", "-c", textwrap.dedent(block.group(0))],
+                capture_output=True,
+                text=True,
+                env={"PATH": str(bin_dir)},
+            )
+
+    def test_an_image_without_gh_passes(self):
+        done = self.run_block(with_gh=False)
+        self.assertEqual(done.returncode, 0, done.stderr)
+
+    def test_an_image_with_gh_fails(self):
+        done = self.run_block(with_gh=True)
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("belongs on the host", done.stderr)
 
 
 class TestImageReferencesArePinned(unittest.TestCase):
