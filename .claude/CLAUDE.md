@@ -18,8 +18,8 @@ devcontainer exec --workspace-folder . <cmd>  # every tool invocation after
 A missing host tool is a signal to use the container, never to provision it on the host: no
 `pip`/`brew`/`go install`, no `uvx`/`npx` to dodge the container (host-version drift, and it won't
 satisfy the `language: unsupported` pre-commit hooks anyway). Commits especially — hooks resolve
-tools from PATH and signing needs the bridged SSH agent; see the ".devcontainer signed commits"
-section.
+tools from PATH and signing needs the bridged SSH agent; see "Signed commits under the devcontainer
+CLI" in [`meta/devcontainer-base/README.md`](../meta/devcontainer-base/README.md).
 
 **`gh` is a host command, and the image deliberately does not carry it.** None of those reasons
 reach it: it talks to the GitHub API and never reads, builds or tests the tree, no pre-commit hook
