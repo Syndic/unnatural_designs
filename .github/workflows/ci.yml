@@ -154,7 +154,7 @@ jobs:
       # Use go.work as the source-of-truth — it's the workspace-level Go version directive
       # and matches the version Bazel installs in MODULE.bazel (per-module go.mod files
       # only declare each module's minimum, which can drift below the workspace version).
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.work
           # This step only runs `go list -deps` via check_no_cgo.py — no `go build`
@@ -309,7 +309,7 @@ jobs:
       - name: ty check
         env:
           # renovate: datasource=pypi depName=ty
-          TY_VERSION: "0.0.104"
+          TY_VERSION: "0.0.105"
         run: uvx "ty@${TY_VERSION}" check
 
   # Build and test runs once per supported target platform, on a runner whose host matches

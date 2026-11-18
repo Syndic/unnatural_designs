@@ -33,7 +33,7 @@ jobs:
     name: Semgrep
     runs-on: ubuntu-latest
     container:
-      image: semgrep/semgrep:1.185.0@sha256:67518c174185a2043fdbed16c70631b79209499b3671178e7194379b48295a0d
+      image: semgrep/semgrep:1.186.0@sha256:6e1b04340e60e910fbb4ddbf3c857ab0918f064417ad5ac530014ccb3cf8c8f1
     permissions:
       contents: read
     steps:
@@ -104,7 +104,7 @@ jobs:
       # Ahead of init on purpose: the Go autobuilder runs under GOTOOLCHAIN=local, so whatever
       # is on PATH when extraction starts is the only toolchain it can use.
       # //meta/scripts:test_codeql_toolchain keeps this step, and its position, from being lost.
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: matrix.language == 'go'
         with:
           go-version-file: go.work
@@ -196,7 +196,7 @@ jobs:
       # trail current releases far enough to emit Node runtime deprecation warnings in every
       # consuming workflow. If this ever outgrows install-and-run, check whether that action has
       # started keeping its dependencies current and switch back.
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           # go.work pins the toolchain so a workspace-level `go X.Y.Z` directive doesn't trip
           # GOTOOLCHAIN=local.
