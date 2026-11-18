@@ -16,9 +16,8 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone. Here
 that resolves to `Syndic/unnatural_designs`.
 
-Run `gh` on the **host**, not via `devcontainer exec`: this repo's rule that all tooling runs in
-the devcontainer carves out read-side `git` and `gh` as host commands, and the host holds the
-authenticated `gh` session.
+Run `gh` on the **host**, not via `devcontainer exec`; the image does not carry it. Why: "Run all
+tooling in the devcontainer" in [`.claude/CLAUDE.md`](../../.claude/CLAUDE.md).
 
 ## Pull requests as a triage surface
 

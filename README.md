@@ -30,7 +30,7 @@ Container_ from the Command Palette. First build takes a few minutes; subsequent
 
 **What's inside**: [bazelisk](https://github.com/bazelbuild/bazelisk) (driven by `.bazelversion`),
 [`buildifier`](https://github.com/bazelbuild/buildtools/tree/main/buildifier), Go, Python,
-[`gh`](https://cli.github.com), [`uv`](https://docs.astral.sh/uv/) (Python package manager),
+[`uv`](https://docs.astral.sh/uv/) (Python package manager),
 [`ruff`](https://docs.astral.sh/ruff/) (Python format + lint),
 [`ty`](https://docs.astral.sh/ty/) (Python type checker, alpha),
 [pre-commit](https://pre-commit.com), [`golangci-lint`](https://golangci-lint.run),
@@ -39,7 +39,9 @@ Container_ from the Command Palette. First build takes a few minutes; subsequent
 [`yq`](https://github.com/mikefarah/yq) and `jq` (YAML/JSON on the command line),
 [`check-jsonschema`](https://check-jsonschema.readthedocs.io) (validate configs against
 SchemaStore), and mutation testers [`gremlins`](https://gremlins.dev) (Go) and
-[`cosmic-ray`](https://cosmic-ray.readthedocs.io) (Python). All Python tools (`ruff`, `ty`,
+[`cosmic-ray`](https://cosmic-ray.readthedocs.io) (Python). [`gh`](https://cli.github.com) is
+deliberately not inside: it runs on the host, for the reasons under "Run all tooling in the
+devcontainer" in [`.claude/CLAUDE.md`](.claude/CLAUDE.md). All Python tools (`ruff`, `ty`,
 `pre-commit`, `cosmic-ray`, `check-jsonschema`) are installed via `uv tool install` at image
 build time, so the devcontainer has a single Python package manager (uv) and no
 `pip install --user` in post-create. Named volumes preserve the two cache roots across container
