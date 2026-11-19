@@ -68,7 +68,7 @@ RUN uv tool install --no-cache "check-jsonschema==${CHECK_JSONSCHEMA_VERSION}"
 # minors, Language toolchain SDKs for majors) and //meta/scripts:check_python_version fails the
 # build if they ever disagree.
 # renovate: datasource=python-version depName=python
-ARG PYTHON_VERSION=3.14
+ARG PYTHON_VERSION=3.15
 RUN uv python install "${PYTHON_VERSION}" \
     && ln -sfn "$(uv python find --no-project --managed-python "${PYTHON_VERSION}")" /usr/local/bin/python3 \
     && ln -sfn /usr/local/bin/python3 /usr/local/bin/python
