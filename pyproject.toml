@@ -23,7 +23,7 @@ description = "Workspace root for the unnatural_designs monorepo. Not a publishe
 # strategy only rewrites a range the new version falls *outside* — so `>=` would never be
 # bumped at all. This root is `package = false`; a published member must NOT copy the
 # shape. See README, "The Python language level".
-requires-python = "==3.14.*"
+requires-python = "==3.15.*"
 dependencies = [
     # pep440 version comparison for meta/scripts/ratify_renovate_proposals.py.
     # The script ratifies Renovate's Python dep-bump proposals via uv; comparing
