@@ -54,6 +54,7 @@ from pathlib import Path
 # py_binary, where rules_python already makes the import resolvable.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from packaging.utils import NormalizedName, canonicalize_name
 from packaging.version import Version
 
 # Match a requirements.txt pin line: `name==version` (optionally followed by ` \` for
@@ -69,12 +70,18 @@ _PIN_RE = re.compile(r"^([a-zA-Z0-9_.-]+)==([^ \\]+)")
 class Proposal:
     """One package version Renovate proposed bumping in requirements_lock.txt.
 
-    `name` is the canonical package name as it appears in the lockfile.
+    `name` is spelled as Renovate wrote it, which need not match `uv export`'s spelling
+    (`PyYAML` vs `pyyaml`); compare through `key`, never through `name`.
     `target` is the version Renovate wrote — what we'll compare uv's resolution against.
     """
 
     name: str
     target: str
+
+    @property
+    def key(self) -> NormalizedName:
+        """The PEP 503 canonical name, which `parse_resolved` keys its map by."""
+        return canonicalize_name(self.name)
 
 
 # ── Pure functions (the part the tests exercise) ──────────────────────────────
@@ -87,34 +94,40 @@ def extract_proposals(diff_text: str) -> list[Proposal]:
     the `+++ b/file` header (the `++` prefix means the line after the `+` does not start
     with a package-name character), `+    --hash=sha256:...` continuations (start with
     whitespace), and `+    # via ...` comments (same reason). The result is sorted by
-    name so the script's downstream behavior is deterministic.
+    canonical name so the script's downstream behavior is deterministic.
+
+    Pins that canonicalize to one package collapse to the highest target, whatever the
+    line order: a resolution that meets it meets every lower one too.
     """
-    proposals: dict[str, str] = {}
+    proposals: dict[NormalizedName, Proposal] = {}
     for raw in diff_text.splitlines():
         if not raw.startswith("+") or raw.startswith("+++"):
             continue
         m = _PIN_RE.match(raw[1:])
         if m:
-            proposals[m.group(1)] = m.group(2)
-    return [Proposal(name=n, target=t) for n, t in sorted(proposals.items())]
+            proposal = Proposal(name=m.group(1), target=m.group(2))
+            seen = proposals.get(proposal.key)
+            if seen is None or Version(proposal.target) > Version(seen.target):
+                proposals[proposal.key] = proposal
+    return [proposals[key] for key in sorted(proposals)]
 
 
-def parse_resolved(lock_text: str) -> dict[str, str]:
-    """Parse requirements.txt content into a {name: version} map.
+def parse_resolved(lock_text: str) -> dict[NormalizedName, str]:
+    """Parse requirements.txt content into a {canonical name: version} map.
 
     Only top-level `name==version` lines count; comments and continuation lines are
     skipped. Same regex as `extract_proposals` so the two views of the file always agree
     about what is "a package pin".
     """
-    resolved: dict[str, str] = {}
+    resolved: dict[NormalizedName, str] = {}
     for raw in lock_text.splitlines():
         m = _PIN_RE.match(raw)
         if m:
-            resolved[m.group(1)] = m.group(2)
+            resolved[canonicalize_name(m.group(1))] = m.group(2)
     return resolved
 
 
-def find_conflicts(proposals: list[Proposal], resolved: dict[str, str]) -> list[str]:
+def find_conflicts(proposals: list[Proposal], resolved: dict[NormalizedName, str]) -> list[str]:
     """Per proposal, return a diagnostic string if uv did not honor the proposed bump.
 
     Honored means: uv's resolved version is >= the proposed version. uv may pick a
@@ -130,15 +143,15 @@ def find_conflicts(proposals: list[Proposal], resolved: dict[str, str]) -> list[
     """
     conflicts: list[str] = []
     for proposal in proposals:
-        if proposal.name not in resolved:
+        if proposal.key not in resolved:
             conflicts.append(
                 f"{proposal.name}: not present in regenerated lockfile "
                 f"(Renovate proposed {proposal.target})"
             )
             continue
-        if Version(resolved[proposal.name]) < Version(proposal.target):
+        if Version(resolved[proposal.key]) < Version(proposal.target):
             conflicts.append(
-                f"{proposal.name}: uv resolved {resolved[proposal.name]}; "
+                f"{proposal.name}: uv resolved {resolved[proposal.key]}; "
                 f"Renovate proposed {proposal.target} (uv would not advance)"
             )
     return conflicts
