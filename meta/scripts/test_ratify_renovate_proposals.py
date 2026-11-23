@@ -16,6 +16,12 @@ from meta.scripts.ratify_renovate_proposals import (
     git_diff_args,
     parse_resolved,
 )
+from packaging.utils import NormalizedName, canonicalize_name
+
+
+def _resolved(pins: dict[str, str]) -> dict[NormalizedName, str]:
+    """A hand-written resolved map, keyed as `parse_resolved` keys its own."""
+    return {canonicalize_name(name): version for name, version in pins.items()}
 
 
 class TestExtractProposals(unittest.TestCase):
@@ -135,12 +141,17 @@ class TestExtractProposals(unittest.TestCase):
         diff = "+Zope==5.0\n+attrs==24.1.0\n"
         self.assertEqual([p.name for p in extract_proposals(diff)], ["attrs", "Zope"])
 
-    def test_spellings_of_one_package_are_one_proposal(self):
-        diff = "+ruamel.yaml==0.18.5\n+ruamel_yaml==0.18.6\n"
-        self.assertEqual(
-            extract_proposals(diff),
-            [Proposal(name="ruamel_yaml", target="0.18.6")],
-        )
+    def test_spellings_of_one_package_keep_the_highest_target(self):
+        # Both line orders: last-wins would drop the 0.18.6 bump when it comes first.
+        for diff in (
+            "+ruamel.yaml==0.18.5\n+ruamel_yaml==0.18.6\n",
+            "+ruamel_yaml==0.18.6\n+ruamel.yaml==0.18.5\n",
+        ):
+            with self.subTest(diff=diff):
+                self.assertEqual(
+                    extract_proposals(diff),
+                    [Proposal(name="ruamel_yaml", target="0.18.6")],
+                )
 
 
 class TestParseResolved(unittest.TestCase):
@@ -199,13 +210,13 @@ class TestParseResolved(unittest.TestCase):
 class TestFindConflicts(unittest.TestCase):
     def test_no_proposals_no_conflicts(self):
         self.assertEqual(
-            find_conflicts([], {"certifi": "2026.5.20"}),
+            find_conflicts([], _resolved({"certifi": "2026.5.20"})),
             [],
         )
 
     def test_all_honored_exact_match(self):
         proposals = [Proposal(name="certifi", target="2026.6.17")]
-        resolved = {"certifi": "2026.6.17"}
+        resolved = _resolved({"certifi": "2026.6.17"})
         self.assertEqual(find_conflicts(proposals, resolved), [])
 
     def test_honored_when_uv_picks_newer_than_proposed(self):
@@ -213,14 +224,14 @@ class TestFindConflicts(unittest.TestCase):
         # so uv resolves to the freshest. Renovate proposed 2026.6.17, uv resolved
         # 2026.7.1 — still an advance in spirit. Not a conflict.
         proposals = [Proposal(name="certifi", target="2026.6.17")]
-        resolved = {"certifi": "2026.7.1"}
+        resolved = _resolved({"certifi": "2026.7.1"})
         self.assertEqual(find_conflicts(proposals, resolved), [])
 
     def test_conflict_when_uv_kept_old_version(self):
         # The headline failure mode: workspace constraint refuses to advance, uv keeps
         # the existing version, Renovate's proposed bump is unachievable.
         proposals = [Proposal(name="certifi", target="2026.6.17")]
-        resolved = {"certifi": "2026.5.20"}
+        resolved = _resolved({"certifi": "2026.5.20"})
         conflicts = find_conflicts(proposals, resolved)
         self.assertEqual(len(conflicts), 1)
         self.assertIn("certifi", conflicts[0])
@@ -233,7 +244,7 @@ class TestFindConflicts(unittest.TestCase):
         # whose parent dep was dropped). The diagnostic should still surface what
         # Renovate wanted so the maintainer can decide.
         proposals = [Proposal(name="ghost", target="1.2.3")]
-        resolved = {}
+        resolved = _resolved({})
         conflicts = find_conflicts(proposals, resolved)
         self.assertEqual(len(conflicts), 1)
         self.assertIn("ghost", conflicts[0])
@@ -247,7 +258,7 @@ class TestFindConflicts(unittest.TestCase):
             Proposal(name="certifi", target="2026.6.17"),
             Proposal(name="urllib3", target="2.7.1"),
         ]
-        resolved = {"certifi": "2026.6.17", "urllib3": "2.7.0"}
+        resolved = _resolved({"certifi": "2026.6.17", "urllib3": "2.7.0"})
         conflicts = find_conflicts(proposals, resolved)
         self.assertEqual(len(conflicts), 1)
         self.assertIn("urllib3", conflicts[0])
@@ -258,7 +269,7 @@ class TestFindConflicts(unittest.TestCase):
         # before its corresponding final. Confirms we're using packaging.version.Version
         # and not strcmp.
         proposals = [Proposal(name="pkg", target="2.0.0")]
-        resolved = {"pkg": "2.0.0a1"}  # pre-release < final
+        resolved = _resolved({"pkg": "2.0.0a1"})  # pre-release < final
         conflicts = find_conflicts(proposals, resolved)
         self.assertEqual(len(conflicts), 1)
         self.assertIn("2.0.0a1", conflicts[0])
@@ -267,14 +278,14 @@ class TestFindConflicts(unittest.TestCase):
         # Post-releases (e.g. 2.0.0.post1) sort AFTER their base. If Renovate proposed
         # 2.0.0 and uv resolved 2.0.0.post1, that's an advance.
         proposals = [Proposal(name="pkg", target="2.0.0")]
-        resolved = {"pkg": "2.0.0.post1"}
+        resolved = _resolved({"pkg": "2.0.0.post1"})
         self.assertEqual(find_conflicts(proposals, resolved), [])
 
     def test_pep440_version_with_epoch(self):
         # Epoch prefixes (`1!2.0.0`) are unusual but legal in pep440 — they sort above
         # any version with a lower epoch regardless of the rest of the string.
         proposals = [Proposal(name="pkg", target="9999.0.0")]
-        resolved = {"pkg": "1!0.0.1"}  # epoch 1 > epoch 0 (no epoch)
+        resolved = _resolved({"pkg": "1!0.0.1"})  # epoch 1 > epoch 0 (no epoch)
         self.assertEqual(find_conflicts(proposals, resolved), [])
 
 

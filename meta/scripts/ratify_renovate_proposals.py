@@ -95,6 +95,9 @@ def extract_proposals(diff_text: str) -> list[Proposal]:
     with a package-name character), `+    --hash=sha256:...` continuations (start with
     whitespace), and `+    # via ...` comments (same reason). The result is sorted by
     canonical name so the script's downstream behavior is deterministic.
+
+    Pins that canonicalize to one package collapse to the highest target, whatever the
+    line order: a resolution that meets it meets every lower one too.
     """
     proposals: dict[NormalizedName, Proposal] = {}
     for raw in diff_text.splitlines():
@@ -103,7 +106,9 @@ def extract_proposals(diff_text: str) -> list[Proposal]:
         m = _PIN_RE.match(raw[1:])
         if m:
             proposal = Proposal(name=m.group(1), target=m.group(2))
-            proposals[proposal.key] = proposal
+            seen = proposals.get(proposal.key)
+            if seen is None or Version(proposal.target) > Version(seen.target):
+                proposals[proposal.key] = proposal
     return [proposals[key] for key in sorted(proposals)]
 
 
