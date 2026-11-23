@@ -125,6 +125,23 @@ class TestExtractProposals(unittest.TestCase):
             ["charset-normalizer", "python_dateutil", "ruamel.yaml"],
         )
 
+    def test_keeps_renovate_spelling(self):
+        # `uv lock --upgrade-package` and the diagnostics get the name as Renovate wrote it.
+        diff = "+PyYAML==6.0.4\n"
+        self.assertEqual(extract_proposals(diff), [Proposal(name="PyYAML", target="6.0.4")])
+
+    def test_sorted_by_canonical_name(self):
+        # Lexical order would put `Zope` before `attrs`; canonical order does not.
+        diff = "+Zope==5.0\n+attrs==24.1.0\n"
+        self.assertEqual([p.name for p in extract_proposals(diff)], ["attrs", "Zope"])
+
+    def test_spellings_of_one_package_are_one_proposal(self):
+        diff = "+ruamel.yaml==0.18.5\n+ruamel_yaml==0.18.6\n"
+        self.assertEqual(
+            extract_proposals(diff),
+            [Proposal(name="ruamel_yaml", target="0.18.6")],
+        )
+
 
 class TestParseResolved(unittest.TestCase):
     def test_empty_file(self):
@@ -170,6 +187,13 @@ class TestParseResolved(unittest.TestCase):
         # so a future regression is visible.
         text = "certifi==2026.5.20\ncertifi==2026.6.17\n"
         self.assertEqual(parse_resolved(text), {"certifi": "2026.6.17"})
+
+    def test_keys_are_canonical_names(self):
+        text = "PyYAML==6.0.4\nruamel.yaml==0.18.6\nPython_Dateutil==2.9.0\n"
+        self.assertEqual(
+            parse_resolved(text),
+            {"pyyaml": "6.0.4", "ruamel-yaml": "0.18.6", "python-dateutil": "2.9.0"},
+        )
 
 
 class TestFindConflicts(unittest.TestCase):
@@ -252,6 +276,41 @@ class TestFindConflicts(unittest.TestCase):
         proposals = [Proposal(name="pkg", target="9999.0.0")]
         resolved = {"pkg": "1!0.0.1"}  # epoch 1 > epoch 0 (no epoch)
         self.assertEqual(find_conflicts(proposals, resolved), [])
+
+
+class TestNameSpellings(unittest.TestCase):
+    """Renovate and `uv export` can spell one package differently; PEP 503 says they match.
+
+    Each case runs the real pipeline: a Renovate diff line through `extract_proposals`, a
+    `uv export` line through `parse_resolved`, then `find_conflicts`.
+    """
+
+    def _conflicts(self, proposed: str, exported: str) -> list[str]:
+        return find_conflicts(extract_proposals(f"+{proposed}\n"), parse_resolved(f"{exported}\n"))
+
+    def test_case_difference_honored(self):
+        # #386: Renovate wrote the PyPI display name, uv exports the normalized one.
+        self.assertEqual(self._conflicts("PyYAML==6.0.4", "pyyaml==6.0.4"), [])
+
+    def test_dot_vs_dash_honored(self):
+        self.assertEqual(self._conflicts("ruamel.yaml==0.18.6", "ruamel-yaml==0.18.6"), [])
+
+    def test_underscore_vs_dash_honored(self):
+        self.assertEqual(self._conflicts("ruamel_yaml==0.18.6", "ruamel-yaml==0.18.6"), [])
+
+    def test_run_of_separators_honored(self):
+        self.assertEqual(self._conflicts("Foo._-Bar==1.0", "foo-bar==1.0"), [])
+
+    def test_unhonored_bump_still_conflicts_under_renovate_spelling(self):
+        conflicts = self._conflicts("PyYAML==6.0.4", "pyyaml==6.0.3")
+        self.assertEqual(len(conflicts), 1)
+        self.assertTrue(conflicts[0].startswith("PyYAML: uv resolved 6.0.3"), conflicts[0])
+
+    def test_distinct_packages_are_not_merged(self):
+        # Canonicalization folds case and separators only; a different name is still absent.
+        conflicts = self._conflicts("PyYAML==6.0.4", "pyyaml-include==6.0.4")
+        self.assertEqual(len(conflicts), 1)
+        self.assertIn("not present", conflicts[0])
 
 
 class TestGitDiffArgs(unittest.TestCase):
