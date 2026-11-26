@@ -26,7 +26,7 @@ ARG RUFF_VERSION=0.17.6
 # binary lands on PATH for CI, pre-commit, and the `astral-sh.ty` editor
 # extension. UV_TOOL_{BIN_DIR,DIR} are shared across all uv tool installs.
 # renovate: datasource=pypi depName=ty
-ARG TY_VERSION=0.0.111
+ARG TY_VERSION=0.0.112
 # pre-commit: the hook runner. Installed via `uv tool install` (not pip) so
 # we have a single Python package manager in the devcontainer; the binary
 # lands at /usr/local/bin/pre-commit, so post-create.sh and any contributor
@@ -85,11 +85,11 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
 # Upstream release binaries: each download is checked against a sha512 pinned per arch, which
 # Renovate re-derives on a version bump. The convention is under README's "Release binaries".
 # renovate: datasource=github-releases depName=bazelbuild/bazelisk
-ARG BAZELISK_VERSION=v1.30.0
-# renovate: datasource=github-release-attachments depName=bazelbuild/bazelisk digestVersion=v1.30.0
-ARG BAZELISK_SHA512_AMD64=dd591811ede088ce9383827d8b05f31cd543aaa9b63d4dbacf5e1323cfdb70736781d626e6ca56bad8e2bbf74b79de3009f4d092e1871da97c1e178a82949772
-# renovate: datasource=github-release-attachments depName=bazelbuild/bazelisk digestVersion=v1.30.0
-ARG BAZELISK_SHA512_ARM64=2952a48ba644813cd746736ebaa26bbea8b193cd3e2dfbe5f5bdff4e28a9855b1a66996c552301a35094cc36e5b302c02812f979bfecd72e862e30e74e48a670
+ARG BAZELISK_VERSION=v1.31.0
+# renovate: datasource=github-release-attachments depName=bazelbuild/bazelisk digestVersion=v1.31.0
+ARG BAZELISK_SHA512_AMD64=9da5588ffe115f8ffc118321407c6c67f70da350b3776bcbb833183ca2aa3124e109a92a57188a04eda1acd26705787ec1bf387ad77268d810ad1559bac6b6a7
+# renovate: datasource=github-release-attachments depName=bazelbuild/bazelisk digestVersion=v1.31.0
+ARG BAZELISK_SHA512_ARM64=be56ffdec120beea07403dffeca0379f7f42ce8d998484808c18c8b488c055feaef1e118abb6edeed2aec6ff48bfd2f33173c2c4f53393cef60bd561f0bc5dc1
 RUN ARCH="$(dpkg --print-architecture)" \
     && case "${ARCH}" in \
         amd64) SHA512="${BAZELISK_SHA512_AMD64}" ;; \
