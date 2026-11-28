@@ -29,6 +29,19 @@ the container would instead mean forwarding a GitHub credential there (`GH_TOKEN
 makes an in-container call fail as "not found" rather than run logged out, and `devcontainer.yml`'s
 smoke test fails if `gh` reaches the image's PATH.
 
+**A tool that needs something only the macOS host has runs on the host.** The container is a Linux
+VM, so it cannot reach the Bluetooth radio, the camera, macOS's privacy permissions, or Xcode and
+Apple's SDKs. Running or building such a tool happens on the host; everything else about it — its
+lint, any tests that don't touch the resource, its commit — stays in the container. That is not a
+licence to install on the host: host-only tools use what macOS and Xcode already ship.
+
+## Workbench
+
+[`workbench/`](../workbench/README.md) holds development aids kept for later investigations —
+disassemblers, firmware converters, Bluetooth probes, a camera light meter. Look there before
+writing a one-off tool, and add one there when it is worth keeping; the directory's README is its
+contract, and the one rule that matters elsewhere is that nothing released depends on it.
+
 ## Documentation and test hygiene
 
 Documentation and tests are part of every task, not a separate follow-up step.
