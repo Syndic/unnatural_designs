@@ -55,7 +55,7 @@ RUN uv tool install --no-cache "ruff==${RUFF_VERSION}" \
 ARG COSMIC_RAY_VERSION=8.9.0
 RUN uv tool install --no-cache "cosmic-ray==${COSMIC_RAY_VERSION}"
 # renovate: datasource=pypi depName=check-jsonschema
-ARG CHECK_JSONSCHEMA_VERSION=0.39.0
+ARG CHECK_JSONSCHEMA_VERSION=0.40.0
 RUN uv tool install --no-cache "check-jsonschema==${CHECK_JSONSCHEMA_VERSION}"
 
 # Interactive Python for the devcontainer: a prebuilt uv-managed CPython, not the
