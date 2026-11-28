@@ -23,6 +23,7 @@ py_test(
         "devcontainer.json",
         "post-create.sh",
         "post-start.sh",
+        "//:.bazelrc",
         "//:.github/actions/install-pinned-release-binary/install.sh",
         "//:.github/workflows/ci.yml",
         "//:.github/workflows/devcontainer.yml",
