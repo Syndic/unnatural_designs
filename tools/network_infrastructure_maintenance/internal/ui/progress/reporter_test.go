@@ -50,7 +50,7 @@ func TestNewAutoSelectsPlainWhenNotTTY(t *testing.T) {
 	defer func() { _ = r.Close() }()
 	defer func() { _ = w.Close() }()
 
-	rep := New(w, ModeAuto, shared.Colorizer{})
+	rep := New(w, ModeAuto, shared.Styler{})
 	defer func() { _ = rep.Close() }()
 
 	if _, ok := rep.(*plainReporter); !ok {
@@ -66,7 +66,7 @@ func TestNewOffReturnsOffReporter(t *testing.T) {
 	defer func() { _ = r.Close() }()
 	defer func() { _ = w.Close() }()
 
-	rep := New(w, ModeOff, shared.Colorizer{})
+	rep := New(w, ModeOff, shared.Styler{})
 	defer func() { _ = rep.Close() }()
 
 	if _, ok := rep.(offReporter); !ok {
@@ -110,7 +110,7 @@ func TestNewRichReturnsRichReporter(t *testing.T) {
 	defer func() { _ = r.Close() }()
 	defer func() { _ = w.Close() }()
 
-	rep := New(w, ModeRich, shared.Colorizer{})
+	rep := New(w, ModeRich, shared.Styler{})
 	defer func() { _ = rep.Close() }()
 
 	if _, ok := rep.(*richReporter); !ok {
@@ -126,7 +126,7 @@ func TestNewPlainReturnsPlainReporter(t *testing.T) {
 	defer func() { _ = r.Close() }()
 	defer func() { _ = w.Close() }()
 
-	rep := New(w, ModePlain, shared.Colorizer{})
+	rep := New(w, ModePlain, shared.Styler{})
 	defer func() { _ = rep.Close() }()
 
 	if _, ok := rep.(*plainReporter); !ok {

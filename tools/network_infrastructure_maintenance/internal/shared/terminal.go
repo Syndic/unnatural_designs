@@ -21,22 +21,27 @@ func FormatDuration(d time.Duration) string {
 	return d.Round(10 * time.Millisecond).String()
 }
 
-// Colorizer wraps text in ANSI escape codes when color is enabled.
-type Colorizer struct {
+// Styler renders terminal output in the appropriate visual treatment for
+// the destination — colored ANSI when the underlying stream supports it,
+// pipe-safe fallbacks otherwise. Each method picks both the color codes
+// and any structural choice (bracketed vs padded labels, ASCII vs Unicode
+// progress runes, present vs omitted box) that depends on color support,
+// so callers never have to branch on display state themselves.
+type Styler struct {
 	enabled bool
 }
 
-// NewColorizer creates a Colorizer for the given color mode and output file.
-func NewColorizer(mode string, file *os.File) (Colorizer, error) {
+// NewStyler creates a Styler for the given color mode and output file.
+func NewStyler(mode string, file *os.File) (Styler, error) {
 	switch strings.ToLower(strings.TrimSpace(mode)) {
 	case "", ColorAuto:
-		return Colorizer{enabled: shouldColor(file)}, nil
+		return Styler{enabled: shouldColor(file)}, nil
 	case ColorAlways:
-		return Colorizer{enabled: true}, nil
+		return Styler{enabled: true}, nil
 	case ColorNever:
-		return Colorizer{enabled: false}, nil
+		return Styler{enabled: false}, nil
 	default:
-		return Colorizer{}, fmt.Errorf("expected %s, %s, or %s", ColorAuto, ColorAlways, ColorNever)
+		return Styler{}, fmt.Errorf("expected %s, %s, or %s", ColorAuto, ColorAlways, ColorNever)
 	}
 }
 
@@ -60,21 +65,110 @@ func IsTerminal(file *os.File) bool {
 	return (info.Mode() & os.ModeCharDevice) != 0
 }
 
-func (c Colorizer) wrap(code, text string) string {
-	if !c.enabled {
+// ANSI escape codes used by Styler. Pass/Warn/Fail use ANSI 2/3/1 so they
+// track the user's terminal theme. Accent and Track are 256-color values
+// reserved for the rich progress UI (spinner frames, progress-bar fill and
+// track, banner accent).
+const (
+	codeReset  = "\033[0m"
+	codePass   = "\033[32m"
+	codeWarn   = "\033[33m"
+	codeFail   = "\033[31m"
+	codeAccent = "\033[38;5;215m"
+	codeTrack  = "\033[38;5;240m"
+	// blockPrefix* pack the three SGR parameters that make up a status block
+	// — saturated ANSI bg, ANSI 0 fg, bold — into a single escape sequence
+	// per role. Equivalent to emitting `\033[42m\033[30m\033[1m`, just terser.
+	blockPrefixPass = "\033[42;30;1m" //nolint:gosec // ANSI SGR sequence, not credentials
+	blockPrefixWarn = "\033[43;30;1m" //nolint:gosec // ANSI SGR sequence, not credentials
+	blockPrefixFail = "\033[41;30;1m" //nolint:gosec // ANSI SGR sequence, not credentials
+)
+
+func (s Styler) wrap(code, text string) string {
+	if !s.enabled {
 		return text
 	}
-	return code + text + "\033[0m"
+	return code + text + codeReset
 }
 
-func (c Colorizer) Pass(text string) string {
-	return c.wrap("\033[32m", text)
+// block renders text as a status block — saturated colored background with
+// bold ANSI-0 (black) foreground, padded with a leading and trailing space
+// so the colored region extends visibly wider than the glyph or label
+// inside it. Under NO_COLOR the bare text is returned unchanged.
+func (s Styler) block(prefix, text string) string {
+	if !s.enabled {
+		return text
+	}
+	return prefix + " " + text + " " + codeReset
 }
 
-func (c Colorizer) Warn(text string) string {
-	return c.wrap("\033[38;5;214m", text)
+func (s Styler) Pass(text string) string { return s.wrap(codePass, text) }
+func (s Styler) Warn(text string) string { return s.wrap(codeWarn, text) }
+func (s Styler) Fail(text string) string { return s.wrap(codeFail, text) }
+
+// Accent wraps text in the warm-orange accent color. Used by the spinner,
+// progress-bar fill/tip, and the banner accent character.
+func (s Styler) Accent(text string) string { return s.wrap(codeAccent, text) }
+
+// Track wraps text in the dim grey used for the unfilled portion of progress
+// bars.
+func (s Styler) Track(text string) string { return s.wrap(codeTrack, text) }
+
+// BarRunes returns the rune set for an mpb-style progress bar. When colors
+// are enabled it yields the accent-colored Unicode block fill / dim track;
+// without color it falls back to the pipe-legible ASCII `[===>]` shape. The
+// rune set and the color treatment are inseparable (Unicode block without
+// color reads as a plain wall of solid characters), so they're chosen here
+// together rather than by the caller branching on color state.
+func (s Styler) BarRunes() (lbound, filler, tip, padding, rbound string) {
+	if !s.enabled {
+		return "[", "=", ">", " ", "]"
+	}
+	return "", s.Accent("█"), s.Accent("█"), s.Track("░"), ""
 }
 
-func (c Colorizer) Fail(text string) string {
-	return c.wrap("\033[31m", text)
+// Box wraps lines in a hairline box of the given inner width (the visible
+// cell count between the │ borders). Each line must already be padded to
+// width visible cells; Box doesn't strip ANSI to measure. Returns "" when
+// the styler is disabled, so callers don't need to branch on state.
+func (s Styler) Box(width int, lines []string) string {
+	if !s.enabled {
+		return ""
+	}
+	hr := strings.Repeat("─", width)
+	var b strings.Builder
+	b.WriteString("┌" + hr + "┐\n")
+	for _, line := range lines {
+		b.WriteString("│" + line + "│\n")
+	}
+	b.WriteString("└" + hr + "┘\n")
+	return b.String()
+}
+
+// PassBlock / WarnBlock / FailBlock render their argument as a status block —
+// saturated role-colored background with a bold black glyph inside, padded
+// for visible width. When the styler is disabled they return the bare
+// text, so the caller's bracket/glyph form is what survives on a pipe.
+func (s Styler) PassBlock(text string) string { return s.block(blockPrefixPass, text) }
+func (s Styler) WarnBlock(text string) string { return s.block(blockPrefixWarn, text) }
+func (s Styler) FailBlock(text string) string { return s.block(blockPrefixFail, text) }
+
+// Tag returns the report tag for status. When colors are enabled it renders
+// as a padded saturated-bg block with bold black text (e.g. ` PASS ` on
+// green). Under NO_COLOR it falls back to the bracket form (`[PASS]`) — the
+// durable form that ships in piped output and CI logs.
+func (s Styler) Tag(status string) string {
+	if !s.enabled {
+		return "[" + status + "]"
+	}
+	switch status {
+	case StatusPass:
+		return s.PassBlock(status)
+	case StatusWarn:
+		return s.WarnBlock(status)
+	case StatusFail:
+		return s.FailBlock(status)
+	default:
+		return "[" + status + "]"
+	}
 }
