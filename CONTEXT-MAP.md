@@ -55,6 +55,12 @@ in their own sense, since each context's vocabulary is its own.
 holding nothing but a one-line comment. Add a `CONTEXT.md` under one when it gains code, and
 register it above in the same change.
 
+**Sunset projector control** — `libs/sunset_projector/`, `tools/sunset_projector/`,
+`apps/sunset_projector/` — holds documentation only: the device's Bluetooth protocol
+([`PROTOCOL.md`](libs/sunset_projector/PROTOCOL.md)) and a README per package, with the research
+behind the protocol in [`docs/sunset_projector/`](docs/sunset_projector/README.md). It becomes a
+context with its first code.
+
 ## Not a context
 
 `//platforms/` does hold code — the three `platform()` definitions `.bazelrc` selects with
