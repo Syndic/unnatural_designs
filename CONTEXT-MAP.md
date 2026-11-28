@@ -67,3 +67,7 @@ context with its first code.
 `--config=linux_x86_64`, `--config=linux_arm64`, and `--config=darwin_arm64` — but it is build
 configuration rather than a domain. Three constraint tuples carry no vocabulary to model and no
 decisions to record, so it gets no `CONTEXT.md` and is not expected to grow one.
+
+`//workbench/` holds code too — development aids such as disassemblers and device probes, kept for
+later investigations ([its README](workbench/README.md)). Each tool serves whichever context is
+being developed, and none models a domain of its own, so it gets no `CONTEXT.md` either.

@@ -15,19 +15,14 @@ Version 1.2.3, analysed statically. Hashes and source are in the [README](README
 
 ## Analysis method
 
-A Python script using [LIEF](https://lief.re) to parse the Mach-O and
-[Capstone](https://www.capstone-engine.org) to disassemble arm64, annotating each method with the
-selectors and strings it references. What it has to handle:
+[`workbench/objc_disassembler`](../../workbench/objc_disassembler/README.md) lists and
+disassembles the app's Objective-C methods, annotated with the selectors and strings each one
+references. [`scripts/summarize.py`](scripts/summarize.py) condenses its output for this app: for
+each method, the command byte it passes to the frame builder, its literals and its calls.
 
-- **Chained fixups.** Pointers in the data segments are stored as chained-fixup entries. A rebase
-  entry's target is `raw & 0xFFFFFFFFF`, plus the image base when it is below it; an entry with
-  bit 63 set is a bind and resolves through the imports instead.
-- **Relative method lists.** Method lists use 32-bit offsets relative to each field rather than
-  absolute pointers.
-- **Selector stubs.** Calls go through `__objc_stubs`, small thunks that load a selector reference
-  and branch to `objc_msgSend`; resolving each stub's selector gives readable call sites.
-- **Categories.** Some methods are added by categories, listed in `__objc_catlist`, not in the
-  class's own method list.
+The class (`+`) methods were invisible during the original analysis because of a pointer-decoding
+bug since fixed. Re-checked with the fix: none of them builds a frame, so the command table below
+is unaffected.
 
 ## Where the protocol lives
 

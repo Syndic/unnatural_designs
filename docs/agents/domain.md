@@ -48,7 +48,7 @@ required only through its fan-in lives in CLAUDE.md.
 
 This repo is multi-context. A context is a Bazel package tree under one of the top-level
 directories documented in the README (`//apps/`, `//libs/`, `//services/`, `//tools/`, `//infra/`,
-`//meta/`, `//platforms/`), not a directory under `src/`.
+`//meta/`, `//platforms/`, `//workbench/`), not a directory under `src/`.
 
 ```
 /

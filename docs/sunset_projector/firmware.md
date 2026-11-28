@@ -11,16 +11,9 @@ space.
 
 ### Decompiling it
 
-- Convert the HEX to a minimal 32-bit little-endian ARM ELF with one `PT_LOAD` segment per
-  contiguous address range, marked read-write-execute so the analyser treats SRAM-resident code as
-  code.
-- Import that ELF into [Ghidra](https://ghidra-sre.org) 12.2 headless with the language
-  `ARM:LE:32:Cortex`, and run a post-script that decompiles every function to one C file. The image
-  has 793 functions.
-- Ghidra 12.2 needs JDK 25; JDK 21 is refused.
-- Ghidra's release ships no Linux arm64 decompiler. Build it in the Ghidra tree with
-  `support/gradle/gradlew buildNatives`, then copy `build/os/linux_arm_64` to `os/linux_arm_64`.
-  The build needs `bison` and `flex`.
+Converted to an ARM ELF with [`workbench/intel_hex`](../../workbench/intel_hex/README.md), then
+decompiled headless with [`workbench/ghidra`](../../workbench/ghidra/README.md) using the language
+`ARM:LE:32:Cortex`. The image has 793 functions.
 
 ### What it is
 

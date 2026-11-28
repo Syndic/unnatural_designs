@@ -2,7 +2,8 @@
 
 Measures light through the Mac's camera over time, so a change to a physical device — a lamp
 changing colour, a timer firing — can be checked from a recording rather than by someone watching.
-It was used to verify the projector's scenes, timers and white-channel tests.
+It verified the Sunset projector's scenes, timers and white-channel tests
+([`docs/sunset_projector/`](../../docs/sunset_projector/README.md)).
 
 - `capture.swift` records JPEG frames from the default camera at a fixed rate, with wall-clock
   timestamps and each frame's mean colour.
@@ -10,19 +11,19 @@ It was used to verify the projector's scenes, timers and white-channel tests.
 - `windows.py`, `changes.py` and `timeline.py` line those measurements up with events, such as the
   times commands were sent.
 
-These are research aids: nothing builds or tests them in CI.
+No automated tests. Last checked by hand on 2026-11-27: a 2-second capture at 2 fps on a MacBook
+Pro camera (1920×1080), `region.swift` on that capture, and each Python script on its output.
 
 ## Building
 
-macOS lets a process use the camera only if its app bundle declares `NSCameraUsageDescription`,
-and it judges a binary started from a shell by the app that launched it. So `capture.swift` runs
-from a minimal app bundle. On the macOS host, with Xcode or its command-line tools:
+`capture.swift` needs camera permission, so it runs from an app bundle (see the
+[workbench README](../README.md)). On the macOS host, with Xcode or its command-line tools:
 
 ```bash
-docs/sunset_projector/scripts/light_meter/build.sh <outdir>
+workbench/light_meter/build.sh <outdir>
 ```
 
-That writes `<outdir>/LightMeter.app`, ad-hoc signed.
+That writes `<outdir>/LightMeter.app`.
 
 ## Recording
 
@@ -31,8 +32,7 @@ open -W -n --stdout <log> --stderr <log> <outdir>/LightMeter.app \
   --args <capture-dir> <seconds> <fps> [lock]
 ```
 
-The first run asks for camera permission, and so may the first run after each rebuild, since the
-ad-hoc signature changes. `lock` waits about 2 seconds for auto-exposure to settle
+The first run asks for camera permission. `lock` waits about 2 seconds for auto-exposure to settle
 and then locks exposure and white balance, if the camera supports it. A capture directory holds
 `fNNNN.jpg` frames, `frames.csv` (`epoch,file,r,g,b,luma`) and `cam.log`.
 
@@ -41,7 +41,7 @@ and then locks exposure and white balance, if the camera supports it. A capture 
 Pick a region by looking at a frame, then:
 
 ```bash
-swift docs/sunset_projector/scripts/light_meter/region.swift \
+swift workbench/light_meter/region.swift \
   <capture-dir> <cx> <cy> <half-size> >region.csv
 ```
 
