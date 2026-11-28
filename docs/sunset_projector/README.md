@@ -10,6 +10,8 @@ the evidence behind it and the starting points for what is still unknown.
 - [`android_app.md`](android_app.md): MeRGBW for Android, device types and the update path.
 - [`firmware.md`](firmware.md): the firmware the apps bundle, and how to read the projector's own.
 - [`hardware.md`](hardware.md): teardown, chip candidates and pin-outs.
+- [`scripts/light_meter/`](scripts/light_meter/README.md): measures light through the Mac's
+  camera, used to verify the projector's behaviour from recordings.
 
 ## Materials not in this repository
 
