@@ -18,6 +18,9 @@ import sys
 import capstone
 import lief
 
+COMMANDS = {"classes", "dis", "callers", "selusers", "scanall", "addr", "cfstr"}
+if len(sys.argv) < 3 or sys.argv[2] not in COMMANDS:
+    sys.exit(__doc__)
 lief.logging.disable()
 binpath, cmd = sys.argv[1], sys.argv[2]
 fat = lief.MachO.parse(binpath)
@@ -57,13 +60,24 @@ def in_sect(addr, seg, name):
     return s is not None and s.virtual_address <= addr < s.virtual_address + s.size
 
 
+def cfstring(addr):
+    """Text of the CFString struct at addr: UTF-16LE when its flags say so, else UTF-8."""
+    flags = int.from_bytes(mem(addr + 8, 8), "little")
+    p, n = ptr(addr + 16), int.from_bytes(mem(addr + 24, 8), "little")
+    if not p:
+        return None
+    if (flags & 0xFF) == 0xD0:
+        return mem(p, n * 2).decode("utf-16le", "replace")
+    return mem(p, n).decode("utf-8", "replace")
+
+
 def describe(addr):
     if in_sect(addr, "__TEXT", "__cstring") or in_sect(addr, "__TEXT", "__objc_methname"):
         return repr(cstr(addr))
     for seg in ("__DATA", "__DATA_CONST"):
         if in_sect(addr, seg, "__cfstring"):
-            p = ptr(addr + 16)
-            return "@" + repr(cstr(p)) if p else None
+            text = cfstring(addr)
+            return "@" + repr(text) if text is not None else None
         if in_sect(addr, seg, "__objc_selrefs"):
             p = ptr(addr)
             return "sel:" + cstr(p) if p else None
@@ -77,6 +91,50 @@ def describe(addr):
 
 md = capstone.Cs(capstone.CS_ARCH_ARM64, capstone.CS_MODE_ARM)
 md.detail = True
+# Registers a call may overwrite (AAPCS64 caller-saved, plus the link register).
+CALL_CLOBBERED = {f"x{i}" for i in range(19)} | {"x30"}
+
+
+def xreg(reg):
+    """Register name with w<n> folded into x<n>, since writing w<n> clobbers x<n>."""
+    name = md.reg_name(reg)
+    return "x" + name[1:] if name.startswith("w") and name[1:].isdigit() else name
+
+
+def track(ins, regs):
+    """Follow adrp/add/ldr address arithmetic through regs (name -> known value).
+
+    Returns the address an add or ldr computes from a tracked register, else None. Every other
+    register the instruction writes is forgotten, and a call forgets the caller-saved ones.
+    """
+    ops = ins.operands
+    computed, keep = None, None
+    if ins.mnemonic == "adrp":
+        keep = (xreg(ops[0].reg), ops[1].imm)
+    elif (
+        ins.mnemonic == "add"
+        and len(ops) == 3
+        and ops[2].type == capstone.arm64.ARM64_OP_IMM
+        and xreg(ops[1].reg) in regs
+    ):
+        computed = regs[xreg(ops[1].reg)] + ops[2].imm
+        keep = (xreg(ops[0].reg), computed)
+    elif (
+        ins.mnemonic == "ldr"
+        and len(ops) == 2
+        and ops[1].type == capstone.arm64.ARM64_OP_MEM
+        and xreg(ops[1].mem.base) in regs
+    ):
+        computed = regs[xreg(ops[1].mem.base)] + ops[1].mem.disp
+    if ins.mnemonic in ("bl", "blr", "blraa", "blrab", "blraaz", "blrabz"):
+        for r in CALL_CLOBBERED:
+            regs.pop(r, None)
+    for r in ins.regs_access()[1]:
+        regs.pop(xreg(r), None)
+    if keep:
+        regs[keep[0]] = keep[1]
+    return computed
+
 
 stubs = {}
 st = sections.get(("__TEXT", "__objc_stubs"))
@@ -151,7 +209,9 @@ classes = []
 cl = sections.get(("__DATA_CONST", "__objc_classlist")) or sections.get(
     ("__DATA", "__objc_classlist")
 )
-for off in range(0, cl.size, 8):
+if cl is None:
+    skipped("class list", "no __objc_classlist section")
+for off in range(0, cl.size if cl else 0, 8):
     c = ptr(cl.virtual_address + off)
     if not c:
         continue
@@ -202,24 +262,8 @@ def disasm(addr):
     for ins in md.disasm(code, addr):
         note = ""
         ops = ins.operands
-        if ins.mnemonic == "adrp":
-            regs[ops[0].reg] = ops[1].imm
-        elif (
-            ins.mnemonic == "add"
-            and len(ops) == 3
-            and ops[2].type == capstone.arm64.ARM64_OP_IMM
-            and ops[1].reg in regs
-        ):
-            a = regs[ops[1].reg] + ops[2].imm
-            regs[ops[0].reg] = a
-            note = describe(a) or hex(a)
-        elif (
-            ins.mnemonic == "ldr"
-            and len(ops) == 2
-            and ops[1].type == capstone.arm64.ARM64_OP_MEM
-            and ops[1].mem.base in regs
-        ):
-            a = regs[ops[1].mem.base] + ops[1].mem.disp
+        a = track(ins, regs)
+        if a is not None:
             note = describe(a) or hex(a)
         elif ins.mnemonic in ("bl", "b") and ops and ops[0].type == capstone.arm64.ARM64_OP_IMM:
             t = ops[0].imm
@@ -242,15 +286,17 @@ if cmd == "classes":
         if rx.search(c.name):
             print(f"== {c.name}")
             for m in c.methods:
-                print(
-                    f"  {'-' if m.is_instance else '+'}{m.name}  @{m.address:x}  {m.mangled_type}"
-                )
+                at = f"@{m.address:x}" if m.address else "@-"
+                print(f"  {'-' if m.is_instance else '+'}{m.name}  {at}  {m.mangled_type}")
 elif cmd == "dis":
     cls, rx = sys.argv[3], re.compile(sys.argv[4])
     for c in classes:
         if c.name == cls:
             for m in c.methods:
                 if rx.search(m.name):
+                    if not m.address:
+                        skipped(f"{cls} {m.name}", "no implementation address")
+                        continue
                     print(f"\n### {'-' if m.is_instance else '+'}[{cls} {m.name}] @{m.address:x}")
                     disasm(m.address)
 
@@ -296,28 +342,10 @@ if cmd == "selusers":
                 continue
             regs = {}
             for ins in md.disasm(code, m.address):
-                ops = ins.operands
-                if ins.mnemonic == "adrp":
-                    regs[ops[0].reg] = ops[1].imm
-                elif ins.mnemonic in ("ldr", "add") and len(ops) >= 2:
-                    base = (
-                        ops[1].mem.base
-                        if ops[1].type == capstone.arm64.ARM64_OP_MEM
-                        else (ops[1].reg if ins.mnemonic == "add" else None)
-                    )
-                    if base in regs:
-                        a = regs[base] + (
-                            ops[1].mem.disp
-                            if ops[1].type == capstone.arm64.ARM64_OP_MEM
-                            else (
-                                ops[2].imm
-                                if len(ops) > 2 and ops[2].type == capstone.arm64.ARM64_OP_IMM
-                                else 0
-                            )
-                        )
-                        d = describe(a)
-                        if d and d.startswith("sel:") and rx.search(d[4:]):
-                            print(f"{c.name} {'-' if m.is_instance else '+'}{m.name} loads {d}")
+                a = track(ins, regs)
+                d = describe(a) if a is not None else None
+                if d and d.startswith("sel:") and rx.search(d[4:]):
+                    print(f"{c.name} {'-' if m.is_instance else '+'}{m.name} loads {d}")
 
 if cmd == "scanall":
     # every bl in __text to a selector stub matching the regex, with the enclosing function start
@@ -338,17 +366,13 @@ if cmd == "scanall":
             t = pc + imm * 4
             if t in targets:
                 i = bisect.bisect_right(starts, pc) - 1
-                print(f"bl @{pc:x} in func @{starts[i]:x} -> {targets[t]}")
+                func = f"@{starts[i]:x}" if i >= 0 else "@? (before the first function start)"
+                print(f"bl @{pc:x} in func {func} -> {targets[t]}")
 
 if cmd == "cfstr":
     # decode CFString structs (UTF-16 or ASCII) at the given addresses
     for a in sys.argv[3:]:
         addr = int(a, 16)
         flags = int.from_bytes(mem(addr + 8, 8), "little")
-        p, n = ptr(addr + 16), int.from_bytes(mem(addr + 24, 8), "little")
-        raw = mem(p, n * 2 if flags & 0x4 == 0 and flags != 0x7C8 else n)
-        try:
-            s = raw.decode("utf-16le") if (flags & 0xFF) == 0xD0 else raw.decode("utf-8", "replace")
-        except Exception:
-            s = raw.hex()
-        print(f"{a}: flags=0x{flags:x} len={n} {s!r}")
+        n = int.from_bytes(mem(addr + 24, 8), "little")
+        print(f"{a}: flags=0x{flags:x} len={n} {cfstring(addr)!r}")

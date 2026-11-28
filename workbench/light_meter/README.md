@@ -46,7 +46,9 @@ swift workbench/light_meter/region.swift \
 ```
 
 `cx` and `cy` are the region's centre in pixels from the top-left corner; the region is
-`2 × half-size` pixels square. Its CSV (`epoch,file,r,g,b`) feeds the Python scripts, run with
+`2 × half-size` pixels square. A frame the region doesn't fit inside is skipped, with a note on
+stderr. Both CSVs measure the saved JPEGs in sRGB, so their values are comparable. The region CSV
+(`epoch,file,r,g,b`) feeds the Python scripts, run with
 `python3 -I`:
 
 - `windows.py region.csv <t0> name@start-end ...`: mean, standard deviation and range of luma per

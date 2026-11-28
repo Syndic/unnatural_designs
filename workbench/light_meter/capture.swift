@@ -24,13 +24,15 @@ func note(_ s: String) {
     FileHandle.standardError.write((line + "\n").data(using: .utf8)!)
 }
 
-/// Mean color of `rect` in `img`, as RGBA bytes.
+let sRGB = CGColorSpace(name: CGColorSpace.sRGB)!
+
+/// Mean color of `rect` in `img`, as sRGB RGBA bytes. region.swift computes it the same way.
 func meanColor(_ ctx: CIContext, _ img: CIImage, _ rect: CGRect) -> [UInt8] {
     var px = [UInt8](repeating: 0, count: 4)
     let params: [String: Any] = [kCIInputImageKey: img, kCIInputExtentKey: CIVector(cgRect: rect)]
     if let avg = CIFilter(name: "CIAreaAverage", parameters: params)?.outputImage {
         ctx.render(avg, toBitmap: &px, rowBytes: 4, bounds: CGRect(x: 0, y: 0, width: 1, height: 1),
-                   format: .RGBA8, colorSpace: CGColorSpaceCreateDeviceRGB())
+                   format: .RGBA8, colorSpace: sRGB)
     }
     return px
 }
@@ -48,13 +50,13 @@ final class Grabber: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
         let now = Date().timeIntervalSince1970
         guard now - lastSave >= 1.0 / fps else { return }
         lastSave = now
-        let img = CIImage(cvPixelBuffer: pb)
-        let px = meanColor(ctx, img, img.extent)
         let name = String(format: "f%04d.jpg", count)
-        if let cs = CGColorSpace(name: CGColorSpace.sRGB),
-           let data = ctx.jpegRepresentation(of: img, colorSpace: cs, options: [:]) {
-            try? data.write(to: outDir.appendingPathComponent(name))
-        }
+        // Measure the JPEG as saved, so frames.csv and region.swift read the same pixels.
+        guard let data = ctx.jpegRepresentation(of: CIImage(cvPixelBuffer: pb), colorSpace: sRGB,
+                                                options: [:]),
+              let saved = CIImage(data: data) else { return }
+        try? data.write(to: outDir.appendingPathComponent(name))
+        let px = meanColor(ctx, saved, saved.extent)
         let luma = 0.2126 * Double(px[0]) + 0.7152 * Double(px[1]) + 0.0722 * Double(px[2])
         csv += String(format: "%.3f,%@,%d,%d,%d,%.1f\n", now, name, px[0], px[1], px[2], luma)
         count += 1

@@ -1,7 +1,8 @@
 # intel_hex
 
 `intel_hex.py` works on firmware images in Intel HEX format (often `.hex` or `.hex16`). It uses
-only the standard library, so it runs anywhere, including the devcontainer.
+only the standard library, so it runs anywhere, including the devcontainer. It refuses an image with
+a bad record checksum or no data.
 
 ```bash
 python3 -I workbench/intel_hex/intel_hex.py segments IMAGE.hex
@@ -13,7 +14,8 @@ python3 -I workbench/intel_hex/intel_hex.py compare REF.hex OTHER.hex...
 - `segments` lists the contiguous address ranges the image loads.
 - `bin` writes a flat image from the lowest to the highest address, filling gaps with `0xFF`.
 - `elf` writes a minimal 32-bit little-endian ARM ELF with one `PT_LOAD` segment per range, marked
-  read-write-execute so an analyser treats code that runs from SRAM as code. This is the form
+  read-write-execute so an analyser treats code that runs from SRAM as code. Its entry point is the
+  image's start-address record if it has one, else the lowest loaded address. This is the form
   [Ghidra](../ghidra/README.md) imports. For a non-ARM chip, change `e_machine` (40).
 - `compare` reports, for each image against the first, how many addresses differ and which
   printable strings appear in only one of them.

@@ -116,6 +116,12 @@ final class Poker: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
                     error: Error?) {
         let state = ch.isNotifying ? "on" : "off"
         log("notify \(ch.uuid.uuidString) \(state) \(error?.localizedDescription ?? "")")
+        // Without notifications every reply would be lost and read as silence, so don't run.
+        guard error == nil, ch.isNotifying else {
+            log("notify subscription failed")
+            done = true
+            return
+        }
         ready = tx != nil
     }
     func peripheral(_ p: CBPeripheral, didUpdateValueFor ch: CBCharacteristic, error: Error?) {
@@ -146,8 +152,9 @@ if !poker.ready {
         guard let frame = parseHex(step) else { log("not hex, skipped: \(step)"); continue }
         poker.write(frame)
         let ackDeadline = Date().addingTimeInterval(5)
-        while poker.awaitingWrite, Date() < ackDeadline { pump(0.05) }
-        if poker.awaitingWrite { log("   no write ack within 5s") }
+        while poker.awaitingWrite, !poker.done, Date() < ackDeadline { pump(0.05) }
+        // A late ack can't be told apart from the next frame's, so stop rather than misattribute.
+        if poker.awaitingWrite, !poker.done { log("   no write ack within 5s; stopping"); break }
         pump(0.5)  // collect any reply notifications
     }
     pump(2)

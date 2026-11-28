@@ -7,11 +7,14 @@ Bluetooth), each from its own app bundle (see the [workbench README](../README.m
 - **`BLEScan`** (`scan.swift`): a passive scan. It prints a table of what it heard and writes
   every advertisement — name, signal strength, manufacturer data, services — to JSON.
 - **`BLEGatt`** (`gatt.swift`): connects to one device and dumps its services, characteristics and
-  descriptors, reading every readable value and briefly subscribing to notifications. It never
-  writes.
+  descriptors, reading every readable value and briefly subscribing to notifications. A readable
+  characteristic is subscribed only after its read returns, so a notification is never mistaken for
+  the read value. It never writes.
 - **`BLEPoke`** (`poke.swift`): connects, subscribes to a notify characteristic, and runs a script
   of writes and pauses against a write characteristic, logging every notification. Writes go out
-  with response, one at a time, waiting up to 5 s for each acknowledgement.
+  with response, one at a time, waiting up to 5 s for each acknowledgement. It stops rather than
+  carry on if the notify subscription fails (every reply would be lost and read as silence) or an
+  acknowledgement doesn't come (a late one couldn't be told apart from the next frame's).
 
 No automated tests. Last checked by hand on 2026-11-27: all three built, and `BLEScan` listed the
 devices in range. `BLEGatt` and `BLEPoke` drove the Sunset projector throughout its investigation,

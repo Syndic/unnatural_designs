@@ -33,8 +33,9 @@ build. The same log carries the device address, which also appears as bytes 2–
 manufacturer data; its first octet is `FF`, so it is vendor-assigned rather than a registered OUI.
 
 The package rules out the PHY6222 and PHY6252 (QFN or SSOP-24). Phyplus's two SOP-16 parts both fit
-the board: pin 16 RF (the corner by the antenna), 15 ground, 14 VDD3, 13 and 12 the 16 MHz crystal
-(beside Y1), and pins 1–11 GPIO (the row facing the MOSFETs).
+the board. Pins 1–8 are the row facing the MOSFETs, all GPIO. Pins 9–16 are the opposite row: GPIO
+on 9–11, then the 16 MHz crystal on 12 and 13 (beside Y1), VDD3 on 14, ground on 15, and RF on 16
+(the corner by the antenna).
 
 - **PHY6230** (SOP-16 part PHY6230SC): 32-bit CPU (the datasheet doesn't name the core), 64 KB ROM,
   8 KB SRAM and **16 KB OTP** at `0x1FFF8000` — no flash, so no firmware updates. Its lack of an

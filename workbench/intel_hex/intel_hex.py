@@ -13,23 +13,35 @@ import sys
 
 
 def load(path):
-    """Address -> byte for every data record, honouring extended segment and linear addresses."""
-    mem, base = {}, 0
+    """Read an image as (address -> byte, start address or None).
+
+    Honours extended segment (2) and linear (4) address records, takes the start address from a
+    start segment (3) or start linear (5) record, and refuses a record whose checksum is wrong.
+    """
+    mem, base, start = {}, 0, None
     with open(path) as f:
-        for line in f:
+        for lineno, line in enumerate(f, 1):
             line = line.strip()
             if not line.startswith(":"):
                 continue
             rec = bytes.fromhex(line[1:])
+            if len(rec) < 5 or len(rec) != rec[0] + 5 or sum(rec) & 0xFF:
+                sys.exit(f"{path}:{lineno}: malformed record or bad checksum")
             addr, typ, data = int.from_bytes(rec[1:3], "big"), rec[3], rec[4 : 4 + rec[0]]
             if typ == 0:
                 for i, b in enumerate(data):
                     mem[base + addr + i] = b
             elif typ == 2:
                 base = int.from_bytes(data, "big") << 4
+            elif typ == 3:
+                start = (int.from_bytes(data[:2], "big") << 4) + int.from_bytes(data[2:], "big")
             elif typ == 4:
                 base = int.from_bytes(data, "big") << 16
-    return mem
+            elif typ == 5:
+                start = int.from_bytes(data, "big")
+    if not mem:
+        sys.exit(f"{path}: no data records")
+    return mem, start
 
 
 def segments(mem):
@@ -53,7 +65,8 @@ def strings(mem):
     return found
 
 
-def to_elf(mem):
+def to_elf(mem, entry):
+    """ELF image; the entry point is the start address, else the lowest loaded address."""
     segs = segments(mem)
     ehdr_size, phdr_size = 52, 32
     off = ehdr_size + phdr_size * len(segs)
@@ -67,7 +80,8 @@ def to_elf(mem):
     # e_type EXEC, e_machine ARM (40), EABI version 5 flags.
     ehdr = ident + struct.pack(
         "<HHIIIIIHHHHHH",
-        2, 40, 1, segs[0][0], ehdr_size, 0, 0x05000000, ehdr_size, phdr_size, len(segs), 40, 0, 0,
+        2, 40, 1, segs[0][0] if entry is None else entry, ehdr_size, 0, 0x05000000, ehdr_size,
+        phdr_size, len(segs), 40, 0, 0,
     )  # fmt: skip
     return ehdr + phdrs + blobs
 
@@ -84,22 +98,25 @@ def main(argv):
         sys.exit(__doc__)
     cmd, args = argv[0], argv[1:]
     if cmd == "segments":
-        for s, e in segments(load(args[0])):
+        mem, start = load(args[0])
+        if start is not None:
+            print(f"start address 0x{start:08x}")
+        for s, e in segments(mem):
             print(f"0x{s:08x}-0x{e:08x} ({e - s + 1} bytes)")
     elif cmd == "bin":
-        mem = load(args[0])
+        mem, _ = load(args[0])
         lo, hi = min(mem), max(mem)
         with open(args[1], "wb") as f:
             f.write(bytes(mem.get(a, 0xFF) for a in range(lo, hi + 1)))
         print(f"wrote 0x{lo:08x}..0x{hi:08x} to {args[1]}")
     elif cmd == "elf":
-        mem = load(args[0])
+        mem, start = load(args[0])
         with open(args[1], "wb") as f:
-            f.write(to_elf(mem))
+            f.write(to_elf(mem, start))
         for s, e in segments(mem):
             print(f"PT_LOAD 0x{s:08x} size {e - s + 1}")
     elif cmd == "compare":
-        images = [(p, load(p)) for p in args]
+        images = [(p, load(p)[0]) for p in args]
         ref_name, ref = images[0]
         ref_strings = set(strings(ref))
         describe(ref_name, ref)

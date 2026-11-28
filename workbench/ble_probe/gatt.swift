@@ -82,9 +82,14 @@ final class Dumper: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         pending -= 1
         for ch in s.characteristics ?? [] {
             pending += 1; p.discoverDescriptors(for: ch)
-            if ch.properties.contains(.read) { pending += 1; p.readValue(for: ch) }
-            if ch.properties.contains(.notify) || ch.properties.contains(.indicate) {
-                p.setNotifyValue(true, for: ch)
+            // A read reply and a notification arrive through the same callback, so a
+            // characteristic is subscribed only once its read is answered.
+            if ch.properties.contains(.read) {
+                pending += 1
+                readsOutstanding.insert(ObjectIdentifier(ch))
+                p.readValue(for: ch)
+            } else {
+                subscribe(ch, on: p)
             }
         }
     }
@@ -96,14 +101,20 @@ final class Dumper: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     func peripheral(_ p: CBPeripheral, didUpdateValueFor d: CBDescriptor, error: Error?) {
         pending -= 1
     }
-    var reads: [CBUUID: Data] = [:]
+    var reads: [ObjectIdentifier: Data] = [:]
+    var readsOutstanding: Set<ObjectIdentifier> = []
     var notifies: [(CBUUID, Data)] = []
-    var readDone: Set<CBUUID> = []
+    func subscribe(_ ch: CBCharacteristic, on p: CBPeripheral) {
+        if ch.properties.contains(.notify) || ch.properties.contains(.indicate) {
+            p.setNotifyValue(true, for: ch)
+        }
+    }
     func peripheral(_ p: CBPeripheral, didUpdateValueFor ch: CBCharacteristic, error: Error?) {
-        if !readDone.contains(ch.uuid), ch.properties.contains(.read) {
-            readDone.insert(ch.uuid); pending -= 1
-            reads[ch.uuid] = ch.value ?? Data()
+        if readsOutstanding.remove(ObjectIdentifier(ch)) != nil {
+            pending -= 1
+            reads[ObjectIdentifier(ch)] = ch.value ?? Data()
             if let error { log("read error \(ch.uuid): \(error.localizedDescription)") }
+            subscribe(ch, on: p)
         } else if let v = ch.value {
             notifies.append((ch.uuid, v))
         }
@@ -116,7 +127,9 @@ final class Dumper: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
             log("service \(s.uuid.uuidString)\(s.isPrimary ? "" : " (secondary)") — \(s.uuid)")
             for ch in s.characteristics ?? [] {
                 log("  char \(ch.uuid.uuidString) [\(props(ch.properties))] — \(ch.uuid)")
-                if let v = reads[ch.uuid] { log("    value: \(hex(v))  |\(ascii(v))|") }
+                if let v = reads[ObjectIdentifier(ch)] {
+                    log("    value: \(hex(v))  |\(ascii(v))|")
+                }
                 for d in ch.descriptors ?? [] {
                     let v = d.value
                     let shown: String

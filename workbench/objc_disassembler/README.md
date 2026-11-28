@@ -5,9 +5,12 @@ macOS app's executable), annotating each instruction with the selectors, strings
 symbols it references. It reads the binary directly, so it needs no Xcode and runs in the
 devcontainer.
 
-No automated tests. Last checked by hand on 2026-11-27 against MeRGBW for iOS 1.2.3: `dis` over
-`LEDCommandAnalysislogic` reproduced the original analysis output exactly, `classes` and `callers`
-ran with nothing skipped, and every class's class methods were listed.
+No automated tests. Last checked by hand on 2026-11-27 against MeRGBW for iOS 1.2.3. `dis` over
+`LEDCommandAnalysislogic` matched the original analysis output except for 19 annotations, each on
+a load through a register that had since been overwritten. The original output had wrongly
+attributed those loads, and the register tracking now drops them. `classes`, `callers`, `selusers`
+and `scanall` ran with nothing skipped. Every class's class methods were listed, and UTF-16
+`CFString`s (the app's Chinese dialogs) decoded.
 
 ## Running
 
@@ -38,6 +41,11 @@ Recent Xcode output differs from what older Mach-O tools expect:
   and branch to `objc_msgSend`; resolving each stub's selector gives readable call sites.
 - **Categories.** Methods added by categories are listed in `__objc_catlist`, not in the class's
   own method list; they appear as classes named `CAT:<category>`.
+- **Register tracking.** Annotations come from following `adrp`/`add`/`ldr` arithmetic. A register
+  is forgotten whenever anything else writes it (including its `w` half), and calls forget the
+  caller-saved registers, so a load is labelled only with an address it really computed.
+- **`CFString` encodings.** Constant strings are UTF-8 unless their flags (`0x…d0`) mark them
+  UTF-16LE.
 
 ## Limits
 
